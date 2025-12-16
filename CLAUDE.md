@@ -46,6 +46,13 @@ Every vibe is a single `index.html` file in `<vibe-name>/`:
 4. **Small** - Target <300 lines, max 500
 5. **Mobile-first** - Responsive, touch-friendly, 16px min font
 
+## Security
+
+- Use `.textContent` not `.innerHTML` for user input (prevents XSS)
+- Use `encodeURIComponent()` for URL parameters
+- Never use `eval()` or `Function()` with user data
+- Sanitize any data loaded from external sources
+
 ## CSS
 
 ```css

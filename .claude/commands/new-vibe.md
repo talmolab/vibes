@@ -115,7 +115,7 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
 
         // Copy to clipboard
         document.getElementById('copy').addEventListener('click', () => {
-            const text = /* result */;
+            const text = document.getElementById('result').textContent;
             navigator.clipboard.writeText(text).then(() => {
                 const btn = document.getElementById('copy');
                 btn.textContent = 'Copied!';
