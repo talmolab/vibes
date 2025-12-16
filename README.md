@@ -7,6 +7,7 @@ Inspired by [simonw/tools](https://github.com/simonw/tools) and the [vibe coding
 ## Vibes
 
 - [Hello World](hello-world/) - A simple greeting to test the setup
+- [Idle Quest](idle-quest/) - An idle RPG with combat, upgrades, zones, and prestige
 
 ---
 
