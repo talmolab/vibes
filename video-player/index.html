@@ -1357,13 +1357,27 @@
             }
         });
 
-        // Seekbar click
-        seekbar.addEventListener('click', (e) => {
+        // Seekbar scrubbing
+        let isScrubbing = false;
+
+        function handleSeekbarInteraction(e) {
             const rect = seekbar.getBoundingClientRect();
-            const x = e.clientX - rect.left;
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const percent = x / rect.width;
             const frame = Math.floor(percent * totalFrames);
             seekToFrame(frame);
+        }
+
+        seekbar.addEventListener('mousedown', (e) => {
+            isScrubbing = true;
+            handleSeekbarInteraction(e);
+            e.preventDefault(); // Prevent text selection while scrubbing
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isScrubbing) {
+                handleSeekbarInteraction(e);
+            }
         });
 
         // Zoom with mouse wheel
@@ -1398,6 +1412,7 @@
 
         document.addEventListener('mouseup', () => {
             isDragging = false;
+            isScrubbing = false;
         });
 
         // Reset zoom
