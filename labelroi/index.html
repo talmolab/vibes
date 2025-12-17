@@ -97,13 +97,10 @@
             pointer-events: auto;
         }
         .zoom-controls {
-            background: #2a2a2a;
-            padding: 10px 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
             display: flex;
             align-items: center;
             gap: 10px;
+            margin-bottom: 10px;
         }
         .zoom-controls label {
             color: #aaa;
@@ -362,19 +359,15 @@
                     <canvas id="roiCanvas"></canvas>
                 </div>
 
-                <div class="zoom-controls" id="zoomControls" style="display: none;">
-                    <label>Zoom:</label>
-                    <button id="zoomOutBtn" style="padding: 5px 12px;">-</button>
-                    <span id="zoomLevel">100%</span>
-                    <button id="zoomInBtn" style="padding: 5px 12px;">+</button>
-                    <button id="zoomResetBtn" style="padding: 5px 12px;">Reset</button>
-                    <button id="zoomFitBtn" style="padding: 5px 12px;">Fit</button>
-                    <span style="color: #666; margin-left: 10px;">|</span>
-                    <label style="margin-left: 10px;">Pan:</label>
-                    <button id="panModeBtn" style="padding: 5px 12px;">Hold Shift</button>
-                </div>
-
                 <div class="seekbar-container" id="seekbarContainer" style="display: none;">
+                    <div class="zoom-controls" id="zoomControls">
+                        <label>Zoom:</label>
+                        <button id="zoomOutBtn" style="padding: 5px 12px;">-</button>
+                        <span id="zoomLevel">100%</span>
+                        <button id="zoomInBtn" style="padding: 5px 12px;">+</button>
+                        <button id="zoomResetBtn" style="padding: 5px 12px;">Reset</button>
+                        <button id="zoomFitBtn" style="padding: 5px 12px;">Fit</button>
+                    </div>
                     <div class="seekbar" id="seekbar">
                         <div class="seekbar-progress" id="seekbarProgress"></div>
                         <div class="seekbar-thumb" id="seekbarThumb"></div>
@@ -385,10 +378,13 @@
                     </div>
                 </div>
 
-                <div class="metrics" id="metrics" style="display: none;">
-                    <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
-                    <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
-                    <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                <div class="yaml-output" id="yamlContainer" style="display: none;">
+                    <h3>
+                        YAML Output
+                        <button id="copyBtn" style="padding: 4px 10px; font-size: 12px;">Copy</button>
+                        <button id="downloadBtn" style="padding: 4px 10px; font-size: 12px;">Download</button>
+                    </h3>
+                    <textarea id="yamlOutput" readonly placeholder="ROI annotations will appear here..."></textarea>
                 </div>
             </div>
 
@@ -406,12 +402,10 @@
                     <div id="roiItems">No ROIs yet</div>
                 </div>
 
-                <div class="yaml-output">
-                    <h3>
-                        YAML Output
-                        <button id="copyBtn" style="padding: 4px 10px; font-size: 12px;">Copy</button>
-                    </h3>
-                    <textarea id="yamlOutput" readonly placeholder="ROI annotations will appear here..."></textarea>
+                <div class="metrics" id="metrics" style="display: none;">
+                    <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
+                    <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+                    <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
                 </div>
 
                 <div class="hotkeys">
@@ -1176,7 +1170,7 @@
                 updateCanvasTransform();
                 seekbarContainer.style.display = 'block';
                 metricsDiv.style.display = 'block';
-                zoomControls.style.display = 'flex';
+                document.getElementById('yamlContainer').style.display = 'block';
 
                 // Enable buttons
                 playBtn.disabled = false;
@@ -1993,6 +1987,23 @@
                 document.execCommand('copy');
                 document.body.removeChild(ta);
             });
+        });
+
+        // Download YAML
+        const downloadBtn = document.getElementById('downloadBtn');
+        downloadBtn.addEventListener('click', () => {
+            const blob = new Blob([yamlOutput.value], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Generate filename from video filename
+            const videoName = document.getElementById('metricFile').textContent || 'annotations';
+            const baseName = videoName.replace(/\.[^/.]+$/, '');  // Remove extension
+            a.download = `${baseName}_rois.yaml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         });
 
         // Playback
