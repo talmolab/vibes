@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Pose Tracking</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 20px auto;
+            background: #0f0f23;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        video { display: none; }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 12px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .status {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+        .status.error { color: #ff6b6b; }
+        .stats {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 15px 0;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .stat-value { color: #667eea; font-weight: bold; }
+        .options {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+        input[type="checkbox"] { width: 18px; height: 18px; accent-color: #667eea; }
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .controls { flex-direction: column; }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Webcam Pose Tracking</h1>
+    <p class="description">Real-time body pose estimation using MediaPipe.</p>
+
+    <div class="video-container">
+        <video id="video" playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div id="status" class="status">Click "Start Camera" to begin</div>
+    </div>
+
+    <div class="stats" style="display: none;" id="stats">
+        <span>FPS: <span class="stat-value" id="fps">0</span></span>
+        <span>Keypoints: <span class="stat-value" id="keypoints">0</span></span>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">Start Camera</button>
+        <button id="stopBtn" disabled>Stop Camera</button>
+    </div>
+
+    <div class="options">
+        <label><input type="checkbox" id="showSkeleton" checked> Show Skeleton</label>
+        <label><input type="checkbox" id="showPoints" checked> Show Points</label>
+        <label><input type="checkbox" id="mirrorVideo" checked> Mirror Video</label>
+    </div>
+
+    <footer>
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/talmolab/vibes">Source</a>
+    </footer>
+
+    <script type="module">
+        import { PoseLandmarker, FilesetResolver, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        const stats = document.getElementById('stats');
+        const fpsDisplay = document.getElementById('fps');
+        const keypointsDisplay = document.getElementById('keypoints');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const showSkeleton = document.getElementById('showSkeleton');
+        const showPoints = document.getElementById('showPoints');
+        const mirrorVideo = document.getElementById('mirrorVideo');
+
+        let poseLandmarker = null;
+        let stream = null;
+        let animationId = null;
+        let lastTime = 0;
+        let frameCount = 0;
+        let fps = 0;
+
+        const POSE_CONNECTIONS = [
+            [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Arms
+            [11, 23], [12, 24], [23, 24], // Torso
+            [23, 25], [25, 27], [27, 29], [27, 31], // Left leg
+            [24, 26], [26, 28], [28, 30], [28, 32], // Right leg
+            [0, 1], [1, 2], [2, 3], [3, 7], // Face left
+            [0, 4], [4, 5], [5, 6], [6, 8], // Face right
+            [9, 10] // Mouth
+        ];
+
+        async function initPoseLandmarker() {
+            status.textContent = 'Loading pose model...';
+            status.classList.remove('error');
+            try {
+                const vision = await FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                );
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numPoses: 1
+                });
+                status.textContent = 'Model loaded. Click "Start Camera" to begin.';
+            } catch (err) {
+                status.textContent = 'Failed to load model: ' + err.message;
+                status.classList.add('error');
+            }
+        }
+
+        async function startCamera() {
+            if (!poseLandmarker) {
+                await initPoseLandmarker();
+                if (!poseLandmarker) return;
+            }
+            try {
+                status.textContent = 'Requesting camera access...';
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = stream;
+                await video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                status.style.display = 'none';
+                stats.style.display = 'flex';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                detectPose();
+            } catch (err) {
+                status.textContent = 'Camera error: ' + err.message;
+                status.classList.add('error');
+            }
+        }
+
+        function stopCamera() {
+            if (animationId) cancelAnimationFrame(animationId);
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            status.style.display = 'block';
+            status.textContent = 'Camera stopped. Click "Start Camera" to restart.';
+            status.classList.remove('error');
+            stats.style.display = 'none';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        }
+
+        function detectPose() {
+            if (!stream) return;
+            const now = performance.now();
+
+            // Calculate FPS
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                fps = frameCount;
+                fpsDisplay.textContent = fps;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            // Mirror canvas if needed
+            ctx.save();
+            if (mirrorVideo.checked) {
+                ctx.scale(-1, 1);
+                ctx.translate(-canvas.width, 0);
+            }
+            ctx.drawImage(video, 0, 0);
+            ctx.restore();
+
+            // Detect pose
+            const results = poseLandmarker.detectForVideo(video, now);
+
+            if (results.landmarks && results.landmarks.length > 0) {
+                const landmarks = results.landmarks[0];
+                keypointsDisplay.textContent = landmarks.length;
+
+                ctx.save();
+                if (mirrorVideo.checked) {
+                    ctx.scale(-1, 1);
+                    ctx.translate(-canvas.width, 0);
+                }
+
+                // Draw skeleton
+                if (showSkeleton.checked) {
+                    ctx.strokeStyle = '#667eea';
+                    ctx.lineWidth = 3;
+                    for (const [i, j] of POSE_CONNECTIONS) {
+                        if (landmarks[i] && landmarks[j]) {
+                            const x1 = landmarks[i].x * canvas.width;
+                            const y1 = landmarks[i].y * canvas.height;
+                            const x2 = landmarks[j].x * canvas.width;
+                            const y2 = landmarks[j].y * canvas.height;
+                            ctx.beginPath();
+                            ctx.moveTo(x1, y1);
+                            ctx.lineTo(x2, y2);
+                            ctx.stroke();
+                        }
+                    }
+                }
+
+                // Draw keypoints
+                if (showPoints.checked) {
+                    for (const point of landmarks) {
+                        const x = point.x * canvas.width;
+                        const y = point.y * canvas.height;
+                        ctx.beginPath();
+                        ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                        ctx.fillStyle = point.visibility > 0.5 ? '#ff6b9d' : 'rgba(255, 107, 157, 0.3)';
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            } else {
+                keypointsDisplay.textContent = '0';
+            }
+
+            animationId = requestAnimationFrame(detectPose);
+        }
+
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+
+        // Initialize on load
+        initPoseLandmarker();
+    </script>
+</body>
+</html>
