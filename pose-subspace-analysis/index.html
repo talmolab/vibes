@@ -194,7 +194,6 @@
                         <option value="left_hand">Left Hand</option>
                         <option value="right_hand">Right Hand</option>
                         <option value="both_hands">Both Hands</option>
-                        <option value="face">Face</option>
                     </select>
                 </label>
                 <label>Model:
@@ -242,7 +241,7 @@
     </footer>
 
     <script type="module">
-        import { PoseLandmarker, HandLandmarker, FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+        import { PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
@@ -266,7 +265,6 @@
 
         let poseLandmarker = null;
         let handLandmarker = null;
-        let faceLandmarker = null;
         let stream = null;
         let animationId = null;
         let capturedFrames = [];
@@ -306,15 +304,6 @@
                     },
                     runningMode: 'VIDEO',
                     numHands: 2
-                });
-
-                faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-                    baseOptions: {
-                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-                        delegate: 'GPU'
-                    },
-                    runningMode: 'VIDEO',
-                    numFaces: 1
                 });
 
                 status.textContent = 'Models loaded. Click "Start Camera" to begin.';
@@ -358,7 +347,7 @@
             captureBtn.disabled = true;
         }
 
-        function getLandmarks(poseResults, handResults, faceResults) {
+        function getLandmarks(poseResults, handResults) {
             const mode = keypointSelect.value;
 
             if (mode === 'pose' && poseResults.landmarks?.[0]) {
@@ -369,8 +358,6 @@
                 return handResults.landmarks[1];
             } else if (mode === 'both_hands' && handResults.landmarks) {
                 return [...(handResults.landmarks[0] || []), ...(handResults.landmarks[1] || [])];
-            } else if (mode === 'face' && faceResults.landmarks?.[0]) {
-                return faceResults.landmarks[0];
             }
             return null;
         }
@@ -383,9 +370,8 @@
 
             const poseResults = poseLandmarker.detectForVideo(video, now);
             const handResults = handLandmarker.detectForVideo(video, now);
-            const faceResults = faceLandmarker.detectForVideo(video, now);
 
-            currentLandmarks = getLandmarks(poseResults, handResults, faceResults);
+            currentLandmarks = getLandmarks(poseResults, handResults);
 
             if (currentLandmarks) {
                 drawLandmarks(currentLandmarks);
@@ -789,7 +775,6 @@
             if (wasRunning) stopCamera();
             poseLandmarker = null;
             handLandmarker = null;
-            faceLandmarker = null;
             if (wasRunning) await startCamera();
             else await initLandmarkers();
         });
