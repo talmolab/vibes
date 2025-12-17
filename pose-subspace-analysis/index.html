@@ -227,6 +227,12 @@
                 <div id="tooltip" class="tooltip"></div>
             </div>
             <div class="status" id="pcaStatus">Collect at least 3 frames to compute PCA</div>
+
+            <h3 style="font-size: 1rem; margin-top: 20px;">Closest Training Frame</h3>
+            <div class="video-container" style="margin-top: 10px;">
+                <canvas id="closestCanvas"></canvas>
+            </div>
+            <div class="status" id="closestStatus">Live pose will show closest match</div>
         </div>
     </div>
 
@@ -243,8 +249,11 @@
         const ctx = canvas.getContext('2d');
         const plotCanvas = document.getElementById('plotCanvas');
         const plotCtx = plotCanvas.getContext('2d');
+        const closestCanvas = document.getElementById('closestCanvas');
+        const closestCtx = closestCanvas.getContext('2d');
         const status = document.getElementById('status');
         const pcaStatus = document.getElementById('pcaStatus');
+        const closestStatus = document.getElementById('closestStatus');
         const tooltip = document.getElementById('tooltip');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
@@ -379,6 +388,12 @@
                 const features = computeFeatures(currentLandmarks);
                 const projected = projectToPCA(features, pcaModel);
                 drawPCAPlot(projected);
+
+                // Find and display closest training frame
+                const closestIdx = findClosestFrame(projected);
+                if (closestIdx !== -1) {
+                    displayClosestFrame(closestIdx);
+                }
             } else if (capturedFrames.length > 0) {
                 drawPCAPlot(null);
             }
@@ -481,10 +496,33 @@
                 }
                 return angles;
             } else { // normalized
-                const flat = points.flat();
-                const mean = flat.reduce((a, b) => a + b, 0) / flat.length;
-                const std = Math.sqrt(flat.reduce((a, b) => a + (b - mean) ** 2, 0) / flat.length);
-                return flat.map(v => (v - mean) / (std || 1));
+                // Find bounding box
+                const xs = points.map(p => p[0]);
+                const ys = points.map(p => p[1]);
+                const zs = points.map(p => p[2]);
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const minZ = Math.min(...zs);
+                const maxZ = Math.max(...zs);
+
+                // Compute midpoint (anchor)
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+                const midZ = (minZ + maxZ) / 2;
+
+                // Center around midpoint and normalize by bbox size
+                const sizeX = maxX - minX || 1;
+                const sizeY = maxY - minY || 1;
+                const sizeZ = maxZ - minZ || 1;
+                const size = Math.max(sizeX, sizeY, sizeZ);
+
+                return points.flatMap(p => [
+                    (p[0] - midX) / size,
+                    (p[1] - midY) / size,
+                    (p[2] - midZ) / size
+                ]);
             }
         }
 
@@ -514,9 +552,15 @@
 
             // Compute covariance matrix (simplified: use SVD approximation)
             // For efficiency, compute top 2 components using power iteration
-            const components = powerIteration(centered, 2);
+            const { components, eigenvalues } = powerIteration(centered, 2);
 
-            pcaModel = { mean, components };
+            // Compute total variance for explained variance ratio
+            const totalVariance = centered.reduce((sum, row) =>
+                sum + row.reduce((s, v) => s + v * v, 0), 0) / n;
+
+            const explainedVariance = eigenvalues.map(ev => 100 * ev / totalVariance);
+
+            pcaModel = { mean, components, explainedVariance };
             pcaStatus.textContent = `PCA computed with ${capturedFrames.length} frames`;
             drawPCAPlot(null);
         }
@@ -525,9 +569,11 @@
             const n = data.length;
             const d = data[0].length;
             const components = [];
+            const eigenvalues = [];
 
             for (let c = 0; c < numComponents; c++) {
                 let v = new Array(d).fill(0).map(() => Math.random() - 0.5);
+                let eigenvalue = 0;
 
                 for (let iter = 0; iter < 20; iter++) {
                     // Orthogonalize against previous components
@@ -548,12 +594,14 @@
                     // Normalize
                     const norm = Math.sqrt(Av.reduce((sum, val) => sum + val * val, 0));
                     v = Av.map(val => val / (norm || 1));
+                    eigenvalue = norm / n;  // Approximate eigenvalue
                 }
 
                 components.push(v);
+                eigenvalues.push(eigenvalue);
             }
 
-            return components;
+            return { components, eigenvalues };
         }
 
         function projectToPCA(features, model) {
@@ -600,6 +648,25 @@
             plotCtx.lineTo(margin, height - margin);
             plotCtx.stroke();
 
+            // Draw axis labels with variance explained
+            plotCtx.fillStyle = '#aaa';
+            plotCtx.font = '12px system-ui';
+            plotCtx.textAlign = 'center';
+            plotCtx.fillText(
+                `PC1 (${pcaModel.explainedVariance[0].toFixed(1)}%)`,
+                width / 2,
+                height - 10
+            );
+            plotCtx.save();
+            plotCtx.translate(15, height / 2);
+            plotCtx.rotate(-Math.PI / 2);
+            plotCtx.fillText(
+                `PC2 (${pcaModel.explainedVariance[1].toFixed(1)}%)`,
+                0,
+                0
+            );
+            plotCtx.restore();
+
             // Draw training points
             plotCtx.fillStyle = '#667eea';
             projected.forEach((p, idx) => {
@@ -619,16 +686,24 @@
             // Handle hover
             plotCanvas.onmousemove = (e) => {
                 const rect = plotCanvas.getBoundingClientRect();
-                const mx = e.clientX - rect.left;
-                const my = e.clientY - rect.top;
+                const scaleRatioX = width / rect.width;
+                const scaleRatioY = height / rect.height;
+                const mx = (e.clientX - rect.left) * scaleRatioX;
+                const my = (e.clientY - rect.top) * scaleRatioY;
 
                 for (let i = 0; i < projected.length; i++) {
                     const x = scaleX(projected[i][0]);
                     const y = scaleY(projected[i][1]);
                     const dist = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
 
-                    if (dist < 10) {
-                        tooltip.innerHTML = `<img src="${capturedFrames[i].imageData}"><div>Frame ${i + 1}</div>`;
+                    if (dist < 15) {
+                        tooltip.innerHTML = '';
+                        const img = document.createElement('img');
+                        img.src = capturedFrames[i].imageData;
+                        const div = document.createElement('div');
+                        div.textContent = `Frame ${i + 1}`;
+                        tooltip.appendChild(img);
+                        tooltip.appendChild(div);
                         tooltip.style.display = 'block';
                         tooltip.style.left = e.clientX + 15 + 'px';
                         tooltip.style.top = e.clientY + 15 + 'px';
@@ -637,6 +712,80 @@
                 }
                 tooltip.style.display = 'none';
             };
+        }
+
+        function findClosestFrame(liveProjected) {
+            if (!pcaModel || capturedFrames.length === 0) return -1;
+
+            // Project all captured frames
+            const projected = capturedFrames.map(f => {
+                const features = computeFeatures(f.landmarks);
+                return projectToPCA(features, pcaModel);
+            });
+
+            // Find closest by Euclidean distance
+            let minDist = Infinity;
+            let minIdx = -1;
+            for (let i = 0; i < projected.length; i++) {
+                const dist = Math.sqrt(
+                    (projected[i][0] - liveProjected[0]) ** 2 +
+                    (projected[i][1] - liveProjected[1]) ** 2
+                );
+                if (dist < minDist) {
+                    minDist = dist;
+                    minIdx = i;
+                }
+            }
+
+            return minIdx;
+        }
+
+        function displayClosestFrame(idx) {
+            const frame = capturedFrames[idx];
+
+            // Create a temporary image to get dimensions
+            const img = new Image();
+            img.onload = () => {
+                closestCanvas.width = img.width;
+                closestCanvas.height = img.height;
+                closestCtx.drawImage(img, 0, 0);
+
+                // Draw landmarks on top
+                drawLandmarksOnCanvas(closestCtx, frame.landmarks, img.width, img.height);
+                closestStatus.textContent = `Frame ${idx + 1} (closest match)`;
+            };
+            img.src = frame.imageData;
+        }
+
+        function drawLandmarksOnCanvas(context, landmarks, width, height) {
+            context.strokeStyle = '#667eea';
+            context.fillStyle = '#ff6b9d';
+            context.lineWidth = 2;
+
+            // Draw connections based on mode
+            const mode = keypointSelect.value;
+            if (mode === 'pose') {
+                const POSE_CONNECTIONS = [
+                    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+                    [11, 23], [12, 24], [23, 24],
+                    [23, 25], [25, 27], [24, 26], [26, 28]
+                ];
+                for (const [i, j] of POSE_CONNECTIONS) {
+                    if (landmarks[i] && landmarks[j]) {
+                        context.beginPath();
+                        context.moveTo(landmarks[i].x * width, landmarks[i].y * height);
+                        context.lineTo(landmarks[j].x * width, landmarks[j].y * height);
+                        context.stroke();
+                    }
+                }
+            }
+
+            // Draw points
+            for (const point of landmarks) {
+                context.beginPath();
+                context.arc(point.x * width, point.y * height, 4, 0, 2 * Math.PI);
+                context.fill();
+            }
         }
 
         startBtn.addEventListener('click', startCamera);
