@@ -117,6 +117,21 @@ window.addEventListener('hashchange', update);
 <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
 ```
 
+## Local Development
+
+### Web Server
+Use `npx serve` for local testing (run in background to avoid blocking):
+```bash
+npx serve -p 8080 --cors --no-clipboard &
+# Then open http://localhost:8080/my-vibe/
+```
+
+### Python
+Always use `uv` for running Python:
+```bash
+uv run script.py
+```
+
 ## Testing with Playwright MCP
 
 Use Playwright MCP to visually test vibes in a real browser.
@@ -129,8 +144,8 @@ claude mcp add playwright -- npx @playwright/mcp@latest
 ### Usage
 Start a local server, then use Playwright to test:
 ```
-1. Run: python -m http.server 8000
-2. Ask Claude: "Use playwright mcp to open http://localhost:8000/my-vibe/ and test it"
+1. Run: npx serve -p 8080 --cors --no-clipboard &
+2. Ask Claude: "Use playwright mcp to open http://localhost:8080/my-vibe/ and test it"
 ```
 
 Claude can then:
@@ -156,4 +171,12 @@ Claude can then:
 3. Create PR:
    - Branch from `main`
    - Open PR with description
+   - **Include deployment link**: `https://v.tlab.sh/<vibe-name>/`
    - Squash merge when approved
+
+## Investigations and Scratch Work
+
+The `scratch/` directory is gitignored for local experimentation. When distilling findings into PRs:
+- Do NOT assume scratch notes will be checked in
+- Include all relevant information inline in PR descriptions or committed files
+- Copy key findings, code snippets, or data directly into the PR
