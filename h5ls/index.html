@@ -283,6 +283,55 @@
             margin: 0;
         }
         .toolbar-btn:hover { background: #444; }
+        .export-section {
+            background: #0d1117;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .export-section summary {
+            background: #161b22;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            list-style: none;
+        }
+        .export-section summary::-webkit-details-marker { display: none; }
+        .export-section summary::before {
+            content: '▶';
+            margin-right: 8px;
+            font-size: 10px;
+            color: #666;
+        }
+        .export-section[open] summary::before { content: '▼'; }
+        .export-section[open] summary { border-radius: 8px 8px 0 0; }
+        .export-title { color: #8b949e; font-weight: 500; }
+        .copy-json-btn {
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 12px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .copy-json-btn:hover { background: #2ea043; }
+        .export-json {
+            margin: 0;
+            padding: 15px;
+            max-height: 300px;
+            overflow: auto;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-all;
+            background: #0d1117;
+            border-radius: 0 0 8px 8px;
+        }
         .diagnostic-console {
             background: #0a0a0a;
             border: 1px solid #333;
@@ -386,6 +435,14 @@
             </div>
         </div>
 
+        <details class="export-section" id="exportSection">
+            <summary>
+                <span class="export-title">Export JSON</span>
+                <button id="copyJsonBtn" class="copy-json-btn">Copy</button>
+            </summary>
+            <pre class="export-json" id="exportJson"></pre>
+        </details>
+
         <div class="diagnostic-console">
             <div class="diagnostic-console-header">
                 <h3>Log</h3>
@@ -456,6 +513,27 @@
             });
         });
 
+        // Copy JSON button
+        document.getElementById('copyJsonBtn').addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const json = document.getElementById('exportJson').textContent;
+            navigator.clipboard.writeText(json).then(() => {
+                log('JSON copied to clipboard', 'success');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = json;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                log('JSON copied to clipboard', 'success');
+            });
+        });
+
+        // Hide export section initially
+        document.getElementById('exportSection').style.display = 'none';
+
         function showLoading(text) {
             loadingText.textContent = text;
             loading.classList.add('visible');
@@ -485,7 +563,7 @@
         function initWorker() {
             if (worker) worker.terminate();
 
-            worker = new Worker('./worker.js?v=8');
+            worker = new Worker('./worker.js?v=9');
 
             worker.onmessage = (e) => {
                 const { type, data } = e.data;
@@ -530,7 +608,42 @@
             // Reset detail panel
             detailPanel.innerHTML = '<div class="detail-panel-empty">Click a dataset or group to view details</div>';
 
+            // Update export JSON
+            updateExportJson(data);
+
             log(`Loaded ${data.datasets.length} datasets and ${data.groups.length} groups`, 'success');
+        }
+
+        function updateExportJson(data) {
+            const exportData = {
+                filename: data.filename,
+                fileSize: data.fileSize,
+                fileSizeFormatted: formatBytes(data.fileSize),
+                source: data.source,
+                datasets: data.datasets.map(d => ({
+                    path: d.path,
+                    shape: d.shape,
+                    dtype: d.dtype,
+                    size: d.size,
+                    attributes: d.attrs.map(a => ({
+                        name: a.name,
+                        dtype: a.dtype,
+                        shape: a.shape,
+                        value: a.value
+                    }))
+                })),
+                groups: data.groups.map(g => ({
+                    path: g.path,
+                    attributes: g.attrs.map(a => ({
+                        name: a.name,
+                        dtype: a.dtype,
+                        shape: a.shape,
+                        value: a.value
+                    }))
+                }))
+            };
+            document.getElementById('exportJson').textContent = JSON.stringify(exportData, null, 2);
+            document.getElementById('exportSection').style.display = 'block';
         }
 
         function showDetail(type, path, item) {
