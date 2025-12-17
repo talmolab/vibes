@@ -148,11 +148,16 @@
             border-radius: 6px;
             padding: 8px 10px;
         }
+        .attr-header {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
         .attr-name {
             font-size: 12px;
             color: #06b6d4;
             font-weight: 500;
-            margin-bottom: 4px;
         }
         .attr-value {
             font-size: 11px;
@@ -165,8 +170,8 @@
         }
         .attr-dtype {
             font-size: 10px;
-            color: #666;
-            margin-top: 4px;
+            color: #888;
+            font-family: 'SF Mono', monospace;
         }
         @media (max-width: 900px) {
             .main-content { flex-direction: column; }
@@ -552,9 +557,8 @@
                 html += '<div class="attr-list">';
                 for (const attr of item.attrs) {
                     html += '<div class="attr-item">';
-                    html += `<div class="attr-name">${escapeHtml(attr.name)}</div>`;
+                    html += `<div class="attr-header"><span class="attr-name">${escapeHtml(attr.name)}</span><span class="attr-dtype">${escapeHtml(attr.dtype)}${attr.shape?.length ? ' [' + attr.shape.join(', ') + ']' : ''}</span></div>`;
                     html += `<div class="attr-value">${formatAttrValue(attr.value)}</div>`;
-                    html += `<div class="attr-dtype">${escapeHtml(attr.dtype)}${attr.shape?.length ? ' [' + attr.shape.join(', ') + ']' : ''}</div>`;
                     html += '</div>';
                 }
                 html += '</div></div>';
