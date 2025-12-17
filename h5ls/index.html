@@ -485,7 +485,7 @@
         function initWorker() {
             if (worker) worker.terminate();
 
-            worker = new Worker('./worker.js?v=1');
+            worker = new Worker('./worker.js?v=8');
 
             worker.onmessage = (e) => {
                 const { type, data } = e.data;
@@ -547,7 +547,7 @@
                 html += '<div class="detail-section"><h4>Properties</h4>';
                 html += '<dl class="detail-meta">';
                 html += `<dt>Shape</dt><dd>[${item.shape.join(', ')}]</dd>`;
-                html += `<dt>Dtype</dt><dd>${formatDtype(item.dtype)}</dd>`;
+                html += `<dt>Dtype</dt><dd>${escapeHtml(formatDtype(item.dtype))}</dd>`;
                 html += `<dt>Size</dt><dd>${item.size.toLocaleString()} elements</dd>`;
                 html += '</dl></div>';
             }
@@ -697,7 +697,7 @@
                 let html = `<span class="tree-dataset-icon">📊</span>`;
                 html += `<span class="tree-dataset-name">${item.name}</span>`;
                 html += `<span class="tree-shape">${shape}</span>`;
-                html += `<span class="tree-dtype">${dtype}</span>`;
+                html += `<span class="tree-dtype">${escapeHtml(dtype)}</span>`;
                 if (item.attrs && item.attrs.length > 0) {
                     html += `<span class="tree-attrs">📋 ${item.attrs.length}</span>`;
                 }

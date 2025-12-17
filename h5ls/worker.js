@@ -71,10 +71,47 @@ function collectItems(group, prefix = '') {
                         // Attrs might not be available for some datasets
                     }
 
+                    // Get dtype - fall back to metadata if dtype is unknown or incomplete
+                    let dtype = item.dtype;
+                    const m = item.metadata;
+
+                    if (m) {
+                        // Check for incomplete dtype strings (e.g., "<i" instead of "<i4")
+                        if (typeof dtype === 'string' && /^[<>|]?[iufdbBhHILQe]$/.test(dtype)) {
+                            // Append size to make dtype complete (e.g., "<i" + 4 → "<i4")
+                            dtype = dtype + m.size;
+                        }
+
+                        // Handle unknown dtype using metadata
+                        if (dtype === 'unknown') {
+                            if (m.type === 9) {
+                                // Variable-length type
+                                dtype = 'vlen';
+                                if (m.vlen_type) {
+                                    const vt = m.vlen_type;
+                                    const bits = vt.size * 8;
+                                    if (vt.type === 0) {
+                                        dtype = 'vlen<' + (vt.signed ? 'int' : 'uint') + bits + '>';
+                                    } else if (vt.type === 1) {
+                                        dtype = 'vlen<float' + bits + '>';
+                                    }
+                                }
+                            } else if (m.type === 0) {
+                                // Integer
+                                const prefix = m.littleEndian ? '<' : '>';
+                                dtype = prefix + (m.signed ? 'i' : 'u') + m.size;
+                            } else if (m.type === 1) {
+                                // Float
+                                const prefix = m.littleEndian ? '<' : '>';
+                                dtype = prefix + 'f' + m.size;
+                            }
+                        }
+                    }
+
                     datasets.push({
                         path,
                         shape: item.shape || [],
-                        dtype: item.dtype || 'unknown',
+                        dtype: dtype || 'unknown',
                         size: item.metadata?.total_size || 0,
                         attrs
                     });
