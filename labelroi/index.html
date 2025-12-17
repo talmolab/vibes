@@ -301,6 +301,24 @@
             z-index: 100;
             min-width: 80px;
         }
+        /* Node coordinate tooltip */
+        .node-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            transform: translate(-50%, -100%);
+            margin-top: -8px;
+        }
+        .canvas-container.dragging-node {
+            cursor: move;
+        }
         @media (max-width: 1000px) {
             .main-layout {
                 flex-direction: column;
@@ -729,6 +747,7 @@
                 this.drawMode = 'polygon';
                 this.colorIndex = 0;
                 this.hoveredROIIndex = -1;
+                this.hoveredNodeIndex = -1;  // Index of hovered node within hovered ROI
             }
 
             getNextColor() {
@@ -864,6 +883,34 @@
                 return Math.sqrt((px - nearX) ** 2 + (py - nearY) ** 2);
             }
 
+            // Find node at given coordinates (in video space)
+            // Returns { roiIndex, nodeIndex } or null
+            findNodeAtPoint(x, y, threshold = 10) {
+                for (let i = this.rois.length - 1; i >= 0; i--) {
+                    const roi = this.rois[i];
+                    for (let j = 0; j < roi.points.length; j++) {
+                        const pt = roi.points[j];
+                        const dist = Math.sqrt((x - pt.x) ** 2 + (y - pt.y) ** 2);
+                        if (dist < threshold) {
+                            return { roiIndex: i, nodeIndex: j };
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // Update a specific node's position
+            updateNodePosition(roiIndex, nodeIndex, x, y) {
+                if (roiIndex >= 0 && roiIndex < this.rois.length) {
+                    const roi = this.rois[roiIndex];
+                    if (nodeIndex >= 0 && nodeIndex < roi.points.length) {
+                        roi.points[nodeIndex] = { x, y };
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             // Check if point is near label (for double-click rename)
             findLabelAtPoint(x, y, ctx) {
                 for (let i = this.rois.length - 1; i >= 0; i--) {
@@ -978,6 +1025,14 @@
         let lastPanY = 0;
         let videoWidth = 0;
         let videoHeight = 0;
+
+        // Node dragging state
+        let isDraggingNode = false;
+        let draggingROIIndex = -1;
+        let draggingNodeIndex = -1;
+
+        // Tooltip element
+        let nodeTooltip = null;
 
         const videoCanvas = document.getElementById('videoCanvas');
         const roiCanvas = document.getElementById('roiCanvas');
@@ -1216,7 +1271,7 @@
             for (let i = 0; i < roiManager.rois.length; i++) {
                 const roi = roiManager.rois[i];
                 const isHighlighted = i === roiManager.hoveredROIIndex;
-                drawROI(roi.points, roi.color, roi.type === 'polygon', roi.name, isHighlighted);
+                drawROI(roi.points, roi.color, roi.type === 'polygon', roi.name, isHighlighted, i);
             }
 
             // Draw current drawing
@@ -1225,7 +1280,7 @@
             }
         }
 
-        function drawROI(points, color, closed, name, highlighted = false) {
+        function drawROI(points, color, closed, name, highlighted = false, roiIndex = -1) {
             if (points.length < 2) return;
 
             // Convert video coordinates to canvas coordinates
@@ -1251,14 +1306,21 @@
 
             // Draw vertices (fixed size regardless of zoom)
             const vertexRadius = highlighted ? 6 : 5;
-            for (const pt of canvasPoints) {
+            for (let i = 0; i < canvasPoints.length; i++) {
+                const pt = canvasPoints[i];
+                const isNodeHovered = (roiIndex === roiManager.hoveredROIIndex && i === roiManager.hoveredNodeIndex);
+                const isNodeDragging = (roiIndex === draggingROIIndex && i === draggingNodeIndex);
+                const nodeRadius = (isNodeHovered || isNodeDragging) ? 8 : vertexRadius;
+
                 roiCtx.beginPath();
-                roiCtx.arc(pt.x, pt.y, vertexRadius, 0, Math.PI * 2);
+                roiCtx.arc(pt.x, pt.y, nodeRadius, 0, Math.PI * 2);
                 roiCtx.fillStyle = color;
                 roiCtx.fill();
-                if (highlighted) {
+
+                // White border for highlighted ROI nodes or individually hovered/dragged nodes
+                if (highlighted || isNodeHovered || isNodeDragging) {
                     roiCtx.strokeStyle = '#fff';
-                    roiCtx.lineWidth = 2;
+                    roiCtx.lineWidth = (isNodeHovered || isNodeDragging) ? 3 : 2;
                     roiCtx.stroke();
                 }
             }
@@ -1411,6 +1473,26 @@
         }
 
         // Canvas mouse handlers
+        // Helper functions for tooltip
+        function showNodeTooltip(screenX, screenY, videoX, videoY) {
+            if (!nodeTooltip) {
+                nodeTooltip = document.createElement('div');
+                nodeTooltip.className = 'node-tooltip';
+                canvasContainer.appendChild(nodeTooltip);
+            }
+            const rect = canvasContainer.getBoundingClientRect();
+            nodeTooltip.textContent = `(${videoX.toFixed(1)}, ${videoY.toFixed(1)})`;
+            nodeTooltip.style.left = (screenX - rect.left) + 'px';
+            nodeTooltip.style.top = (screenY - rect.top) + 'px';
+            nodeTooltip.style.display = 'block';
+        }
+
+        function hideNodeTooltip() {
+            if (nodeTooltip) {
+                nodeTooltip.style.display = 'none';
+            }
+        }
+
         roiCanvas.addEventListener('mousedown', (e) => {
             if (e.shiftKey || e.button === 1) {
                 // Start panning
@@ -1420,6 +1502,21 @@
                 canvasContainer.classList.add('panning');
                 e.preventDefault();
                 return;
+            }
+
+            // Check if clicking on a node to start dragging
+            if (!roiManager.isDrawing && e.button === 0) {
+                const video = screenToVideo(e.clientX, e.clientY);
+                const nodeThreshold = 12 / zoom;  // Adjust threshold based on zoom
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) {
+                    isDraggingNode = true;
+                    draggingROIIndex = node.roiIndex;
+                    draggingNodeIndex = node.nodeIndex;
+                    canvasContainer.classList.add('dragging-node');
+                    e.preventDefault();
+                    return;
+                }
             }
         });
 
@@ -1435,14 +1532,55 @@
                 return;
             }
 
-            // Hover detection for ROIs
+            // Handle node dragging
+            if (isDraggingNode) {
+                const video = screenToVideo(e.clientX, e.clientY);
+                roiManager.updateNodePosition(draggingROIIndex, draggingNodeIndex, video.x, video.y);
+                showNodeTooltip(e.clientX, e.clientY, video.x, video.y);
+                renderROIs();
+                updateYAML();
+                return;
+            }
+
+            // Hover detection for nodes and ROIs
             if (!roiManager.isDrawing) {
                 const video = screenToVideo(e.clientX, e.clientY);
-                const hoveredIndex = roiManager.findROIAtPoint(video.x, video.y);
-                if (hoveredIndex !== roiManager.hoveredROIIndex) {
-                    roiManager.hoveredROIIndex = hoveredIndex;
-                    highlightTableRow(hoveredIndex);
-                    renderROIs();
+
+                // First check for node hover (higher priority)
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+
+                if (node) {
+                    const prevHoveredROI = roiManager.hoveredROIIndex;
+                    const prevHoveredNode = roiManager.hoveredNodeIndex;
+                    roiManager.hoveredROIIndex = node.roiIndex;
+                    roiManager.hoveredNodeIndex = node.nodeIndex;
+
+                    // Show tooltip with coordinates
+                    const pt = roiManager.rois[node.roiIndex].points[node.nodeIndex];
+                    showNodeTooltip(e.clientX, e.clientY, pt.x, pt.y);
+
+                    if (prevHoveredROI !== node.roiIndex || prevHoveredNode !== node.nodeIndex) {
+                        highlightTableRow(node.roiIndex);
+                        renderROIs();
+                    }
+
+                    // Change cursor to indicate draggable
+                    roiCanvas.style.cursor = 'move';
+                } else {
+                    // Check for ROI hover
+                    hideNodeTooltip();
+                    roiCanvas.style.cursor = 'crosshair';
+
+                    const prevHoveredNode = roiManager.hoveredNodeIndex;
+                    roiManager.hoveredNodeIndex = -1;
+
+                    const hoveredIndex = roiManager.findROIAtPoint(video.x, video.y);
+                    if (hoveredIndex !== roiManager.hoveredROIIndex || prevHoveredNode !== -1) {
+                        roiManager.hoveredROIIndex = hoveredIndex;
+                        highlightTableRow(hoveredIndex);
+                        renderROIs();
+                    }
                 }
             }
         });
@@ -1453,6 +1591,16 @@
                 canvasContainer.classList.remove('panning');
                 return;
             }
+
+            if (isDraggingNode) {
+                isDraggingNode = false;
+                draggingROIIndex = -1;
+                draggingNodeIndex = -1;
+                canvasContainer.classList.remove('dragging-node');
+                hideNodeTooltip();
+                updateROIList();  // Update the list in case coordinates changed significantly
+                return;
+            }
         });
 
         roiCanvas.addEventListener('mouseleave', () => {
@@ -1460,8 +1608,17 @@
                 isPanning = false;
                 canvasContainer.classList.remove('panning');
             }
+            if (isDraggingNode) {
+                isDraggingNode = false;
+                draggingROIIndex = -1;
+                draggingNodeIndex = -1;
+                canvasContainer.classList.remove('dragging-node');
+            }
+            hideNodeTooltip();
+            roiCanvas.style.cursor = 'crosshair';
             if (!roiManager.isDrawing) {
                 roiManager.hoveredROIIndex = -1;
+                roiManager.hoveredNodeIndex = -1;
                 highlightTableRow(-1);
                 renderROIs();
             }
@@ -1469,11 +1626,17 @@
 
         // Click handler for ROI drawing
         roiCanvas.addEventListener('click', (e) => {
-            if (e.shiftKey || isPanning) return;
+            if (e.shiftKey || isPanning || isDraggingNode) return;
 
             const video = screenToVideo(e.clientX, e.clientY);
 
-            if (!roiManager.isDrawing) return;
+            // If not drawing, check if we clicked on a node (don't process click in that case)
+            if (!roiManager.isDrawing) {
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) return;  // Node was clicked, but we handle this in mousedown/mouseup
+                return;
+            }
 
             // Adjust threshold based on zoom for closing polygon
             const closeThreshold = 15 / zoom;
