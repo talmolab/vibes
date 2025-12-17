@@ -901,6 +901,22 @@
                 return null;
             }
 
+            // Remove a node from a ROI
+            // Returns true if successful, false if it would leave too few points
+            removeNode(roiIndex, nodeIndex) {
+                if (roiIndex < 0 || roiIndex >= this.rois.length) return false;
+                const roi = this.rois[roiIndex];
+
+                // Check minimum points required
+                const minPoints = roi.type === 'polygon' ? 3 : 2;
+                if (roi.points.length <= minPoints) {
+                    return false;  // Can't remove - would have too few points
+                }
+
+                roi.points.splice(nodeIndex, 1);
+                return true;
+            }
+
             // Update a specific node's position
             updateNodePosition(roiIndex, nodeIndex, x, y) {
                 if (roiIndex >= 0 && roiIndex < this.rois.length) {
@@ -1722,16 +1738,32 @@
             renderROIs();
         });
 
-        // Double-click to rename ROI label
+        // Double-click to rename ROI label or start new polygon
         roiCanvas.addEventListener('dblclick', (e) => {
-            if (roiManager.isDrawing) return;
+            if (e.shiftKey) return;  // Ignore if panning
 
             const video = screenToVideo(e.clientX, e.clientY);
-            const labelIndex = roiManager.findLabelAtPoint(video.x, video.y, roiCtx);
 
+            // If already drawing, ignore double-click
+            if (roiManager.isDrawing) return;
+
+            // First check if clicking on a label to rename
+            const labelIndex = roiManager.findLabelAtPoint(video.x, video.y, roiCtx);
             if (labelIndex >= 0) {
                 showLabelEditInput(labelIndex, e.clientX, e.clientY);
+                return;
             }
+
+            // Otherwise, start a new polygon at this point
+            roiManager.startDrawing('polygon');
+            roiManager.addPoint(video.x, video.y);
+            statusBar.textContent = 'Drawing polygon: click to add points, click first point to close';
+            statusBar.classList.add('drawing');
+            drawBtn.classList.add('active');
+            polygonBtn.classList.add('active');
+            polylineBtn.classList.remove('active');
+            updateButtonStates();
+            renderROIs();
         });
 
         // Show input for editing label
@@ -1775,9 +1807,13 @@
             });
         }
 
-        // Right-click to finish polyline
+        // Right-click to finish polyline or remove node
         roiCanvas.addEventListener('contextmenu', (e) => {
             e.preventDefault();
+
+            const video = screenToVideo(e.clientX, e.clientY);
+
+            // If drawing a polyline, right-click finishes it
             if (roiManager.isDrawing && roiManager.currentPoints.length >= 2) {
                 if (roiManager.drawMode === 'polyline') {
                     const roi = roiManager.finishROI(currentFrame);
@@ -1789,6 +1825,28 @@
                         drawBtn.classList.remove('active');
                         updateButtonStates();
                         renderROIs();
+                    }
+                }
+                return;
+            }
+
+            // If not drawing, check if right-clicking on a node to remove it
+            if (!roiManager.isDrawing) {
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) {
+                    const roi = roiManager.rois[node.roiIndex];
+                    const minPoints = roi.type === 'polygon' ? 3 : 2;
+
+                    if (roi.points.length > minPoints) {
+                        roiManager.removeNode(node.roiIndex, node.nodeIndex);
+                        updateYAML();
+                        statusBar.textContent = `Removed node from ${roi.name}`;
+                        hideNodeTooltip();
+                        roiManager.hoveredNodeIndex = -1;
+                        renderROIs();
+                    } else {
+                        statusBar.textContent = `Cannot remove node: ${roi.type} needs at least ${minPoints} points`;
                     }
                 }
             }
