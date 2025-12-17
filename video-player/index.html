@@ -229,7 +229,8 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.9.8/dist/ffmpeg.min.js"></script>
+    <script src="lib/ffmpeg.js"></script>
+    <script src="lib/ffmpeg-util.js"></script>
     <script>
         // Global state
         let ffmpeg = null;
@@ -285,17 +286,19 @@
             loadingDiv.style.display = 'block';
             loadBtn.disabled = true;
 
-            const { createFFmpeg, fetchFile } = FFmpeg;
-            ffmpeg = createFFmpeg({
-                log: false,
-                // Use single-threaded core (no SharedArrayBuffer required)
-                corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+            const { FFmpeg } = FFmpegWASM;
+            const { toBlobURL } = FFmpegUtil;
+
+            ffmpeg = new FFmpeg();
+
+            // Use local files to avoid CORS issues
+            // Single-threaded core to avoid SharedArrayBuffer requirement
+            const baseURL = new URL('lib/', window.location.href).href;
+            await ffmpeg.load({
+                coreURL: await toBlobURL(`${baseURL}ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${baseURL}ffmpeg-core.wasm`, 'application/wasm'),
+                workerURL: await toBlobURL(`${baseURL}814.ffmpeg.js`, 'text/javascript'),
             });
-
-            await ffmpeg.load();
-
-            // Store fetchFile for later use
-            window.ffmpegFetchFile = fetchFile;
 
             ffmpegLoaded = true;
             loadingDiv.style.display = 'none';
@@ -325,7 +328,7 @@
                 videoData = await file.arrayBuffer();
 
                 // Write video to ffmpeg filesystem
-                ffmpeg.FS('writeFile', 'input.video', new Uint8Array(videoData));
+                await ffmpeg.writeFile('input.video', new Uint8Array(videoData));
 
                 // Get video metadata (fps and total frames)
                 await getVideoMetadata();
@@ -359,13 +362,14 @@
 
             // Set up log callback to capture ffmpeg output
             const logs = [];
-            ffmpeg.setLogger(({ message }) => {
+            const logHandler = ({ message }) => {
                 logs.push(message);
-            });
+            };
+            ffmpeg.on('log', logHandler);
 
             try {
                 // Run ffmpeg to get video info (will fail but produces metadata in logs)
-                await ffmpeg.run('-i', 'input.video', '-f', 'null', '-');
+                await ffmpeg.exec(['-i', 'input.video', '-f', 'null', '-']);
             } catch (e) {
                 // Expected to fail, we just need the logs
             }
@@ -396,8 +400,8 @@
                 totalFrames = 1000; // Conservative fallback
             }
 
-            // Clear logger
-            ffmpeg.setLogger(({ message }) => {});
+            // Remove log listener
+            ffmpeg.off('log', logHandler);
 
             console.log(`Video metadata: ${duration.toFixed(2)}s, ${fps.toFixed(2)} fps, ${totalFrames} frames`);
             updateMetrics();
@@ -469,20 +473,20 @@
                     throw new Error('Invalid FPS value');
                 }
                 const frameTime = frameIndex / fps;
-                await ffmpeg.run(
+                await ffmpeg.exec([
                     '-ss', frameTime.toFixed(3),
                     '-i', 'input.video',
                     '-vframes', '1',
                     '-f', 'image2',
                     'frame.png'
-                );
+                ]);
 
                 lastLoadTime = performance.now() - loadStart;
 
                 const decodeStart = performance.now();
 
                 // Read frame data
-                const frameData = ffmpeg.FS('readFile', 'frame.png');
+                const frameData = await ffmpeg.readFile('frame.png');
                 const blob = new Blob([frameData.buffer], { type: 'image/png' });
                 const img = await createImageBitmap(blob);
 
