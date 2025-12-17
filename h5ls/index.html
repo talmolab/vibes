@@ -761,14 +761,18 @@
             urlInput.value = '';
         });
 
-        document.getElementById('urlLoadBtn').addEventListener('click', () => {
-            const url = urlInput.value.trim();
-            if (!url) return;
+        function loadFromUrl(url) {
             urlContainer.classList.remove('visible');
             log(`Loading from URL: ${url}`, 'info');
             initWorker();
             showLoading('Checking server...');
             worker.postMessage({ type: 'loadUrl', url });
+        }
+
+        document.getElementById('urlLoadBtn').addEventListener('click', () => {
+            const url = urlInput.value.trim();
+            if (!url) return;
+            loadFromUrl(url);
         });
 
         urlInput.addEventListener('keydown', (e) => {
@@ -777,6 +781,13 @@
         });
 
         log('h5ls ready', 'info');
+
+        // Check for URL parameter to auto-load
+        const params = new URLSearchParams(window.location.search);
+        const urlParam = params.get('url');
+        if (urlParam) {
+            loadFromUrl(urlParam);
+        }
     </script>
 </body>
 </html>
