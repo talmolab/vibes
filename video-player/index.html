@@ -288,7 +288,8 @@
             const { createFFmpeg, fetchFile } = FFmpeg;
             ffmpeg = createFFmpeg({
                 log: false,
-                corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js',
+                // Use single-threaded core (no SharedArrayBuffer required)
+                corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
             });
 
             await ffmpeg.load();
