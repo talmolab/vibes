@@ -134,7 +134,7 @@
             height: 100%;
         }
         .tooltip {
-            position: absolute;
+            position: fixed;
             background: rgba(0, 0, 0, 0.9);
             color: white;
             padding: 10px;
@@ -272,6 +272,13 @@
         let capturedFrames = [];
         let pcaModel = null;
         let currentLandmarks = null;
+        let frameColors = []; // Store colors for each frame
+
+        // Generate distinct color for a frame index
+        function generateFrameColor(index) {
+            const hue = (index * 137.508) % 360; // Golden angle for good separation
+            return `hsl(${hue}, 70%, 60%)`;
+        }
 
         // Initialize MediaPipe
         async function initLandmarkers() {
@@ -306,7 +313,9 @@
                         delegate: 'GPU'
                     },
                     runningMode: 'VIDEO',
-                    numFaces: 1
+                    numFaces: 1,
+                    outputFaceBlendshapes: false,
+                    outputFacialTransformationMatrixes: false
                 });
 
                 status.textContent = 'Models loaded. Click "Start Camera" to begin.';
@@ -437,8 +446,10 @@
 
             const imageData = canvas.toDataURL('image/jpeg', 0.7);
             const landmarks = JSON.parse(JSON.stringify(currentLandmarks));
+            const color = generateFrameColor(capturedFrames.length);
 
-            capturedFrames.push({ imageData, landmarks });
+            capturedFrames.push({ imageData, landmarks, color });
+            frameColors.push(color);
             frameCount.textContent = capturedFrames.length;
             updateGallery();
             computePCA();
@@ -449,6 +460,7 @@
             capturedFrames.forEach((frame, idx) => {
                 const item = document.createElement('div');
                 item.className = 'gallery-item';
+                item.style.borderColor = frame.color; // Color-code the border
 
                 const img = document.createElement('img');
                 img.src = frame.imageData;
@@ -459,6 +471,12 @@
                 removeBtn.onclick = (e) => {
                     e.stopPropagation();
                     capturedFrames.splice(idx, 1);
+                    frameColors.splice(idx, 1);
+                    // Regenerate colors for remaining frames to maintain consistency
+                    capturedFrames.forEach((f, i) => {
+                        f.color = generateFrameColor(i);
+                        frameColors[i] = f.color;
+                    });
                     frameCount.textContent = capturedFrames.length;
                     updateGallery();
                     computePCA();
@@ -667,9 +685,9 @@
             );
             plotCtx.restore();
 
-            // Draw training points
-            plotCtx.fillStyle = '#667eea';
+            // Draw training points with color coding
             projected.forEach((p, idx) => {
+                plotCtx.fillStyle = capturedFrames[idx].color;
                 plotCtx.beginPath();
                 plotCtx.arc(scaleX(p[0]), scaleY(p[1]), 6, 0, 2 * Math.PI);
                 plotCtx.fill();
@@ -705,11 +723,15 @@
                         tooltip.appendChild(img);
                         tooltip.appendChild(div);
                         tooltip.style.display = 'block';
-                        tooltip.style.left = e.clientX + 15 + 'px';
-                        tooltip.style.top = e.clientY + 15 + 'px';
+                        tooltip.style.left = (e.pageX + 15) + 'px';
+                        tooltip.style.top = (e.pageY + 15) + 'px';
                         return;
                     }
                 }
+                tooltip.style.display = 'none';
+            };
+
+            plotCanvas.onmouseleave = () => {
                 tooltip.style.display = 'none';
             };
         }
