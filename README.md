@@ -66,10 +66,19 @@ Mention `@claude` in any issue or PR to get AI assistance. Claude can:
 ### Local Development
 
 ```bash
-# Serve locally
-python -m http.server 8000
+# Serve locally (runs in background)
+npx serve -p 8080 --cors --no-clipboard &
 
-# Open http://localhost:8000/your-vibe/
+# Open http://localhost:8080/your-vibe/
+```
+
+For Python scripts, always use `uv`:
+```bash
+uv run script.py
+# or with inline dependencies:
+# /// script
+# dependencies = ["requests"]
+# ///
 ```
 
 ## Setup

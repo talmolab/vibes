@@ -21,5 +21,13 @@ description: Scaffolds a template for a small investigation for empirical experi
 - Both for this library and other ones, it's worth writing a simple script or calling the library interactively to list its members or try out different constructions to explore the API and document it in a markdown file called `API.md`.
 - Generate figures when applicable (e.g., plots, data visualizations) and reference them inline in the markdown files.
 - Always use `uv` with self-contained dependencies when using Python.
+- When you need a local web server, use `npx serve -p 8080 --cors --no-clipboard &` (run in background to avoid blocking).
 - Prefer self-contained HTML+JS pages (without React if possible) and use Playwright MCP for rendering screenshots.
 - Use subagents whenever possible to save context and delegate tasks in parallel.
+
+## Important: Scratch work is gitignored
+The `scratch/` directory is in `.gitignore` and will NOT be committed. When distilling findings into PRs:
+- Do NOT assume local scratch notes will be checked in
+- Include all relevant information inline in PR descriptions or code comments
+- Copy key findings, code snippets, benchmark results, or data directly into the PR
+- The PR should be self-contained and not rely on scratch files for context

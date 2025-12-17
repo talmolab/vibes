@@ -210,6 +210,7 @@ __marimo__/
 sandbox/
 scratch/
 tmp/
+.DS_Store
 
 # Jekyll
 _site/

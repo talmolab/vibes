@@ -24,11 +24,12 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
      ```
 
 5. **Test locally** (if possible):
-   - `python -m http.server 8000`
-   - Open: `http://localhost:8000/<vibe-name>/`
+   - `npx serve -p 8080 --cors --no-clipboard &` (run in background)
+   - Open: `http://localhost:8080/<vibe-name>/`
 
 6. **Open PR**:
    - Push branch and create PR to `main`
+   - Include deployment link: `https://v.tlab.sh/<vibe-name>/`
    - PRs are squash merged
 
 ## Template
