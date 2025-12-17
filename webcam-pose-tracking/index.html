@@ -137,6 +137,7 @@
         </div>
         <label><input type="checkbox" id="showSkeleton" checked> Show Skeleton</label>
         <label><input type="checkbox" id="showPoints" checked> Show Points</label>
+        <label><input type="checkbox" id="showHands"> Show Hands</label>
         <label><input type="checkbox" id="mirrorVideo" checked> Mirror Video</label>
     </div>
 
@@ -146,7 +147,7 @@
     </footer>
 
     <script type="module">
-        import { PoseLandmarker, FilesetResolver, DrawingUtils } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+        import { PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
@@ -159,10 +160,12 @@
         const stopBtn = document.getElementById('stopBtn');
         const showSkeleton = document.getElementById('showSkeleton');
         const showPoints = document.getElementById('showPoints');
+        const showHands = document.getElementById('showHands');
         const mirrorVideo = document.getElementById('mirrorVideo');
         const modelSelect = document.getElementById('modelSelect');
 
         let poseLandmarker = null;
+        let handLandmarker = null;
         let stream = null;
         let animationId = null;
         let lastTime = 0;
@@ -179,8 +182,17 @@
             [9, 10] // Mouth
         ];
 
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
+            [0, 5], [5, 6], [6, 7], [7, 8], // Index
+            [0, 9], [9, 10], [10, 11], [11, 12], // Middle
+            [0, 13], [13, 14], [14, 15], [15, 16], // Ring
+            [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
+            [5, 9], [9, 13], [13, 17] // Palm
+        ];
+
         async function initPoseLandmarker(modelType = 'lite') {
-            status.textContent = `Loading ${modelType} model...`;
+            status.textContent = `Loading ${modelType} pose model...`;
             status.classList.remove('error');
             try {
                 const vision = await FilesetResolver.forVisionTasks(
@@ -194,10 +206,28 @@
                     runningMode: 'VIDEO',
                     numPoses: 1
                 });
-                status.textContent = `${modelType.charAt(0).toUpperCase() + modelType.slice(1)} model loaded. Click "Start Camera" to begin.`;
+                status.textContent = `${modelType.charAt(0).toUpperCase() + modelType.slice(1)} pose model loaded. Click "Start Camera" to begin.`;
             } catch (err) {
-                status.textContent = 'Failed to load model: ' + err.message;
+                status.textContent = 'Failed to load pose model: ' + err.message;
                 status.classList.add('error');
+            }
+        }
+
+        async function initHandLandmarker() {
+            try {
+                const vision = await FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                );
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numHands: 2
+                });
+            } catch (err) {
+                console.error('Failed to load hand model:', err);
             }
         }
 
@@ -306,6 +336,41 @@
                         ctx.fill();
                     }
                 }
+
+                // Detect and draw hands
+                if (showHands.checked && handLandmarker) {
+                    const handResults = handLandmarker.detectForVideo(video, now);
+                    if (handResults.landmarks) {
+                        for (const handLandmarks of handResults.landmarks) {
+                            // Draw hand skeleton
+                            ctx.strokeStyle = '#4ade80';
+                            ctx.lineWidth = 2;
+                            for (const [i, j] of HAND_CONNECTIONS) {
+                                if (handLandmarks[i] && handLandmarks[j]) {
+                                    const x1 = handLandmarks[i].x * canvas.width;
+                                    const y1 = handLandmarks[i].y * canvas.height;
+                                    const x2 = handLandmarks[j].x * canvas.width;
+                                    const y2 = handLandmarks[j].y * canvas.height;
+                                    ctx.beginPath();
+                                    ctx.moveTo(x1, y1);
+                                    ctx.lineTo(x2, y2);
+                                    ctx.stroke();
+                                }
+                            }
+
+                            // Draw hand keypoints
+                            for (const point of handLandmarks) {
+                                const x = point.x * canvas.width;
+                                const y = point.y * canvas.height;
+                                ctx.beginPath();
+                                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                                ctx.fillStyle = '#4ade80';
+                                ctx.fill();
+                            }
+                        }
+                    }
+                }
+
                 ctx.restore();
             } else {
                 keypointsDisplay.textContent = '0';
@@ -328,6 +393,13 @@
                 await startCamera();
             } else {
                 await initPoseLandmarker(modelSelect.value);
+            }
+        });
+
+        // Handle hand tracking toggle
+        showHands.addEventListener('change', async () => {
+            if (showHands.checked && !handLandmarker) {
+                await initHandLandmarker();
             }
         });
 
