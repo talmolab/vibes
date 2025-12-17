@@ -10,6 +10,7 @@ Inspired by [simonw/tools](https://github.com/simonw/tools) and the [vibe coding
 - [Idle Quest](idle-quest/) - An idle RPG with combat, upgrades, zones, and prestige
 - [GitHub Discussion to Markdown](github-discussion-markdown/) - Convert GitHub discussions to structured markdown
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
+- [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 
 ---
