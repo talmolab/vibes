@@ -216,3 +216,6 @@ _site/
 .sass-cache/
 .jekyll-cache/
 .jekyll-metadata
+
+# Playwright
+.playwright-mcp/
