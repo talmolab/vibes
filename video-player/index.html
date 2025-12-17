@@ -144,25 +144,161 @@
         }
         .hotkeys-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px 20px;
         }
         .hotkey {
             display: flex;
-            justify-content: space-between;
+            gap: 10px;
         }
         .hotkey-key {
             color: #667eea;
             font-family: 'Courier New', monospace;
+            min-width: 100px;
         }
         .hotkey-desc {
             color: #aaa;
         }
-        .loading {
-            text-align: center;
-            padding: 40px;
+        .url-input-container {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .url-input-container input[type="text"] {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .url-input-container input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .url-input-container button {
+            padding: 10px 16px;
+            margin: 0;
+        }
+        .error-msg {
+            background: #4a2020;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .cache-viz-container {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .cache-viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .cache-viz-header h3 {
+            margin: 0;
+            color: #fff;
+            font-size: 14px;
+        }
+        .cache-viz-settings {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .cache-viz-settings label {
+            color: #aaa;
+            font-size: 12px;
+        }
+        .cache-viz-settings input[type="number"] {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: 70px;
+            font-size: 12px;
+        }
+        .cache-viz-legend {
+            display: flex;
+            gap: 15px;
+            font-size: 11px;
             color: #aaa;
         }
+        .cache-viz-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cache-viz-legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        .cache-viz-canvas {
+            width: 100%;
+            height: 24px;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+        .diagnostic-console {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .diagnostic-console-header {
+            background: #2a2a2a;
+            padding: 8px 15px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .diagnostic-console-header h3 {
+            margin: 0;
+            color: #fff;
+            font-size: 12px;
+        }
+        .diagnostic-console-header button {
+            background: #444;
+            padding: 4px 10px;
+            font-size: 11px;
+            margin: 0;
+        }
+        .diagnostic-console-body {
+            height: 120px;
+            overflow-y: auto;
+            padding: 10px 15px;
+        }
+        .log-entry {
+            margin: 2px 0;
+            display: flex;
+            gap: 10px;
+        }
+        .log-time {
+            color: #666;
+            flex-shrink: 0;
+        }
+        .log-msg { color: #aaa; }
+        .log-msg.info { color: #667eea; }
+        .log-msg.success { color: #4ade80; }
+        .log-msg.warn { color: #fbbf24; }
+        .log-msg.error { color: #ff6b6b; }
         @media (max-width: 600px) {
             body { padding: 10px; }
             .controls, .settings, .metrics { padding: 10px 15px; }
@@ -173,17 +309,22 @@
 <body>
     <div class="container">
         <h1>Frame-Accurate Video Player</h1>
-        <p class="description">Load local videos with frame-accurate seeking, zoom/pan, and playback controls.</p>
+        <p class="description">Load local videos with frame-accurate seeking, zoom/pan, and playback controls. Uses WebCodecs API for fast decoding.</p>
 
         <div class="controls">
+            <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
             <button id="loadBtn">Load Video File</button>
+            <button id="loadUrlBtn">Load from URL</button>
             <button id="playBtn" disabled>Play</button>
             <button id="resetZoomBtn" disabled>Reset Zoom</button>
         </div>
-
-        <div class="settings">
-            <label>Buffer Size: <input type="number" id="bufferSize" value="30" min="1" max="500"></label>
+        <div class="url-input-container" id="urlInputContainer" style="display: none;">
+            <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)">
+            <button id="urlLoadBtn">Load</button>
+            <button id="urlCancelBtn">Cancel</button>
         </div>
+
+        <div class="error-msg" id="errorMsg"></div>
 
         <div class="canvas-container" id="canvasContainer" style="display: none;">
             <canvas id="canvas"></canvas>
@@ -196,19 +337,43 @@
             </div>
         </div>
 
+        <div class="cache-viz-container" id="cacheVizContainer" style="display: none;">
+            <div class="cache-viz-header">
+                <h3>Frame Cache</h3>
+                <div class="cache-viz-settings">
+                    <label>Cache Size: <input type="number" id="bufferSize" value="60" min="10" max="500"></label>
+                    <label>Lookahead: <input type="number" id="lookaheadSize" value="10" min="1" max="100"></label>
+                </div>
+                <div class="cache-viz-legend">
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #4ade80;"></div> Cached</div>
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #fbbf24;"></div> Keyframe</div>
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #667eea;"></div> Current</div>
+                </div>
+            </div>
+            <canvas class="cache-viz-canvas" id="cacheVizCanvas"></canvas>
+        </div>
+
         <div class="metrics" id="metrics" style="display: none;">
             <div class="metrics-row">
                 <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
-                <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span></div>
-                <div class="metric"><span class="metric-label">Total Frames:</span> <span id="metricTotal">-</span></div>
-                <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                <div class="metric"><span class="metric-label">Codec:</span> <span id="metricCodec">-</span></div>
+                <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
             </div>
             <div class="metrics-row">
-                <div class="metric"><span class="metric-label">Load:</span> <span id="metricLoad">-</span></div>
-                <div class="metric"><span class="metric-label">Decode:</span> <span id="metricDecode">-</span></div>
-                <div class="metric"><span class="metric-label">Render:</span> <span id="metricRender">-</span></div>
+                <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
+                <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                <div class="metric"><span class="metric-label">Seek:</span> <span id="metricSeek">-</span></div>
                 <div class="metric"><span class="metric-label">Cached:</span> <span id="metricCached">-</span></div>
+                <div class="metric"><span class="metric-label">Keyframes:</span> <span id="metricKeyframes">-</span></div>
             </div>
+        </div>
+
+        <div class="diagnostic-console" id="diagnosticConsole">
+            <div class="diagnostic-console-header">
+                <h3>Diagnostic Log</h3>
+                <button id="copyLogBtn">Copy</button>
+            </div>
+            <div class="diagnostic-console-body" id="logBody"></div>
         </div>
 
         <div class="hotkeys">
@@ -223,28 +388,595 @@
                 <div class="hotkey"><span class="hotkey-key">Click + Drag</span><span class="hotkey-desc">Pan</span></div>
             </div>
         </div>
-
-        <div class="loading" id="loading" style="display: none;">
-            <p>Loading ffmpeg.wasm...</p>
-        </div>
     </div>
 
-    <script src="lib/ffmpeg.js"></script>
+    <!-- mp4box.js for demuxing MP4 files -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+
     <script>
-        // Global state
-        let ffmpeg = null;
-        let ffmpegLoaded = false;
-        let videoData = null;
+        // ============================================
+        // Diagnostic Logging System
+        // ============================================
+        const logBody = document.getElementById('logBody');
+        const MAX_LOG_ENTRIES = 100;
+
+        function log(msg, level = 'info') {
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${level}">${msg}</span>`;
+            logBody.appendChild(entry);
+
+            // Limit entries
+            while (logBody.children.length > MAX_LOG_ENTRIES) {
+                logBody.removeChild(logBody.firstChild);
+            }
+
+            // Auto-scroll
+            logBody.scrollTop = logBody.scrollHeight;
+        }
+
+        document.getElementById('copyLogBtn').addEventListener('click', () => {
+            const lines = Array.from(logBody.querySelectorAll('.log-entry')).map(entry => {
+                const time = entry.querySelector('.log-time').textContent;
+                const msg = entry.querySelector('.log-msg').textContent;
+                return `${time} ${msg}`;
+            });
+            const text = lines.join('\n');
+            navigator.clipboard.writeText(text).then(() => {
+                log('Log copied to clipboard', 'success');
+            }).catch(() => {
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                log('Log copied to clipboard', 'success');
+            });
+        });
+
+        log('Video player initialized', 'info');
+
+        // ============================================
+        // On-Demand Video Decoder with Sliding Cache
+        // Uses File System Access API for chunked reading
+        // ============================================
+        class OnDemandVideoDecoder {
+            constructor(options = {}) {
+                this.cacheSize = options.cacheSize || 60;
+                this.lookahead = options.lookahead || 10;
+                this.cache = new Map();
+                this.samples = [];
+                this.keyframeIndices = [];
+                this.decoder = null;
+                this.config = null;
+                this.videoTrack = null;
+                this.mp4boxFile = null;
+                this.fileHandle = null;  // File System Access API handle
+                this.file = null;        // Standard File object fallback
+                this.url = null;         // URL for remote video
+                this.fileSize = 0;
+                this.CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+                this.supportsRangeRequests = false;
+                this.isDecoding = false;  // Lock to prevent concurrent decodes
+                this.pendingFrame = null; // Queue the latest requested frame
+                this.prefetchRequested = false; // Flag to trigger background prefetch
+                this.lastAccessedFrame = -1; // Track access pattern for prefetching
+                this.accessDirection = 1; // 1 = forward, -1 = backward
+            }
+
+            // Initialize with File System Access API handle, File object, or URL string
+            async init(source) {
+                if (typeof source === 'string') {
+                    // URL - check for range request support
+                    this.url = source;
+                    log('Checking URL for range request support...', 'info');
+                    const headResponse = await fetch(source, { method: 'HEAD' });
+                    if (!headResponse.ok) {
+                        throw new Error(`Failed to fetch URL: ${headResponse.status} ${headResponse.statusText}`);
+                    }
+                    this.fileSize = parseInt(headResponse.headers.get('Content-Length')) || 0;
+                    this.supportsRangeRequests = headResponse.headers.get('Accept-Ranges') === 'bytes';
+
+                    if (!this.supportsRangeRequests || !this.fileSize) {
+                        // Fall back to fetching entire file
+                        log('URL does not support range requests, fetching entire file...', 'warn');
+                        const response = await fetch(source);
+                        const blob = await response.blob();
+                        this.file = blob;
+                        this.fileSize = blob.size;
+                        this.url = null;
+                        log(`Downloaded ${(this.fileSize / 1024 / 1024).toFixed(1)} MB`, 'info');
+                    } else {
+                        log(`URL supports streaming (${(this.fileSize / 1024 / 1024).toFixed(1)} MB, range requests enabled)`, 'success');
+                    }
+                } else if (source.getFile) {
+                    // File System Access API handle
+                    this.fileHandle = source;
+                    this.file = await source.getFile();
+                    this.fileSize = this.file.size;
+                } else {
+                    // Standard File object
+                    this.file = source;
+                    this.fileSize = this.file.size;
+                }
+
+                // Demux the video using chunked reading
+                this.mp4boxFile = MP4Box.createFile();
+
+                const ready = new Promise((resolve, reject) => {
+                    this.mp4boxFile.onError = reject;
+                    this.mp4boxFile.onReady = resolve;
+                });
+
+                // Read file progressively until mp4box has enough info
+                let offset = 0;
+                let resolved = false;
+
+                ready.then(() => { resolved = true; });
+
+                while (offset < this.fileSize && !resolved) {
+                    const buffer = await this.readChunk(offset, this.CHUNK_SIZE);
+                    buffer.fileStart = offset;
+
+                    const nextOffset = this.mp4boxFile.appendBuffer(buffer);
+
+                    if (nextOffset === undefined) {
+                        // mp4box needs more data, continue reading sequentially
+                        offset += buffer.byteLength;
+                    } else {
+                        // mp4box is requesting a specific offset
+                        offset = nextOffset;
+                    }
+
+                    // Give the promise a chance to resolve
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                const info = await ready;
+
+                if (info.videoTracks.length === 0) {
+                    throw new Error('No video tracks found in file');
+                }
+
+                this.videoTrack = info.videoTracks[0];
+
+                // Get codec description
+                const trak = this.mp4boxFile.getTrackById(this.videoTrack.id);
+                const description = this.getCodecDescription(trak);
+
+                const codec = this.videoTrack.codec.startsWith('vp08') ? 'vp8' : this.videoTrack.codec;
+                this.config = {
+                    codec: codec,
+                    codedWidth: this.videoTrack.video.width,
+                    codedHeight: this.videoTrack.video.height,
+                };
+                if (description) {
+                    this.config.description = description;
+                }
+
+                // Check codec support
+                const support = await VideoDecoder.isConfigSupported(this.config);
+                if (!support.supported) {
+                    throw new Error(`Codec ${codec} is not supported by this browser`);
+                }
+
+                // mp4box has parsed the moov atom which contains sample metadata (offsets, sizes).
+                // We don't need to load mdat here - we'll read sample data on-demand when decoding.
+
+                // Extract all samples (metadata only - not the full video data)
+                this.extractSamples();
+
+                // Calculate FPS
+                const duration = this.videoTrack.duration / this.videoTrack.timescale;
+                this.fps = this.samples.length / duration;
+
+                return {
+                    codec: codec,
+                    width: this.videoTrack.video.width,
+                    height: this.videoTrack.video.height,
+                    totalFrames: this.samples.length,
+                    keyframes: this.keyframeIndices.length,
+                    duration: duration,
+                    fps: this.fps,
+                };
+            }
+
+            // Read a chunk of the file at a specific offset
+            async readChunk(offset, size) {
+                const end = Math.min(offset + size, this.fileSize);
+
+                if (this.url && this.supportsRangeRequests) {
+                    // Use HTTP range request for URL
+                    const response = await fetch(this.url, {
+                        headers: { 'Range': `bytes=${offset}-${end - 1}` }
+                    });
+                    const arrayBuffer = await response.arrayBuffer();
+                    // Return ArrayBuffer directly (not Uint8Array) so fileStart can be set
+                    return arrayBuffer;
+                } else {
+                    // Use File/Blob slice for local files
+                    const blob = this.file.slice(offset, end);
+                    const arrayBuffer = await blob.arrayBuffer();
+                    return arrayBuffer;
+                }
+            }
+
+            getCodecDescription(trak) {
+                for (const entry of trak.mdia.minf.stbl.stsd.entries) {
+                    const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+                    if (box) {
+                        const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                        box.write(stream);
+                        return new Uint8Array(stream.buffer, 8);
+                    }
+                }
+                return null;
+            }
+
+            extractSamples() {
+                // Use getTrackSamplesInfo to get sample metadata (offsets, sizes)
+                // without needing mdat loaded - this works from moov alone
+                const samplesInfo = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id);
+
+                if (!samplesInfo || samplesInfo.length === 0) {
+                    throw new Error('No samples found in video track');
+                }
+
+                const timescale = this.videoTrack.timescale;
+
+                for (let i = 0; i < samplesInfo.length; i++) {
+                    const sample = samplesInfo[i];
+                    this.samples.push({
+                        // Store metadata only - we'll read data on-demand
+                        offset: sample.offset,
+                        size: sample.size,
+                        timestamp: sample.cts * 1e6 / timescale,
+                        duration: sample.duration * 1e6 / timescale,
+                        isKeyframe: sample.is_sync,
+                    });
+                    if (sample.is_sync) {
+                        this.keyframeIndices.push(i);
+                    }
+                }
+
+                log(`Extracted ${this.samples.length} sample metadata entries`, 'info');
+            }
+
+            findKeyframeBefore(frameIndex) {
+                let left = 0, right = this.keyframeIndices.length - 1;
+                let result = 0;
+
+                while (left <= right) {
+                    const mid = Math.floor((left + right) / 2);
+                    if (this.keyframeIndices[mid] <= frameIndex) {
+                        result = this.keyframeIndices[mid];
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+
+                return result;
+            }
+
+            findKeyframeAfter(frameIndex) {
+                for (const kf of this.keyframeIndices) {
+                    if (kf > frameIndex) return kf;
+                }
+                return this.samples.length;
+            }
+
+            async getFrame(frameIndex) {
+                if (frameIndex < 0 || frameIndex >= this.samples.length) {
+                    return null;
+                }
+
+                // Track access direction for prefetching
+                if (this.lastAccessedFrame >= 0) {
+                    const delta = frameIndex - this.lastAccessedFrame;
+                    if (delta > 0) this.accessDirection = 1;
+                    else if (delta < 0) this.accessDirection = -1;
+                }
+                this.lastAccessedFrame = frameIndex;
+
+                // Check cache first
+                if (this.cache.has(frameIndex)) {
+                    const bitmap = this.cache.get(frameIndex);
+                    this.cache.delete(frameIndex);
+                    this.cache.set(frameIndex, bitmap);
+
+                    // Trigger background prefetch if we're getting close to cache edge
+                    this.maybeStartPrefetch(frameIndex);
+
+                    return { bitmap, fromCache: true };
+                }
+
+                // If currently decoding, queue this frame and wait
+                if (this.isDecoding) {
+                    this.pendingFrame = frameIndex;
+                    // Wait for current decode to finish, then try again
+                    await new Promise(resolve => {
+                        const checkDone = () => {
+                            if (!this.isDecoding) {
+                                resolve();
+                            } else {
+                                setTimeout(checkDone, 10);
+                            }
+                        };
+                        checkDone();
+                    });
+                    // Check cache again - might have been decoded
+                    if (this.cache.has(frameIndex)) {
+                        const bitmap = this.cache.get(frameIndex);
+                        this.cache.delete(frameIndex);
+                        this.cache.set(frameIndex, bitmap);
+                        return { bitmap, fromCache: true };
+                    }
+                    // If there's a newer pending frame, skip this one
+                    if (this.pendingFrame !== null && this.pendingFrame !== frameIndex) {
+                        return null;
+                    }
+                }
+
+                // Find keyframe and decode range with lookahead
+                const keyframe = this.findKeyframeBefore(frameIndex);
+                const endFrame = Math.min(frameIndex + this.lookahead, this.samples.length - 1);
+                const nextKeyframe = this.findKeyframeAfter(frameIndex);
+                const actualEnd = nextKeyframe > frameIndex ? Math.min(endFrame, nextKeyframe - 1) : endFrame;
+
+                await this.decodeRange(keyframe, actualEnd, frameIndex);
+
+                const bitmap = this.cache.get(frameIndex);
+                return bitmap ? { bitmap, fromCache: false } : null;
+            }
+
+            // Check if we should start prefetching ahead
+            maybeStartPrefetch(currentFrame) {
+                if (this.isDecoding || this.prefetchRequested) return;
+
+                // Find the edge of cached frames in the access direction
+                let cachedAhead = 0;
+                if (this.accessDirection > 0) {
+                    // Moving forward - count cached frames ahead
+                    for (let i = currentFrame + 1; i < this.samples.length && this.cache.has(i); i++) {
+                        cachedAhead++;
+                    }
+                } else {
+                    // Moving backward - count cached frames behind
+                    for (let i = currentFrame - 1; i >= 0 && this.cache.has(i); i--) {
+                        cachedAhead++;
+                    }
+                }
+
+                // If we have less than lookahead frames cached ahead, start prefetching
+                if (cachedAhead < this.lookahead) {
+                    this.prefetchRequested = true;
+                    // Use setTimeout to not block the current frame return
+                    setTimeout(() => this.prefetch(currentFrame), 0);
+                }
+            }
+
+            // Prefetch frames in the current access direction
+            async prefetch(fromFrame) {
+                if (this.isDecoding) {
+                    this.prefetchRequested = false;
+                    return;
+                }
+
+                const direction = this.accessDirection;
+                let targetFrame;
+
+                if (direction > 0) {
+                    // Find first uncached frame ahead
+                    targetFrame = fromFrame + 1;
+                    while (targetFrame < this.samples.length && this.cache.has(targetFrame)) {
+                        targetFrame++;
+                    }
+                    if (targetFrame >= this.samples.length) {
+                        this.prefetchRequested = false;
+                        return;
+                    }
+                } else {
+                    // Find first uncached frame behind
+                    targetFrame = fromFrame - 1;
+                    while (targetFrame >= 0 && this.cache.has(targetFrame)) {
+                        targetFrame--;
+                    }
+                    if (targetFrame < 0) {
+                        this.prefetchRequested = false;
+                        return;
+                    }
+                }
+
+                // Decode a range around the target
+                const keyframe = this.findKeyframeBefore(targetFrame);
+                const endFrame = Math.min(targetFrame + this.lookahead, this.samples.length - 1);
+                const nextKeyframe = this.findKeyframeAfter(targetFrame);
+                const actualEnd = nextKeyframe > targetFrame ? Math.min(endFrame, nextKeyframe - 1) : endFrame;
+
+                await this.decodeRange(keyframe, actualEnd, targetFrame);
+                this.prefetchRequested = false;
+            }
+
+            async decodeRange(startFrame, endFrame, targetFrame) {
+                this.isDecoding = true;
+                this.pendingFrame = null;
+
+                try {
+                    await this._decodeRangeInternal(startFrame, endFrame, targetFrame);
+                } finally {
+                    this.isDecoding = false;
+                }
+            }
+
+            async _decodeRangeInternal(startFrame, endFrame, targetFrame) {
+                const expectedFrames = endFrame - startFrame + 1;
+                let decodedCount = 0;
+
+                const halfCache = Math.floor(this.cacheSize / 2);
+                const cacheWindowStart = Math.max(startFrame, targetFrame - halfCache);
+                const cacheWindowEnd = Math.min(endFrame, targetFrame + halfCache);
+
+                if (this.decoder) {
+                    try {
+                        this.decoder.close();
+                    } catch (e) {
+                        // Ignore close errors
+                    }
+                }
+
+                // Read sample data for the range - batch consecutive samples into single reads
+                const sampleDataArray = await this.readSampleDataRange(startFrame, endFrame);
+
+                return new Promise((resolve, reject) => {
+                    this.decoder = new VideoDecoder({
+                        output: (frame) => {
+                            const frameIndex = startFrame + decodedCount;
+
+                            if (frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
+                                createImageBitmap(frame).then(bitmap => {
+                                    this.addToCache(frameIndex, bitmap);
+                                    frame.close();
+                                    decodedCount++;
+                                    if (decodedCount >= expectedFrames) {
+                                        resolve();
+                                    }
+                                }).catch(() => {
+                                    frame.close();
+                                    decodedCount++;
+                                    if (decodedCount >= expectedFrames) {
+                                        resolve();
+                                    }
+                                });
+                            } else {
+                                frame.close();
+                                decodedCount++;
+                                if (decodedCount >= expectedFrames) {
+                                    resolve();
+                                }
+                            }
+                        },
+                        error: (e) => {
+                            // Ignore AbortError from decoder close
+                            if (e.name === 'AbortError') {
+                                resolve();
+                            } else {
+                                reject(e);
+                            }
+                        }
+                    });
+
+                    this.decoder.configure(this.config);
+
+                    for (let i = startFrame; i <= endFrame; i++) {
+                        const sample = this.samples[i];
+                        const sampleData = sampleDataArray[i - startFrame];
+                        const chunk = new EncodedVideoChunk({
+                            type: sample.isKeyframe ? 'key' : 'delta',
+                            timestamp: sample.timestamp,
+                            duration: sample.duration,
+                            data: sampleData,
+                        });
+                        this.decoder.decode(chunk);
+                    }
+
+                    this.decoder.flush();
+                });
+            }
+
+            // Read sample data for a range, batching consecutive samples into single reads
+            async readSampleDataRange(startFrame, endFrame) {
+                const results = [];
+
+                // Find contiguous regions and batch read them
+                let regionStart = startFrame;
+                while (regionStart <= endFrame) {
+                    const firstSample = this.samples[regionStart];
+                    let regionEnd = regionStart;
+                    let regionBytes = firstSample.size;
+
+                    // Extend region while samples are contiguous
+                    while (regionEnd < endFrame) {
+                        const currentSample = this.samples[regionEnd];
+                        const nextSample = this.samples[regionEnd + 1];
+
+                        // Check if next sample immediately follows current
+                        if (nextSample.offset === currentSample.offset + currentSample.size) {
+                            regionEnd++;
+                            regionBytes += nextSample.size;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Read the entire contiguous region
+                    const buffer = await this.readChunk(firstSample.offset, regionBytes);
+                    const bufferView = new Uint8Array(buffer);
+
+                    // Extract individual samples from the buffer
+                    let bufferOffset = 0;
+                    for (let i = regionStart; i <= regionEnd; i++) {
+                        const sample = this.samples[i];
+                        results.push(bufferView.slice(bufferOffset, bufferOffset + sample.size));
+                        bufferOffset += sample.size;
+                    }
+
+                    regionStart = regionEnd + 1;
+                }
+
+                return results;
+            }
+
+            addToCache(frameIndex, bitmap) {
+                if (this.cache.size >= this.cacheSize) {
+                    const firstKey = this.cache.keys().next().value;
+                    const oldBitmap = this.cache.get(firstKey);
+                    oldBitmap.close();
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(frameIndex, bitmap);
+            }
+
+            getCacheStatus() {
+                return {
+                    size: this.cache.size,
+                    maxSize: this.cacheSize,
+                };
+            }
+
+            getFrameTimestamp(frameIndex) {
+                if (frameIndex >= 0 && frameIndex < this.samples.length) {
+                    return this.samples[frameIndex].timestamp / 1e6;
+                }
+                return 0;
+            }
+
+            close() {
+                if (this.decoder) {
+                    this.decoder.close();
+                }
+                for (const bitmap of this.cache.values()) {
+                    bitmap.close();
+                }
+                this.cache.clear();
+            }
+        }
+
+        // ============================================
+        // Video Player UI
+        // ============================================
+
+        let videoDecoder = null;
         let currentFrame = 0;
         let totalFrames = 0;
         let fps = 0;
         let fileName = '';
         let isPlaying = false;
         let playInterval = null;
-
-        // Frame cache (MRU - Most Recently Used)
-        const frameCache = new Map();
-        let maxCacheSize = 30;
+        let videoInfo = null;
 
         // Canvas and zoom/pan state
         const canvas = document.getElementById('canvas');
@@ -255,18 +987,14 @@
         let isDragging = false;
         let dragStartX = 0;
         let dragStartY = 0;
-
-        // Request queue management
-        let pendingFrameRequest = null;
-        let currentFrameRequest = null;
+        let currentBitmap = null;
 
         // Performance metrics
-        let lastLoadTime = 0;
-        let lastDecodeTime = 0;
-        let lastRenderTime = 0;
+        let lastSeekTime = 0;
 
         // UI Elements
         const loadBtn = document.getElementById('loadBtn');
+        const fileInput = document.getElementById('fileInput');
         const playBtn = document.getElementById('playBtn');
         const resetZoomBtn = document.getElementById('resetZoomBtn');
         const canvasContainer = document.getElementById('canvasContainer');
@@ -275,278 +1003,323 @@
         const seekbarThumb = document.getElementById('seekbarThumb');
         const seekbarContainer = document.getElementById('seekbarContainer');
         const metricsDiv = document.getElementById('metrics');
-        const loadingDiv = document.getElementById('loading');
         const bufferSizeInput = document.getElementById('bufferSize');
+        const lookaheadInput = document.getElementById('lookaheadSize');
+        const errorMsg = document.getElementById('errorMsg');
+        const cacheVizContainer = document.getElementById('cacheVizContainer');
+        const cacheVizCanvas = document.getElementById('cacheVizCanvas');
+        const cacheVizCtx = cacheVizCanvas.getContext('2d');
 
-        // Initialize ffmpeg
-        async function initFFmpeg() {
-            if (ffmpegLoaded) return;
-
-            loadingDiv.style.display = 'block';
+        // Check WebCodecs support
+        if (!('VideoDecoder' in window)) {
+            showError('WebCodecs API is not supported in this browser. Please use Chrome, Edge, or Firefox.');
             loadBtn.disabled = true;
-
-            const { createFFmpeg, fetchFile } = FFmpeg;
-
-            // Use local single-threaded core to avoid CORS and SharedArrayBuffer issues
-            const baseURL = new URL('lib/', window.location.href).href;
-            ffmpeg = createFFmpeg({
-                log: false,
-                corePath: `${baseURL}ffmpeg-core.js`,
-            });
-
-            await ffmpeg.load();
-
-            ffmpegLoaded = true;
-            loadingDiv.style.display = 'none';
-            loadBtn.disabled = false;
-            console.log('FFmpeg loaded');
         }
 
-        // Load video file using File System Access API
-        async function loadVideoFile() {
-            try {
-                // Ensure ffmpeg is loaded
-                if (!ffmpegLoaded) {
-                    await initFFmpeg();
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMsg.style.display = 'none';
+        }
+
+        // ============================================
+        // Cache Visualization (canvas-based for 100k+ frames)
+        // ============================================
+        function renderCacheVisualization() {
+            if (!videoDecoder || totalFrames === 0) return;
+
+            const rect = cacheVizCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const width = rect.width * dpr;
+            const height = rect.height * dpr;
+
+            // Set canvas size for high DPI
+            if (cacheVizCanvas.width !== width || cacheVizCanvas.height !== height) {
+                cacheVizCanvas.width = width;
+                cacheVizCanvas.height = height;
+            }
+
+            cacheVizCtx.fillStyle = '#333';
+            cacheVizCtx.fillRect(0, 0, width, height);
+
+            // For very large videos, each pixel represents multiple frames
+            const framesPerPixel = Math.max(1, totalFrames / width);
+            const pixelsPerFrame = width / totalFrames;
+
+            // Get cached frame indices
+            const cachedFrames = new Set(videoDecoder.cache.keys());
+            const keyframes = new Set(videoDecoder.keyframeIndices);
+
+            if (framesPerPixel <= 1) {
+                // Fewer frames than pixels - draw individual marks
+                const frameWidth = Math.max(1, pixelsPerFrame);
+
+                // Draw keyframes first (background layer)
+                cacheVizCtx.fillStyle = '#fbbf24';
+                for (const kf of keyframes) {
+                    const x = (kf / totalFrames) * width;
+                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
                 }
 
-                const [fileHandle] = await window.showOpenFilePicker({
-                    types: [{
-                        description: 'Video Files',
-                        accept: {
-                            'video/*': ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v']
-                        }
-                    }]
-                });
+                // Draw cached frames
+                cacheVizCtx.fillStyle = '#4ade80';
+                for (const frame of cachedFrames) {
+                    const x = (frame / totalFrames) * width;
+                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
+                }
+            } else {
+                // More frames than pixels - aggregate
+                for (let px = 0; px < width; px++) {
+                    const frameStart = Math.floor(px * framesPerPixel);
+                    const frameEnd = Math.floor((px + 1) * framesPerPixel);
 
-                const file = await fileHandle.getFile();
-                fileName = file.name;
-                videoData = await file.arrayBuffer();
+                    let hasCached = false;
+                    let hasKeyframe = false;
 
-                // Write video to ffmpeg filesystem
-                ffmpeg.FS('writeFile', 'input.video', new Uint8Array(videoData));
+                    for (let f = frameStart; f < frameEnd; f++) {
+                        if (cachedFrames.has(f)) hasCached = true;
+                        if (keyframes.has(f)) hasKeyframe = true;
+                    }
 
-                // Get video metadata (fps and total frames)
-                await getVideoMetadata();
+                    if (hasCached) {
+                        cacheVizCtx.fillStyle = '#4ade80';
+                        cacheVizCtx.fillRect(px, 0, 1, height);
+                    } else if (hasKeyframe) {
+                        cacheVizCtx.fillStyle = '#fbbf24';
+                        cacheVizCtx.fillRect(px, 0, 1, height);
+                    }
+                }
+            }
 
-                // Clear cache
-                frameCache.clear();
+            // Draw current frame marker (always on top)
+            const currentX = (currentFrame / totalFrames) * width;
+            cacheVizCtx.fillStyle = '#667eea';
+            cacheVizCtx.fillRect(currentX - 1, 0, 3, height);
+        }
+
+        // Click on cache viz to seek
+        cacheVizCanvas.addEventListener('click', (e) => {
+            if (!videoDecoder || totalFrames === 0) return;
+            const rect = cacheVizCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const frame = Math.floor((x / rect.width) * totalFrames);
+            log(`Seek to frame ${frame} via cache visualization`, 'info');
+            seekToFrame(frame);
+        });
+
+        // Load video from file handle, File object, or URL string
+        async function loadVideo(source) {
+            hideError();
+
+            try {
+                // Get file name
+                if (typeof source === 'string') {
+                    // URL - extract filename from path
+                    fileName = source.split('/').pop().split('?')[0] || 'remote video';
+                } else if (source.name) {
+                    fileName = source.name;
+                } else if (source.getFile) {
+                    const f = await source.getFile();
+                    fileName = f.name;
+                }
+
+                log(`Loading video: ${fileName}`, 'info');
+
+                // Clean up previous decoder
+                if (videoDecoder) {
+                    videoDecoder.close();
+                }
+
+                // Create new decoder
+                const cacheSize = parseInt(bufferSizeInput.value) || 60;
+                const lookahead = parseInt(lookaheadInput.value) || 10;
+                videoDecoder = new OnDemandVideoDecoder({ cacheSize, lookahead });
+
+                log(`Decoder configured: cacheSize=${cacheSize}, lookahead=${lookahead}`, 'info');
+
+                // Initialize with file handle or file object (chunked reading, no full copy)
+                const startTime = performance.now();
+                videoInfo = await videoDecoder.init(source);
+                const initTime = performance.now() - startTime;
+
+                totalFrames = videoInfo.totalFrames;
+                fps = videoInfo.fps;
+
+                log(`Video loaded in ${initTime.toFixed(0)}ms`, 'success');
+                log(`Codec: ${videoInfo.codec}, Resolution: ${videoInfo.width}x${videoInfo.height}`, 'info');
+                log(`Frames: ${totalFrames}, FPS: ${fps.toFixed(2)}, Keyframes: ${videoInfo.keyframes}`, 'info');
 
                 // Show UI
                 canvasContainer.style.display = 'block';
                 seekbarContainer.style.display = 'block';
+                cacheVizContainer.style.display = 'block';
                 metricsDiv.style.display = 'block';
                 playBtn.disabled = false;
                 resetZoomBtn.disabled = false;
 
-                // Load first frame
+                // Reset state
                 currentFrame = 0;
+                scale = 1;
+                offsetX = 0;
+                offsetY = 0;
+
+                updateMetrics();
+                renderCacheVisualization();
+
+                // Load first frame
                 await seekToFrame(0);
 
             } catch (err) {
-                if (err.name !== 'AbortError') {
-                    console.error('Error loading file:', err);
-                    alert('Error loading video file: ' + err.message);
-                }
+                console.error('Error loading video:', err);
+                log(`Error loading video: ${err.message}`, 'error');
+                showError('Error loading video: ' + err.message);
             }
         }
 
-        // Get video metadata using ffprobe
-        async function getVideoMetadata() {
-            let duration = 0;
-            fps = 30; // Default fallback
-
-            // Set up log callback to capture ffmpeg output
-            const logs = [];
-            ffmpeg.setLogger(({ message }) => {
-                logs.push(message);
-            });
-
-            try {
-                // Run ffmpeg to get video info (will fail but produces metadata in logs)
-                await ffmpeg.run('-i', 'input.video', '-f', 'null', '-');
-            } catch (e) {
-                // Expected to fail, we just need the logs
-            }
-
-            // Parse logs for duration and fps
-            const logText = logs.join('\n');
-
-            // Extract duration: "Duration: HH:MM:SS.ms"
-            const durationMatch = logText.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-            if (durationMatch) {
-                const hours = parseInt(durationMatch[1]);
-                const minutes = parseInt(durationMatch[2]);
-                const seconds = parseFloat(durationMatch[3]);
-                duration = hours * 3600 + minutes * 60 + seconds;
-            }
-
-            // Extract FPS: "XX fps" or "XX.XX fps" or "XX tbr"
-            const fpsMatch = logText.match(/(\d+\.?\d*)\s*fps/) || logText.match(/(\d+\.?\d*)\s*tbr/);
-            if (fpsMatch) {
-                fps = parseFloat(fpsMatch[1]);
-            }
-
-            // Calculate total frames
-            if (duration > 0 && fps > 0) {
-                totalFrames = Math.floor(duration * fps);
+        // Use File System Access API if available, otherwise fall back to file input
+        loadBtn.addEventListener('click', async () => {
+            if ('showOpenFilePicker' in window) {
+                console.log('[video-player] Using File System Access API (no file copy)');
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{
+                            description: 'Video files',
+                            accept: {
+                                'video/mp4': ['.mp4', '.m4v'],
+                                'video/quicktime': ['.mov'],
+                                'video/webm': ['.webm'],
+                            }
+                        }],
+                        multiple: false
+                    });
+                    await loadVideo(handle);
+                } catch (err) {
+                    // User cancelled or API error - fall back to file input
+                    if (err.name !== 'AbortError') {
+                        console.log('File System Access API failed, using fallback:', err);
+                        fileInput.click();
+                    }
+                }
             } else {
-                // Fallback: try to count frames (slow but accurate)
-                totalFrames = 1000; // Conservative fallback
+                // Browser doesn't support File System Access API
+                console.log('[video-player] File System Access API not available, using file input fallback');
+                fileInput.click();
             }
+        });
 
-            // Clear logger
-            ffmpeg.setLogger(({ message }) => {});
+        // Fallback file input handler
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            console.log('[video-player] Loading via file input fallback');
+            await loadVideo(file);
+        });
 
-            console.log(`Video metadata: ${duration.toFixed(2)}s, ${fps.toFixed(2)} fps, ${totalFrames} frames`);
-            updateMetrics();
-        }
+        // URL loading UI
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+        const urlInputContainer = document.getElementById('urlInputContainer');
+        const urlInput = document.getElementById('urlInput');
+        const urlLoadBtn = document.getElementById('urlLoadBtn');
+        const urlCancelBtn = document.getElementById('urlCancelBtn');
 
-        // Seek to specific frame
-        async function seekToFrame(frameIndex) {
-            // Clamp frame index
-            frameIndex = Math.max(0, Math.min(frameIndex, totalFrames - 1));
+        loadUrlBtn.addEventListener('click', () => {
+            urlInputContainer.style.display = 'flex';
+            urlInput.focus();
+        });
 
-            // Drop any pending request
-            if (pendingFrameRequest !== null) {
-                pendingFrameRequest = null;
-            }
+        urlCancelBtn.addEventListener('click', () => {
+            urlInputContainer.style.display = 'none';
+            urlInput.value = '';
+        });
 
-            // Store new request
-            pendingFrameRequest = frameIndex;
+        urlLoadBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (!url) return;
 
-            // If already processing a request, let it finish and pick up the new one
-            if (currentFrameRequest !== null) {
-                return;
-            }
-
-            // Process request
-            await processFrameRequest();
-        }
-
-        // Process frame request queue
-        async function processFrameRequest() {
-            while (pendingFrameRequest !== null) {
-                const requestedFrame = pendingFrameRequest;
-                pendingFrameRequest = null;
-                currentFrameRequest = requestedFrame;
-
-                // Check cache first
-                if (frameCache.has(requestedFrame)) {
-                    const cachedFrame = frameCache.get(requestedFrame);
-
-                    // Move to end (most recently used)
-                    frameCache.delete(requestedFrame);
-                    frameCache.set(requestedFrame, cachedFrame);
-
-                    currentFrame = requestedFrame;
-                    lastLoadTime = 0;
-                    lastDecodeTime = 0;
-
-                    const renderStart = performance.now();
-                    renderFrame(cachedFrame);
-                    lastRenderTime = performance.now() - renderStart;
-
-                    updateMetrics();
-                    updateSeekbar();
-                } else {
-                    // Load from video
-                    await loadFrame(requestedFrame);
-                }
-            }
-
-            currentFrameRequest = null;
-        }
-
-        // Load frame from video
-        async function loadFrame(frameIndex) {
-            const loadStart = performance.now();
+            urlInputContainer.style.display = 'none';
+            log(`Loading from URL: ${url}`, 'info');
 
             try {
-                // Extract specific frame using ffmpeg
-                if (fps <= 0) {
-                    throw new Error('Invalid FPS value');
-                }
-                const frameTime = frameIndex / fps;
-                await ffmpeg.run(
-                    '-ss', frameTime.toFixed(3),
-                    '-i', 'input.video',
-                    '-vframes', '1',
-                    '-f', 'image2',
-                    'frame.png'
-                );
+                await loadVideo(url);
+            } catch (err) {
+                log(`Failed to load URL: ${err.message}`, 'error');
+                showError('Failed to load URL: ' + err.message);
+            }
+        });
 
-                lastLoadTime = performance.now() - loadStart;
+        // Allow Enter key to submit URL
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                urlLoadBtn.click();
+            } else if (e.key === 'Escape') {
+                urlCancelBtn.click();
+            }
+        });
 
-                const decodeStart = performance.now();
+        // Seek to specific frame (with wraparound)
+        async function seekToFrame(frameIndex) {
+            if (!videoDecoder) return;
 
-                // Read frame data
-                const frameData = ffmpeg.FS('readFile', 'frame.png');
-                const blob = new Blob([frameData.buffer], { type: 'image/png' });
-                const img = await createImageBitmap(blob);
+            // Modulo wraparound for looping
+            if (totalFrames > 0) {
+                frameIndex = ((frameIndex % totalFrames) + totalFrames) % totalFrames;
+            }
 
-                lastDecodeTime = performance.now() - decodeStart;
+            const startTime = performance.now();
+            const result = await videoDecoder.getFrame(frameIndex);
+            lastSeekTime = performance.now() - startTime;
 
-                // Add to cache
-                addToCache(frameIndex, img);
-
-                // Render
+            // result can be null if a newer frame request superseded this one
+            if (result && result.bitmap) {
                 currentFrame = frameIndex;
-                const renderStart = performance.now();
-                renderFrame(img);
-                lastRenderTime = performance.now() - renderStart;
-
+                currentBitmap = result.bitmap;
+                renderFrame(currentBitmap);
                 updateMetrics();
                 updateSeekbar();
+                renderCacheVisualization();
 
-            } catch (err) {
-                console.error('Error loading frame:', err);
+                // Log seek performance (but not too verbose during playback)
+                if (!isPlaying) {
+                    const cacheStatus = videoDecoder.getCacheStatus();
+                    log(`Frame ${frameIndex}: ${result.fromCache ? 'cache hit' : 'decoded'} in ${lastSeekTime.toFixed(0)}ms (${cacheStatus.size}/${cacheStatus.maxSize} cached)`, result.fromCache ? 'success' : 'info');
+                }
             }
-        }
-
-        // Add frame to cache with MRU eviction
-        function addToCache(frameIndex, imageData) {
-            // Remove oldest if cache is full
-            if (frameCache.size >= maxCacheSize) {
-                const firstKey = frameCache.keys().next().value;
-                frameCache.delete(firstKey);
-            }
-
-            frameCache.set(frameIndex, imageData);
         }
 
         // Render frame to canvas
-        function renderFrame(imageData) {
-            // Set canvas size on first render
-            if (canvas.width === 0) {
-                canvas.width = imageData.width;
-                canvas.height = imageData.height;
+        function renderFrame(bitmap) {
+            if (!bitmap) return;
+
+            // Set canvas size on first render or if size changed
+            if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
             }
 
-            // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Apply transform
             ctx.save();
             ctx.translate(offsetX, offsetY);
             ctx.scale(scale, scale);
-
-            // Draw image
-            ctx.drawImage(imageData, 0, 0);
-
+            ctx.drawImage(bitmap, 0, 0);
             ctx.restore();
         }
 
         // Update metrics display
         function updateMetrics() {
             document.getElementById('metricFile').textContent = fileName;
+            document.getElementById('metricCodec').textContent = videoInfo ? videoInfo.codec : '-';
+            document.getElementById('metricRes').textContent = videoInfo ? `${videoInfo.width}x${videoInfo.height}` : '-';
             document.getElementById('metricFrame').textContent = currentFrame;
             document.getElementById('metricTotal').textContent = totalFrames;
             document.getElementById('metricFps').textContent = fps.toFixed(2);
-            document.getElementById('metricLoad').textContent = lastLoadTime.toFixed(1) + 'ms';
-            document.getElementById('metricDecode').textContent = lastDecodeTime.toFixed(1) + 'ms';
-            document.getElementById('metricRender').textContent = lastRenderTime.toFixed(1) + 'ms';
-            document.getElementById('metricCached').textContent = frameCache.size + '/' + maxCacheSize;
+            document.getElementById('metricSeek').textContent = lastSeekTime.toFixed(0) + 'ms';
+
+            const cacheStatus = videoDecoder ? videoDecoder.getCacheStatus() : { size: 0, maxSize: 0 };
+            document.getElementById('metricCached').textContent = `${cacheStatus.size}/${cacheStatus.maxSize}`;
+            document.getElementById('metricKeyframes').textContent = videoInfo ? videoInfo.keyframes : '-';
         }
 
         // Update seekbar position
@@ -558,7 +1331,7 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if (!videoData) return;
+            if (!videoDecoder) return;
 
             let delta = 0;
 
@@ -600,9 +1373,8 @@
             scale *= delta;
             scale = Math.max(0.1, Math.min(10, scale));
 
-            // Re-render current frame
-            if (frameCache.has(currentFrame)) {
-                renderFrame(frameCache.get(currentFrame));
+            if (currentBitmap) {
+                renderFrame(currentBitmap);
             }
         });
 
@@ -618,9 +1390,8 @@
                 offsetX = e.clientX - dragStartX;
                 offsetY = e.clientY - dragStartY;
 
-                // Re-render current frame
-                if (frameCache.has(currentFrame)) {
-                    renderFrame(frameCache.get(currentFrame));
+                if (currentBitmap) {
+                    renderFrame(currentBitmap);
                 }
             }
         });
@@ -634,8 +1405,8 @@
             scale = 1;
             offsetX = 0;
             offsetY = 0;
-            if (frameCache.has(currentFrame)) {
-                renderFrame(frameCache.get(currentFrame));
+            if (currentBitmap) {
+                renderFrame(currentBitmap);
             }
         });
 
@@ -649,68 +1420,60 @@
         }
 
         function startPlayback() {
+            if (!videoDecoder) return;
+
             isPlaying = true;
             playBtn.textContent = 'Pause';
+            log(`Playback started at frame ${currentFrame}`, 'info');
 
-            // Preload next frames
-            preloadFrames();
+            const interval = 1000 / fps;
 
-            // Play frames
-            playInterval = setInterval(() => {
-                if (currentFrame < totalFrames - 1) {
-                    seekToFrame(currentFrame + 1);
-                    preloadFrames();
-                } else {
-                    stopPlayback();
-                }
-            }, 1000 / fps);
+            playInterval = setInterval(async () => {
+                // Loop continuously - seekToFrame handles wraparound
+                await seekToFrame(currentFrame + 1);
+            }, interval);
         }
 
         function stopPlayback() {
+            const wasPlaying = isPlaying;
             isPlaying = false;
             playBtn.textContent = 'Play';
             if (playInterval) {
                 clearInterval(playInterval);
                 playInterval = null;
             }
-        }
-
-        // Preload future frames during playback
-        async function preloadFrames() {
-            const preloadCount = 5;
-            for (let i = 1; i <= preloadCount; i++) {
-                const futureFrame = currentFrame + i;
-                if (futureFrame < totalFrames && !frameCache.has(futureFrame)) {
-                    // Load in background (don't await)
-                    loadFrame(futureFrame).catch(err => console.error('Preload error:', err));
-                    break; // Load one at a time to avoid overwhelming
-                }
+            if (wasPlaying) {
+                log(`Playback stopped at frame ${currentFrame}`, 'info');
             }
         }
 
-        // Update buffer size
+        playBtn.addEventListener('click', togglePlayback);
+
+        // Update cache size
         bufferSizeInput.addEventListener('change', () => {
             const newSize = parseInt(bufferSizeInput.value);
-            if (newSize > 0 && newSize <= 500) {
-                maxCacheSize = newSize;
-
-                // Trim cache if needed
-                while (frameCache.size > maxCacheSize) {
-                    const firstKey = frameCache.keys().next().value;
-                    frameCache.delete(firstKey);
-                }
-
+            if (newSize >= 10 && newSize <= 500 && videoDecoder) {
+                videoDecoder.cacheSize = newSize;
+                log(`Cache size updated to ${newSize}`, 'info');
                 updateMetrics();
+                renderCacheVisualization();
             }
         });
 
-        // Button handlers
-        loadBtn.addEventListener('click', loadVideoFile);
-        playBtn.addEventListener('click', togglePlayback);
+        // Update lookahead size
+        lookaheadInput.addEventListener('change', () => {
+            const newSize = parseInt(lookaheadInput.value);
+            if (newSize >= 1 && newSize <= 100 && videoDecoder) {
+                videoDecoder.lookahead = newSize;
+                log(`Lookahead updated to ${newSize}`, 'info');
+            }
+        });
 
-        // Initialize on load
-        window.addEventListener('load', () => {
-            initFFmpeg();
+        // Re-render cache viz on window resize
+        window.addEventListener('resize', () => {
+            if (videoDecoder && totalFrames > 0) {
+                renderCacheVisualization();
+            }
         });
     </script>
 </body>
