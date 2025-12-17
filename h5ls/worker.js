@@ -52,17 +52,12 @@ function collectItems(group, prefix = '') {
                     const attrs = [];
                     try {
                         if (item.attrs) {
-                            // Debug: log what attrs looks like
-                            const allKeys = Object.keys(item.attrs);
-                            const ownKeys = Object.getOwnPropertyNames(item.attrs);
-                            log(`DEBUG ${path} attrs: keys=${JSON.stringify(allKeys.slice(0,10))}, ownProps=${JSON.stringify(ownKeys.slice(0,10))}`, 'info');
-
                             // h5wasm attrs is an object with attribute names as keys
                             const attrKeys = Object.keys(item.attrs).filter(k => !k.startsWith('_'));
                             attrs.push(...attrKeys);
                         }
                     } catch (e) {
-                        log(`Error reading attrs for ${path}: ${e.message}`, 'warn');
+                        // Attrs might not be available for some datasets
                     }
 
                     datasets.push({
