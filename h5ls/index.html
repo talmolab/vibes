@@ -68,22 +68,112 @@
             border-radius: 8px;
             padding: 15px;
             margin: 20px 0;
-            font-family: 'Courier New', monospace;
+            font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
             font-size: 13px;
-            max-height: 500px;
+            max-height: 600px;
             overflow-y: auto;
             display: none;
         }
         .tree-container.visible { display: block; }
-        .tree-item { margin: 4px 0; padding: 4px 8px; border-radius: 4px; }
-        .tree-item:hover { background: #1a1a1a; }
-        .tree-group { color: #fbbf24; }
-        .tree-dataset { color: #4ade80; }
-        .tree-indent { display: inline-block; }
-        .tree-shape { color: #667eea; }
-        .tree-dtype { color: #f472b6; }
-        .tree-size { color: #888; }
-        .tree-attrs { color: #06b6d4; font-size: 11px; }
+        .tree-group {
+            margin: 2px 0;
+        }
+        .tree-group > summary {
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            user-select: none;
+        }
+        .tree-group > summary::-webkit-details-marker { display: none; }
+        .tree-group > summary:hover { background: #1a1a1a; }
+        .tree-group > summary::before {
+            content: '▶';
+            font-size: 10px;
+            color: #666;
+            transition: transform 0.15s ease;
+            width: 12px;
+        }
+        .tree-group[open] > summary::before {
+            transform: rotate(90deg);
+        }
+        .tree-group-icon {
+            font-size: 14px;
+        }
+        .tree-group-name {
+            color: #fbbf24;
+            font-weight: 500;
+        }
+        .tree-group-meta {
+            color: #666;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        .tree-group-content {
+            margin-left: 20px;
+            border-left: 1px solid #333;
+            padding-left: 12px;
+        }
+        .tree-dataset {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            margin: 2px 0;
+        }
+        .tree-dataset:hover { background: #1a1a1a; }
+        .tree-dataset-icon {
+            font-size: 14px;
+            width: 12px;
+            text-align: center;
+        }
+        .tree-dataset-name {
+            color: #4ade80;
+            font-weight: 500;
+        }
+        .tree-shape {
+            color: #667eea;
+            background: #667eea20;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .tree-dtype {
+            color: #f472b6;
+            background: #f472b620;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .tree-size {
+            color: #888;
+            font-size: 11px;
+            margin-left: auto;
+        }
+        .tree-attrs {
+            color: #06b6d4;
+            font-size: 10px;
+            background: #06b6d420;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .tree-toolbar {
+            display: none;
+            gap: 8px;
+            margin: 20px 0 0 0;
+        }
+        .tree-toolbar.visible { display: flex; }
+        .toolbar-btn {
+            background: #333;
+            padding: 6px 12px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .toolbar-btn:hover { background: #444; }
         .diagnostic-console {
             background: #0a0a0a;
             border: 1px solid #333;
@@ -174,6 +264,10 @@
             </div>
         </div>
 
+        <div class="tree-toolbar" id="treeToolbar">
+            <button id="expandAllBtn" class="toolbar-btn">Expand All</button>
+            <button id="collapseAllBtn" class="toolbar-btn">Collapse All</button>
+        </div>
         <div class="tree-container" id="treeContainer"></div>
 
         <div class="diagnostic-console">
@@ -189,11 +283,20 @@
         const logBody = document.getElementById('logBody');
         const fileInfo = document.getElementById('fileInfo');
         const treeContainer = document.getElementById('treeContainer');
+        const treeToolbar = document.getElementById('treeToolbar');
         const loading = document.getElementById('loading');
         const loadingText = document.getElementById('loadingText');
         const urlContainer = document.getElementById('urlContainer');
         const urlInput = document.getElementById('urlInput');
         const fileInput = document.getElementById('fileInput');
+
+        // Expand/Collapse all
+        document.getElementById('expandAllBtn').addEventListener('click', () => {
+            treeContainer.querySelectorAll('details').forEach(d => d.open = true);
+        });
+        document.getElementById('collapseAllBtn').addEventListener('click', () => {
+            treeContainer.querySelectorAll('details').forEach(d => d.open = false);
+        });
 
         let worker = null;
 
@@ -299,8 +402,9 @@
             // Build tree view
             treeContainer.innerHTML = '';
             const tree = buildTree(data.datasets, data.groups);
-            renderTree(tree, treeContainer, 0);
+            renderTree(tree, treeContainer, 0, 1);
             treeContainer.classList.add('visible');
+            treeToolbar.classList.add('visible');
 
             log(`Loaded ${data.datasets.length} datasets and ${data.groups.length} groups`, 'success');
         }
@@ -338,45 +442,70 @@
             return root;
         }
 
-        function renderTree(node, container, depth) {
-            const indent = '  '.repeat(depth);
+        function countChildren(node) {
+            let datasets = node.items.length;
+            let groups = Object.keys(node.children).length;
+            for (const child of Object.values(node.children)) {
+                const counts = countChildren(child);
+                datasets += counts.datasets;
+                groups += counts.groups;
+            }
+            return { datasets, groups };
+        }
 
+        function renderTree(node, container, depth = 0, expandDepth = 1) {
             // Render child groups first
             const sortedGroups = Object.keys(node.children).sort();
             for (const name of sortedGroups) {
                 const child = node.children[name];
-                const div = document.createElement('div');
-                div.className = 'tree-item';
+                const counts = countChildren(child);
 
-                let html = `<span class="tree-indent">${indent}</span>`;
-                html += `<span class="tree-group">${name}/</span>`;
+                const details = document.createElement('details');
+                details.className = 'tree-group';
+                if (depth < expandDepth) details.open = true;
+
+                const summary = document.createElement('summary');
+                const meta = [];
+                if (counts.datasets > 0) meta.push(`${counts.datasets} dataset${counts.datasets !== 1 ? 's' : ''}`);
+                if (counts.groups > 0) meta.push(`${counts.groups} group${counts.groups !== 1 ? 's' : ''}`);
+
+                let summaryHTML = `<span class="tree-group-icon">📁</span>`;
+                summaryHTML += `<span class="tree-group-name">${name}</span>`;
                 if (child.attrs && child.attrs.length > 0) {
-                    html += ` <span class="tree-attrs">[attrs: ${child.attrs.join(', ')}]</span>`;
+                    summaryHTML += `<span class="tree-attrs">${child.attrs.length} attr${child.attrs.length !== 1 ? 's' : ''}</span>`;
                 }
-                div.innerHTML = html;
-                container.appendChild(div);
+                if (meta.length > 0) {
+                    summaryHTML += `<span class="tree-group-meta">${meta.join(', ')}</span>`;
+                }
+                summary.innerHTML = summaryHTML;
+                details.appendChild(summary);
 
-                renderTree(child, container, depth + 1);
+                const content = document.createElement('div');
+                content.className = 'tree-group-content';
+                renderTree(child, content, depth + 1, expandDepth);
+                details.appendChild(content);
+
+                container.appendChild(details);
             }
 
             // Render datasets
             const sortedItems = node.items.sort((a, b) => a.name.localeCompare(b.name));
             for (const item of sortedItems) {
                 const div = document.createElement('div');
-                div.className = 'tree-item';
+                div.className = 'tree-dataset';
 
                 const dtype = formatDtype(item.dtype);
-                const shape = item.shape.length > 0 ? `[${item.shape.join(', ')}]` : '[]';
-                const size = item.size > 0 ? ` (${item.size.toLocaleString()} elements)` : '';
+                const shape = item.shape.length > 0 ? `[${item.shape.join(', ')}]` : 'scalar';
+                const size = item.size > 0 ? `${item.size.toLocaleString()} el` : '';
 
-                let html = `<span class="tree-indent">${indent}</span>`;
-                html += `<span class="tree-dataset">${item.name}</span>`;
-                html += ` <span class="tree-shape">${shape}</span>`;
-                html += ` <span class="tree-dtype">${dtype}</span>`;
-                html += `<span class="tree-size">${size}</span>`;
+                let html = `<span class="tree-dataset-icon">📊</span>`;
+                html += `<span class="tree-dataset-name">${item.name}</span>`;
+                html += `<span class="tree-shape">${shape}</span>`;
+                html += `<span class="tree-dtype">${dtype}</span>`;
                 if (item.attrs && item.attrs.length > 0) {
-                    html += ` <span class="tree-attrs">[attrs: ${item.attrs.join(', ')}]</span>`;
+                    html += `<span class="tree-attrs">${item.attrs.length} attr${item.attrs.length !== 1 ? 's' : ''}</span>`;
                 }
+                if (size) html += `<span class="tree-size">${size}</span>`;
                 div.innerHTML = html;
                 container.appendChild(div);
             }
