@@ -62,19 +62,116 @@
         .file-info.visible { display: block; }
         .file-info h2 { margin: 0 0 10px 0; color: #667eea; font-size: 16px; }
         .file-meta { color: #aaa; font-size: 14px; }
+        .main-content {
+            display: none;
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .main-content.visible { display: flex; }
+        .tree-panel {
+            flex: 1;
+            min-width: 0;
+        }
         .tree-container {
             background: #0a0a0a;
             border: 1px solid #333;
             border-radius: 8px;
             padding: 15px;
-            margin: 20px 0;
             font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
             font-size: 13px;
-            max-height: 600px;
+            max-height: 500px;
             overflow-y: auto;
-            display: none;
         }
-        .tree-container.visible { display: block; }
+        .detail-panel {
+            width: 380px;
+            flex-shrink: 0;
+            background: #0a0a0a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .detail-panel-empty {
+            padding: 40px 20px;
+            text-align: center;
+            color: #666;
+        }
+        .detail-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid #333;
+            background: #151515;
+            border-radius: 8px 8px 0 0;
+            position: sticky;
+            top: 0;
+        }
+        .detail-header h3 {
+            margin: 0;
+            font-size: 14px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .detail-header .path {
+            font-size: 11px;
+            color: #666;
+            font-family: 'SF Mono', monospace;
+            margin-top: 4px;
+        }
+        .detail-section {
+            padding: 12px 16px;
+            border-bottom: 1px solid #222;
+        }
+        .detail-section:last-child { border-bottom: none; }
+        .detail-section h4 {
+            margin: 0 0 8px 0;
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .detail-meta {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 12px;
+            font-size: 12px;
+        }
+        .detail-meta dt { color: #888; }
+        .detail-meta dd { margin: 0; color: #e0e0e0; font-family: 'SF Mono', monospace; }
+        .attr-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .attr-item {
+            background: #1a1a1a;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+        .attr-name {
+            font-size: 12px;
+            color: #06b6d4;
+            font-weight: 500;
+            margin-bottom: 4px;
+        }
+        .attr-value {
+            font-size: 11px;
+            color: #e0e0e0;
+            font-family: 'SF Mono', monospace;
+            word-break: break-all;
+            white-space: pre-wrap;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+        .attr-dtype {
+            font-size: 10px;
+            color: #666;
+            margin-top: 4px;
+        }
+        @media (max-width: 900px) {
+            .main-content { flex-direction: column; }
+            .detail-panel { width: 100%; max-height: 300px; }
+        }
         .tree-group {
             margin: 2px 0;
         }
@@ -124,8 +221,13 @@
             padding: 6px 10px;
             border-radius: 6px;
             margin: 2px 0;
+            cursor: pointer;
         }
         .tree-dataset:hover { background: #1a1a1a; }
+        .tree-dataset.selected, .tree-group > summary.selected {
+            background: #667eea30;
+            outline: 1px solid #667eea50;
+        }
         .tree-dataset-icon {
             font-size: 14px;
             width: 12px;
@@ -161,6 +263,7 @@
             padding: 2px 6px;
             border-radius: 4px;
         }
+        .tree-group > summary { cursor: pointer; }
         .tree-toolbar {
             display: none;
             gap: 8px;
@@ -268,7 +371,14 @@
             <button id="expandAllBtn" class="toolbar-btn">Expand All</button>
             <button id="collapseAllBtn" class="toolbar-btn">Collapse All</button>
         </div>
-        <div class="tree-container" id="treeContainer"></div>
+        <div class="main-content" id="mainContent">
+            <div class="tree-panel">
+                <div class="tree-container" id="treeContainer"></div>
+            </div>
+            <div class="detail-panel" id="detailPanel">
+                <div class="detail-panel-empty">Click a dataset or group to view details</div>
+            </div>
+        </div>
 
         <div class="diagnostic-console">
             <div class="diagnostic-console-header">
@@ -284,6 +394,8 @@
         const fileInfo = document.getElementById('fileInfo');
         const treeContainer = document.getElementById('treeContainer');
         const treeToolbar = document.getElementById('treeToolbar');
+        const mainContent = document.getElementById('mainContent');
+        const detailPanel = document.getElementById('detailPanel');
         const loading = document.getElementById('loading');
         const loadingText = document.getElementById('loadingText');
         const urlContainer = document.getElementById('urlContainer');
@@ -299,6 +411,7 @@
         });
 
         let worker = null;
+        let currentData = null; // Store full data for detail lookup
 
         function log(msg, level = 'info') {
             const time = new Date().toLocaleTimeString('en-US', {
@@ -391,6 +504,8 @@
         }
 
         function displayResults(data) {
+            currentData = data; // Store for detail lookup
+
             // Update file info
             document.getElementById('fileName').textContent = data.filename;
             document.getElementById('fileSize').textContent = formatBytes(data.fileSize);
@@ -403,10 +518,62 @@
             treeContainer.innerHTML = '';
             const tree = buildTree(data.datasets, data.groups);
             renderTree(tree, treeContainer, 0, 1);
-            treeContainer.classList.add('visible');
+            mainContent.classList.add('visible');
             treeToolbar.classList.add('visible');
 
+            // Reset detail panel
+            detailPanel.innerHTML = '<div class="detail-panel-empty">Click a dataset or group to view details</div>';
+
             log(`Loaded ${data.datasets.length} datasets and ${data.groups.length} groups`, 'success');
+        }
+
+        function showDetail(type, path, item) {
+            // Clear selection
+            treeContainer.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+
+            // Build detail HTML
+            let html = '<div class="detail-header">';
+            html += `<h3>${type === 'group' ? '📁' : '📊'} ${path.split('/').pop() || '/'}</h3>`;
+            html += `<div class="path">/${path}</div>`;
+            html += '</div>';
+
+            if (type === 'dataset') {
+                html += '<div class="detail-section"><h4>Properties</h4>';
+                html += '<dl class="detail-meta">';
+                html += `<dt>Shape</dt><dd>[${item.shape.join(', ')}]</dd>`;
+                html += `<dt>Dtype</dt><dd>${formatDtype(item.dtype)}</dd>`;
+                html += `<dt>Size</dt><dd>${item.size.toLocaleString()} elements</dd>`;
+                html += '</dl></div>';
+            }
+
+            if (item.attrs && item.attrs.length > 0) {
+                html += '<div class="detail-section"><h4>Attributes</h4>';
+                html += '<div class="attr-list">';
+                for (const attr of item.attrs) {
+                    html += '<div class="attr-item">';
+                    html += `<div class="attr-name">${attr.name}</div>`;
+                    html += `<div class="attr-value">${formatAttrValue(attr.value)}</div>`;
+                    html += `<div class="attr-dtype">${attr.dtype}${attr.shape?.length ? ' [' + attr.shape.join(', ') + ']' : ''}</div>`;
+                    html += '</div>';
+                }
+                html += '</div></div>';
+            } else {
+                html += '<div class="detail-section"><h4>Attributes</h4><div style="color:#666;font-size:12px;">No attributes</div></div>';
+            }
+
+            detailPanel.innerHTML = html;
+        }
+
+        function formatAttrValue(value) {
+            if (value === null || value === undefined) return '<null>';
+            if (Array.isArray(value)) {
+                if (value.length > 20) {
+                    return JSON.stringify(value.slice(0, 20), null, 2).replace(']', ', ...]');
+                }
+                return JSON.stringify(value, null, 2);
+            }
+            if (typeof value === 'object') return JSON.stringify(value, null, 2);
+            return String(value);
         }
 
         function buildTree(datasets, groups) {
@@ -453,12 +620,13 @@
             return { datasets, groups };
         }
 
-        function renderTree(node, container, depth = 0, expandDepth = 1) {
+        function renderTree(node, container, depth = 0, expandDepth = 1, parentPath = '') {
             // Render child groups first
             const sortedGroups = Object.keys(node.children).sort();
             for (const name of sortedGroups) {
                 const child = node.children[name];
                 const counts = countChildren(child);
+                const groupPath = parentPath ? `${parentPath}/${name}` : name;
 
                 const details = document.createElement('details');
                 details.className = 'tree-group';
@@ -472,17 +640,26 @@
                 let summaryHTML = `<span class="tree-group-icon">📁</span>`;
                 summaryHTML += `<span class="tree-group-name">${name}</span>`;
                 if (child.attrs && child.attrs.length > 0) {
-                    summaryHTML += `<span class="tree-attrs" title="${child.attrs.join(', ')}">${child.attrs.join(', ')}</span>`;
+                    summaryHTML += `<span class="tree-attrs">📋 ${child.attrs.length}</span>`;
                 }
                 if (meta.length > 0) {
                     summaryHTML += `<span class="tree-group-meta">${meta.join(', ')}</span>`;
                 }
                 summary.innerHTML = summaryHTML;
+
+                // Click handler for groups (prevent toggle on click)
+                summary.addEventListener('click', (e) => {
+                    if (!e.target.closest('.tree-group-icon')) {
+                        summary.classList.add('selected');
+                        showDetail('group', groupPath, { attrs: child.attrs });
+                    }
+                });
+
                 details.appendChild(summary);
 
                 const content = document.createElement('div');
                 content.className = 'tree-group-content';
-                renderTree(child, content, depth + 1, expandDepth);
+                renderTree(child, content, depth + 1, expandDepth, groupPath);
                 details.appendChild(content);
 
                 container.appendChild(details);
@@ -493,6 +670,7 @@
             for (const item of sortedItems) {
                 const div = document.createElement('div');
                 div.className = 'tree-dataset';
+                const datasetPath = parentPath ? `${parentPath}/${item.name}` : item.name;
 
                 const dtype = formatDtype(item.dtype);
                 const shape = item.shape.length > 0 ? `[${item.shape.join(', ')}]` : 'scalar';
@@ -503,10 +681,17 @@
                 html += `<span class="tree-shape">${shape}</span>`;
                 html += `<span class="tree-dtype">${dtype}</span>`;
                 if (item.attrs && item.attrs.length > 0) {
-                    html += `<span class="tree-attrs" title="${item.attrs.join(', ')}">${item.attrs.join(', ')}</span>`;
+                    html += `<span class="tree-attrs">📋 ${item.attrs.length}</span>`;
                 }
                 if (size) html += `<span class="tree-size">${size}</span>`;
                 div.innerHTML = html;
+
+                // Click handler for datasets
+                div.addEventListener('click', () => {
+                    div.classList.add('selected');
+                    showDetail('dataset', datasetPath, item);
+                });
+
                 container.appendChild(div);
             }
         }

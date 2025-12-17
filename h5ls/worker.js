@@ -48,13 +48,24 @@ function collectItems(group, prefix = '') {
                 const item = group.get(key);
 
                 if (item.type === 'Dataset') {
-                    // Collect attributes
+                    // Collect attributes with values
                     const attrs = [];
                     try {
                         if (item.attrs) {
-                            // h5wasm attrs is an object with attribute names as keys
                             const attrKeys = Object.keys(item.attrs).filter(k => !k.startsWith('_'));
-                            attrs.push(...attrKeys);
+                            for (const key of attrKeys) {
+                                try {
+                                    const attr = item.attrs[key];
+                                    attrs.push({
+                                        name: key,
+                                        value: attr.value,
+                                        dtype: attr.dtype,
+                                        shape: attr.shape
+                                    });
+                                } catch (e) {
+                                    attrs.push({ name: key, value: null, dtype: 'unknown', shape: [] });
+                                }
+                            }
                         }
                     } catch (e) {
                         // Attrs might not be available for some datasets
@@ -68,15 +79,27 @@ function collectItems(group, prefix = '') {
                         attrs
                     });
                 } else if (item.type === 'Group') {
-                    // Collect group attributes
+                    // Collect group attributes with values
                     const attrs = [];
                     try {
                         if (item.attrs) {
                             const attrKeys = Object.keys(item.attrs).filter(k => !k.startsWith('_'));
-                            attrs.push(...attrKeys);
+                            for (const key of attrKeys) {
+                                try {
+                                    const attr = item.attrs[key];
+                                    attrs.push({
+                                        name: key,
+                                        value: attr.value,
+                                        dtype: attr.dtype,
+                                        shape: attr.shape
+                                    });
+                                } catch (e) {
+                                    attrs.push({ name: key, value: null, dtype: 'unknown', shape: [] });
+                                }
+                            }
                         }
                     } catch (e) {
-                        log(`Error reading group attrs for ${path}: ${e.message}`, 'warn');
+                        // Attrs might not be available
                     }
 
                     groups.push({ path, attrs });
