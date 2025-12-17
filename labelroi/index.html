@@ -2263,6 +2263,37 @@
                     break;
             }
         });
+
+        // Handle window resize to keep ROI annotations aligned
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            // Debounce resize events
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (!videoDecoder || !videoInfo) return;
+
+                // Recalculate display size based on new container width
+                const containerWidth = canvasContainer.parentElement.clientWidth - 40;
+                const aspectRatio = videoInfo.height / videoInfo.width;
+                const displayWidth = Math.min(containerWidth, videoInfo.width);
+                const displayHeight = displayWidth * aspectRatio;
+
+                // Update video canvas size
+                setupCanvas(videoCanvas, displayWidth, displayHeight);
+                videoCanvas.logicalWidth = displayWidth;
+                videoCanvas.logicalHeight = displayHeight;
+
+                // Update container height
+                canvasContainer.style.height = displayHeight + 'px';
+
+                // Update ROI canvas to match new container size
+                setupROICanvas();
+
+                // Update transform and re-render
+                updateCanvasTransform();
+                renderFrame();
+            }, 100);
+        });
     </script>
 </body>
 </html>
