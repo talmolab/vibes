@@ -472,7 +472,7 @@
                 let summaryHTML = `<span class="tree-group-icon">📁</span>`;
                 summaryHTML += `<span class="tree-group-name">${name}</span>`;
                 if (child.attrs && child.attrs.length > 0) {
-                    summaryHTML += `<span class="tree-attrs">${child.attrs.length} attr${child.attrs.length !== 1 ? 's' : ''}</span>`;
+                    summaryHTML += `<span class="tree-attrs" title="${child.attrs.join(', ')}">${child.attrs.join(', ')}</span>`;
                 }
                 if (meta.length > 0) {
                     summaryHTML += `<span class="tree-group-meta">${meta.join(', ')}</span>`;
@@ -503,7 +503,7 @@
                 html += `<span class="tree-shape">${shape}</span>`;
                 html += `<span class="tree-dtype">${dtype}</span>`;
                 if (item.attrs && item.attrs.length > 0) {
-                    html += `<span class="tree-attrs">${item.attrs.length} attr${item.attrs.length !== 1 ? 's' : ''}</span>`;
+                    html += `<span class="tree-attrs" title="${item.attrs.join(', ')}">${item.attrs.join(', ')}</span>`;
                 }
                 if (size) html += `<span class="tree-size">${size}</span>`;
                 div.innerHTML = html;
