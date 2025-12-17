@@ -75,7 +75,7 @@ function collectItems(group, prefix = '') {
                         path,
                         shape: item.shape || [],
                         dtype: item.dtype || 'unknown',
-                        size: item.size || 0,
+                        size: item.metadata?.total_size || 0,
                         attrs
                     });
                 } else if (item.type === 'Group') {
