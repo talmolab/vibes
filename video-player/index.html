@@ -234,6 +234,7 @@
     <script>
         // Global state
         let ffmpeg = null;
+        let ffmpegLoaded = false;
         let videoData = null;
         let currentFrame = 0;
         let totalFrames = 0;
@@ -280,7 +281,11 @@
 
         // Initialize ffmpeg
         async function initFFmpeg() {
+            if (ffmpegLoaded) return;
+
             loadingDiv.style.display = 'block';
+            loadBtn.disabled = true;
+
             const { FFmpeg } = FFmpegWASM;
             const { toBlobURL } = FFmpegUtil;
 
@@ -292,13 +297,20 @@
                 wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
             });
 
+            ffmpegLoaded = true;
             loadingDiv.style.display = 'none';
+            loadBtn.disabled = false;
             console.log('FFmpeg loaded');
         }
 
         // Load video file using File System Access API
         async function loadVideoFile() {
             try {
+                // Ensure ffmpeg is loaded
+                if (!ffmpegLoaded) {
+                    await initFFmpeg();
+                }
+
                 const [fileHandle] = await window.showOpenFilePicker({
                     types: [{
                         description: 'Video Files',
@@ -342,26 +354,52 @@
 
         // Get video metadata using ffprobe
         async function getVideoMetadata() {
-            // Extract one frame to get dimensions and calculate FPS
-            await ffmpeg.exec(['-i', 'input.video', '-vframes', '1', '-f', 'image2', 'probe.png']);
+            let duration = 0;
+            fps = 30; // Default fallback
 
-            // Get FPS using ffprobe-like approach
-            // For simplicity, we'll assume 30fps if we can't detect it
-            // A more robust approach would parse ffmpeg output
-            fps = 30; // Default
+            // Set up log callback to capture ffmpeg output
+            const logs = [];
+            ffmpeg.on('log', ({ message }) => {
+                logs.push(message);
+            });
 
-            // Try to get actual FPS by extracting a few frames
             try {
-                await ffmpeg.exec(['-i', 'input.video', '-vf', 'select=eq(n\\,0)', '-vsync', '0', '-f', 'null', '-']);
+                // Run ffmpeg to get video info (will fail but produces metadata in logs)
+                await ffmpeg.exec(['-i', 'input.video', '-f', 'null', '-']);
             } catch (e) {
-                // Ignore errors
+                // Expected to fail, we just need the logs
             }
 
-            // Get duration and calculate total frames
-            // This is a simplified approach - extracting all frames to count them
-            // would be too slow, so we estimate
-            totalFrames = 1000; // Placeholder - in real implementation, parse duration from ffmpeg
+            // Parse logs for duration and fps
+            const logText = logs.join('\n');
 
+            // Extract duration: "Duration: HH:MM:SS.ms"
+            const durationMatch = logText.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+            if (durationMatch) {
+                const hours = parseInt(durationMatch[1]);
+                const minutes = parseInt(durationMatch[2]);
+                const seconds = parseFloat(durationMatch[3]);
+                duration = hours * 3600 + minutes * 60 + seconds;
+            }
+
+            // Extract FPS: "XX fps" or "XX.XX fps" or "XX tbr"
+            const fpsMatch = logText.match(/(\d+\.?\d*)\s*fps/) || logText.match(/(\d+\.?\d*)\s*tbr/);
+            if (fpsMatch) {
+                fps = parseFloat(fpsMatch[1]);
+            }
+
+            // Calculate total frames
+            if (duration > 0 && fps > 0) {
+                totalFrames = Math.floor(duration * fps);
+            } else {
+                // Fallback: try to count frames (slow but accurate)
+                totalFrames = 1000; // Conservative fallback
+            }
+
+            // Remove log listener
+            ffmpeg.off('log');
+
+            console.log(`Video metadata: ${duration.toFixed(2)}s, ${fps.toFixed(2)} fps, ${totalFrames} frames`);
             updateMetrics();
         }
 
@@ -427,6 +465,9 @@
 
             try {
                 // Extract specific frame using ffmpeg
+                if (fps <= 0) {
+                    throw new Error('Invalid FPS value');
+                }
                 const frameTime = frameIndex / fps;
                 await ffmpeg.exec([
                     '-ss', frameTime.toFixed(3),
