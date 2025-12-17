@@ -485,7 +485,7 @@
         function initWorker() {
             if (worker) worker.terminate();
 
-            worker = new Worker('./worker.js');
+            worker = new Worker('./worker.js?v=1');
 
             worker.onmessage = (e) => {
                 const { type, data } = e.data;
