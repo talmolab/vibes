@@ -12,6 +12,7 @@ Inspired by [simonw/tools](https://github.com/simonw/tools) and the [vibe coding
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
+- [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 
 ---
 
