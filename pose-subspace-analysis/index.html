@@ -273,6 +273,7 @@
         let pcaModel = null;
         let currentLandmarks = null;
         let frameColors = []; // Store colors for each frame
+        let cachedProjections = null; // Cache PCA projections to avoid recomputation
 
         // Generate distinct color for a frame index
         function generateFrameColor(index) {
@@ -313,9 +314,7 @@
                         delegate: 'GPU'
                     },
                     runningMode: 'VIDEO',
-                    numFaces: 1,
-                    outputFaceBlendshapes: false,
-                    outputFacialTransformationMatrices: false
+                    numFaces: 1
                 });
 
                 status.textContent = 'Models loaded. Click "Start Camera" to begin.';
@@ -579,6 +578,13 @@
             const explainedVariance = eigenvalues.map(ev => 100 * ev / totalVariance);
 
             pcaModel = { mean, components, explainedVariance };
+
+            // Cache projections to avoid recomputation
+            cachedProjections = capturedFrames.map(f => {
+                const features = computeFeatures(f.landmarks);
+                return projectToPCA(features, pcaModel);
+            });
+
             pcaStatus.textContent = `PCA computed with ${capturedFrames.length} frames`;
             drawPCAPlot(null);
         }
@@ -634,13 +640,10 @@
             const height = plotCanvas.height = plotCanvas.offsetHeight;
             plotCtx.clearRect(0, 0, width, height);
 
-            if (!pcaModel || capturedFrames.length < 3) return;
+            if (!pcaModel || capturedFrames.length < 3 || !cachedProjections) return;
 
-            // Project all captured frames
-            const projected = capturedFrames.map(f => {
-                const features = computeFeatures(f.landmarks);
-                return projectToPCA(features, pcaModel);
-            });
+            // Use cached projections instead of recomputing
+            const projected = cachedProjections;
 
             // Find bounds
             const xValues = projected.map(p => p[0]);
@@ -700,50 +703,13 @@
                 plotCtx.arc(scaleX(livePoint[0]), scaleY(livePoint[1]), 8, 0, 2 * Math.PI);
                 plotCtx.fill();
             }
-
-            // Handle hover
-            plotCanvas.onmousemove = (e) => {
-                const rect = plotCanvas.getBoundingClientRect();
-                const scaleRatioX = width / rect.width;
-                const scaleRatioY = height / rect.height;
-                const mx = (e.clientX - rect.left) * scaleRatioX;
-                const my = (e.clientY - rect.top) * scaleRatioY;
-
-                for (let i = 0; i < projected.length; i++) {
-                    const x = scaleX(projected[i][0]);
-                    const y = scaleY(projected[i][1]);
-                    const dist = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
-
-                    if (dist < 15) {
-                        tooltip.innerHTML = '';
-                        const img = document.createElement('img');
-                        img.src = capturedFrames[i].imageData;
-                        const div = document.createElement('div');
-                        div.textContent = `Frame ${i + 1}`;
-                        tooltip.appendChild(img);
-                        tooltip.appendChild(div);
-                        tooltip.style.display = 'block';
-                        tooltip.style.left = (e.pageX + 15) + 'px';
-                        tooltip.style.top = (e.pageY + 15) + 'px';
-                        return;
-                    }
-                }
-                tooltip.style.display = 'none';
-            };
-
-            plotCanvas.onmouseleave = () => {
-                tooltip.style.display = 'none';
-            };
         }
 
         function findClosestFrame(liveProjected) {
-            if (!pcaModel || capturedFrames.length === 0) return -1;
+            if (!pcaModel || capturedFrames.length === 0 || !cachedProjections) return -1;
 
-            // Project all captured frames
-            const projected = capturedFrames.map(f => {
-                const features = computeFeatures(f.landmarks);
-                return projectToPCA(features, pcaModel);
-            });
+            // Use cached projections instead of recomputing
+            const projected = cachedProjections;
 
             // Find closest by Euclidean distance
             let minDist = Infinity;
@@ -826,6 +792,62 @@
             faceLandmarker = null;
             if (wasRunning) await startCamera();
             else await initLandmarkers();
+        });
+
+        // Set up plot hover handlers once (not in draw loop to prevent memory leak)
+        plotCanvas.addEventListener('mousemove', (e) => {
+            if (!pcaModel || !cachedProjections || capturedFrames.length < 3) {
+                tooltip.style.display = 'none';
+                return;
+            }
+
+            const rect = plotCanvas.getBoundingClientRect();
+            const width = plotCanvas.width;
+            const height = plotCanvas.height;
+            const scaleRatioX = width / rect.width;
+            const scaleRatioY = height / rect.height;
+            const mx = (e.clientX - rect.left) * scaleRatioX;
+            const my = (e.clientY - rect.top) * scaleRatioY;
+
+            // Calculate scaling functions based on current data bounds
+            const xValues = cachedProjections.map(p => p[0]);
+            const yValues = cachedProjections.map(p => p[1]);
+            const xMin = Math.min(...xValues);
+            const xMax = Math.max(...xValues);
+            const yMin = Math.min(...yValues);
+            const yMax = Math.max(...yValues);
+            const xRange = xMax - xMin || 1;
+            const yRange = yMax - yMin || 1;
+            const margin = 50;
+
+            const scaleX = (x) => margin + ((x - xMin) / xRange) * (width - 2 * margin);
+            const scaleY = (y) => height - margin - ((y - yMin) / yRange) * (height - 2 * margin);
+
+            // Check if hovering over any point
+            for (let i = 0; i < cachedProjections.length; i++) {
+                const x = scaleX(cachedProjections[i][0]);
+                const y = scaleY(cachedProjections[i][1]);
+                const dist = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
+
+                if (dist < 15) {
+                    tooltip.replaceChildren();
+                    const img = document.createElement('img');
+                    img.src = capturedFrames[i].imageData;
+                    const div = document.createElement('div');
+                    div.textContent = `Frame ${i + 1}`;
+                    tooltip.appendChild(img);
+                    tooltip.appendChild(div);
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.pageX + 15) + 'px';
+                    tooltip.style.top = (e.pageY + 15) + 'px';
+                    return;
+                }
+            }
+            tooltip.style.display = 'none';
+        });
+
+        plotCanvas.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
         });
 
         initLandmarkers();
