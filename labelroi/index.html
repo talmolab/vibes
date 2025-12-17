@@ -358,8 +358,8 @@
                 <div class="canvas-container" id="canvasContainer" style="display: none;">
                     <div class="canvas-wrapper" id="canvasWrapper">
                         <canvas id="videoCanvas"></canvas>
-                        <canvas id="roiCanvas"></canvas>
                     </div>
+                    <canvas id="roiCanvas"></canvas>
                 </div>
 
                 <div class="zoom-controls" id="zoomControls" style="display: none;">
@@ -1081,6 +1081,25 @@
             return ctx;
         }
 
+        // Setup ROI canvas to cover the full container at native resolution
+        function setupROICanvas() {
+            const containerRect = canvasContainer.getBoundingClientRect();
+            const width = containerRect.width;
+            const height = containerRect.height;
+            const dpr = window.devicePixelRatio || 1;
+
+            roiCanvas.width = width * dpr;
+            roiCanvas.height = height * dpr;
+            roiCanvas.style.width = width + 'px';
+            roiCanvas.style.height = height + 'px';
+
+            // Store container dimensions for coordinate mapping
+            roiCanvas.containerWidth = width;
+            roiCanvas.containerHeight = height;
+
+            roiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
         // Load video function
         async function loadVideo(source) {
             const fileName = typeof source === 'string'
@@ -1121,9 +1140,8 @@
                 const displayWidth = Math.min(containerWidth, info.width);
                 const displayHeight = displayWidth * aspectRatio;
 
-                // Setup canvases with high-DPI support
+                // Setup video canvas with high-DPI support
                 setupCanvas(videoCanvas, displayWidth, displayHeight);
-                setupCanvas(roiCanvas, displayWidth, displayHeight);
 
                 // Store logical size
                 videoCanvas.logicalWidth = displayWidth;
@@ -1132,11 +1150,14 @@
                 // Set container height to match canvas
                 canvasContainer.style.height = displayHeight + 'px';
 
+                // Show container first so it has dimensions
+                canvasContainer.style.display = 'flex';
+
+                // Setup ROI canvas to cover the full container (for crisp annotations)
+                setupROICanvas();
+
                 // Apply initial transform
                 updateCanvasTransform();
-
-                // Show UI
-                canvasContainer.style.display = 'flex';
                 seekbarContainer.style.display = 'block';
                 metricsDiv.style.display = 'block';
                 zoomControls.style.display = 'flex';
@@ -1229,6 +1250,9 @@
             // Pan is relative to the zoomed coordinate system
             canvasWrapper.style.transformOrigin = `${centerX}px ${centerY}px`;
             canvasWrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+
+            // Re-render ROIs at native resolution with new transform
+            renderROIs();
         }
 
         // Convert screen coordinates to video coordinates
@@ -1248,14 +1272,35 @@
             return { x: videoX, y: videoY };
         }
 
-        // Convert video coordinates to canvas logical coordinates (for drawing ROIs)
+        // Convert video coordinates to ROI canvas coordinates (applying zoom/pan)
         function videoToCanvas(videoX, videoY) {
             const logicalWidth = videoCanvas.logicalWidth;
             const logicalHeight = videoCanvas.logicalHeight;
-            // Simple mapping - zoom/pan is handled by CSS transform
+            const containerWidth = roiCanvas.containerWidth;
+            const containerHeight = roiCanvas.containerHeight;
+
+            // First map video coords to logical canvas coords
             const canvasX = videoX / videoWidth * logicalWidth;
             const canvasY = videoY / videoHeight * logicalHeight;
-            return { x: canvasX, y: canvasY };
+
+            // Apply zoom and pan to get position in container
+            // The video canvas center is at (logicalWidth/2, logicalHeight/2)
+            // After zoom, the center moves by panX, panY
+            const centerX = logicalWidth / 2;
+            const centerY = logicalHeight / 2;
+
+            // Transform: translate to origin, scale, translate back, then pan
+            const scaledX = (canvasX - centerX) * zoom + centerX + panX;
+            const scaledY = (canvasY - centerY) * zoom + centerY + panY;
+
+            // Offset by the wrapper's position within the container (centered)
+            const wrapperOffsetX = (containerWidth - logicalWidth) / 2;
+            const wrapperOffsetY = (containerHeight - logicalHeight) / 2;
+
+            return {
+                x: scaledX + wrapperOffsetX,
+                y: scaledY + wrapperOffsetY
+            };
         }
 
         // Render video frame (no zoom/pan - handled by CSS)
@@ -1278,12 +1323,12 @@
 
         // Render ROIs on overlay canvas
         function renderROIs() {
-            const logicalWidth = videoCanvas.logicalWidth;
-            const logicalHeight = videoCanvas.logicalHeight;
+            const containerWidth = roiCanvas.containerWidth || videoCanvas.logicalWidth;
+            const containerHeight = roiCanvas.containerHeight || videoCanvas.logicalHeight;
             const dpr = window.devicePixelRatio || 1;
 
             roiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            roiCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+            roiCtx.clearRect(0, 0, containerWidth, containerHeight);
 
             // Draw completed ROIs
             for (let i = 0; i < roiManager.rois.length; i++) {
