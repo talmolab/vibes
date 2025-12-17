@@ -563,7 +563,7 @@
         function initWorker() {
             if (worker) worker.terminate();
 
-            worker = new Worker('./worker.js?v=9');
+            worker = new Worker('./worker.js?v=10');
 
             worker.onmessage = (e) => {
                 const { type, data } = e.data;
@@ -877,6 +877,12 @@
         function loadFromUrl(url) {
             urlContainer.classList.remove('visible');
             log(`Loading from URL: ${url}`, 'info');
+
+            // Update browser URL without refresh
+            const newUrl = new URL(window.location.href);
+            newUrl.searchParams.set('url', url);
+            history.pushState({ url }, '', newUrl);
+
             initWorker();
             showLoading('Checking server...');
             worker.postMessage({ type: 'loadUrl', url });
