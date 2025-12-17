@@ -51,11 +51,13 @@ function collectItems(group, prefix = '') {
                     // Collect attributes
                     const attrs = [];
                     try {
-                        if (item.attrs && typeof item.attrs.keys === 'function') {
-                            attrs.push(...item.attrs.keys());
+                        if (item.attrs) {
+                            // h5wasm attrs is an object with attribute names as keys
+                            const attrKeys = Object.keys(item.attrs).filter(k => !k.startsWith('_'));
+                            attrs.push(...attrKeys);
                         }
                     } catch (e) {
-                        // Attrs might not be available
+                        log(`Error reading attrs for ${path}: ${e.message}`, 'warn');
                     }
 
                     datasets.push({
@@ -69,11 +71,12 @@ function collectItems(group, prefix = '') {
                     // Collect group attributes
                     const attrs = [];
                     try {
-                        if (item.attrs && typeof item.attrs.keys === 'function') {
-                            attrs.push(...item.attrs.keys());
+                        if (item.attrs) {
+                            const attrKeys = Object.keys(item.attrs).filter(k => !k.startsWith('_'));
+                            attrs.push(...attrKeys);
                         }
                     } catch (e) {
-                        // Attrs might not be available
+                        log(`Error reading group attrs for ${path}: ${e.message}`, 'warn');
                     }
 
                     groups.push({ path, attrs });
@@ -119,8 +122,9 @@ async function loadLocalFile(file) {
         // Get root attributes
         const rootAttrs = [];
         try {
-            if (h5file.attrs && typeof h5file.attrs.keys === 'function') {
-                rootAttrs.push(...h5file.attrs.keys());
+            if (h5file.attrs) {
+                const attrKeys = Object.keys(h5file.attrs).filter(k => !k.startsWith('_'));
+                rootAttrs.push(...attrKeys);
             }
         } catch (e) { /* ignore */ }
 
@@ -204,8 +208,9 @@ async function loadUrlFile(url) {
         // Get root attributes
         const rootAttrs = [];
         try {
-            if (h5file.attrs && typeof h5file.attrs.keys === 'function') {
-                rootAttrs.push(...h5file.attrs.keys());
+            if (h5file.attrs) {
+                const attrKeys = Object.keys(h5file.attrs).filter(k => !k.startsWith('_'));
+                rootAttrs.push(...attrKeys);
             }
         } catch (e) { /* ignore */ }
 
