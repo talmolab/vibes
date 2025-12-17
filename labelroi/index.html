@@ -73,9 +73,13 @@
             position: relative;
             background: #000;
             border-radius: 8px;
-            overflow: hidden;
             margin-bottom: 15px;
             cursor: crosshair;
+            overflow: hidden;
+        }
+        .canvas-wrapper {
+            position: relative;
+            margin: 0 auto;
         }
         .canvas-container.panning {
             cursor: grab;
@@ -85,15 +89,11 @@
         }
         canvas {
             display: block;
-            width: 100%;
-            height: auto;
         }
         #roiCanvas {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
             pointer-events: auto;
         }
         .zoom-controls {
@@ -356,8 +356,10 @@
                 <div id="statusBar" class="status-bar">Load a video to begin</div>
 
                 <div class="canvas-container" id="canvasContainer" style="display: none;">
-                    <canvas id="videoCanvas"></canvas>
-                    <canvas id="roiCanvas"></canvas>
+                    <div class="canvas-wrapper" id="canvasWrapper">
+                        <canvas id="videoCanvas"></canvas>
+                        <canvas id="roiCanvas"></canvas>
+                    </div>
                 </div>
 
                 <div class="zoom-controls" id="zoomControls" style="display: none;">
@@ -1050,6 +1052,7 @@
         const finishBtn = document.getElementById('finishBtn');
         const copyBtn = document.getElementById('copyBtn');
         const canvasContainer = document.getElementById('canvasContainer');
+        const canvasWrapper = document.getElementById('canvasWrapper');
         const seekbar = document.getElementById('seekbar');
         const seekbarProgress = document.getElementById('seekbarProgress');
         const seekbarThumb = document.getElementById('seekbarThumb');
@@ -1126,8 +1129,14 @@
                 videoCanvas.logicalWidth = displayWidth;
                 videoCanvas.logicalHeight = displayHeight;
 
+                // Set container height to match canvas
+                canvasContainer.style.height = displayHeight + 'px';
+
+                // Apply initial transform
+                updateCanvasTransform();
+
                 // Show UI
-                canvasContainer.style.display = 'block';
+                canvasContainer.style.display = 'flex';
                 seekbarContainer.style.display = 'block';
                 metricsDiv.style.display = 'block';
                 zoomControls.style.display = 'flex';
@@ -1207,33 +1216,49 @@
             }
         }
 
-        // Convert screen coordinates to video coordinates
-        function screenToVideo(screenX, screenY) {
-            const rect = roiCanvas.getBoundingClientRect();
+        // Update canvas transform using CSS (smoother than redrawing)
+        function updateCanvasTransform() {
             const logicalWidth = videoCanvas.logicalWidth;
             const logicalHeight = videoCanvas.logicalHeight;
 
-            // Convert from screen to canvas logical coordinates
-            const canvasX = (screenX - rect.left) * (logicalWidth / rect.width);
-            const canvasY = (screenY - rect.top) * (logicalHeight / rect.height);
+            // Calculate the center offset for the transform origin
+            const centerX = logicalWidth / 2;
+            const centerY = logicalHeight / 2;
 
-            // Apply inverse transform (zoom and pan)
-            const videoX = (canvasX - panX) / zoom * (videoWidth / logicalWidth);
-            const videoY = (canvasY - panY) / zoom * (videoHeight / logicalHeight);
+            // Apply CSS transform for zoom and pan
+            // Pan is relative to the zoomed coordinate system
+            canvasWrapper.style.transformOrigin = `${centerX}px ${centerY}px`;
+            canvasWrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+        }
+
+        // Convert screen coordinates to video coordinates
+        function screenToVideo(screenX, screenY) {
+            const rect = canvasWrapper.getBoundingClientRect();
+
+            // Get position relative to the transformed wrapper
+            // getBoundingClientRect() returns the transformed size
+            const relX = screenX - rect.left;
+            const relY = screenY - rect.top;
+
+            // Map from transformed rect to video coordinates
+            // rect.width/height already includes the zoom transform
+            const videoX = relX / rect.width * videoWidth;
+            const videoY = relY / rect.height * videoHeight;
 
             return { x: videoX, y: videoY };
         }
 
-        // Convert video coordinates to canvas logical coordinates
+        // Convert video coordinates to canvas logical coordinates (for drawing ROIs)
         function videoToCanvas(videoX, videoY) {
             const logicalWidth = videoCanvas.logicalWidth;
             const logicalHeight = videoCanvas.logicalHeight;
-            const canvasX = (videoX / videoWidth * logicalWidth) * zoom + panX;
-            const canvasY = (videoY / videoHeight * logicalHeight) * zoom + panY;
+            // Simple mapping - zoom/pan is handled by CSS transform
+            const canvasX = videoX / videoWidth * logicalWidth;
+            const canvasY = videoY / videoHeight * logicalHeight;
             return { x: canvasX, y: canvasY };
         }
 
-        // Render video frame with zoom/pan
+        // Render video frame (no zoom/pan - handled by CSS)
         function renderFrame() {
             if (!currentBitmap) return;
 
@@ -1241,19 +1266,12 @@
             const logicalHeight = videoCanvas.logicalHeight;
             const dpr = window.devicePixelRatio || 1;
 
-            // Clear and apply transform
+            // Clear canvas
             videoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
             videoCtx.clearRect(0, 0, logicalWidth, logicalHeight);
 
-            // Apply zoom and pan
-            videoCtx.save();
-            videoCtx.translate(panX, panY);
-            videoCtx.scale(zoom, zoom);
-
-            // Draw scaled to fit
-            const scale = logicalWidth / videoWidth;
-            videoCtx.drawImage(currentBitmap, 0, 0, videoWidth * scale, videoHeight * scale);
-            videoCtx.restore();
+            // Draw video frame scaled to fit canvas
+            videoCtx.drawImage(currentBitmap, 0, 0, logicalWidth, logicalHeight);
 
             renderROIs();
         }
@@ -1528,7 +1546,7 @@
                 panY += dy;
                 lastPanX = e.clientX;
                 lastPanY = e.clientY;
-                renderFrame();
+                updateCanvasTransform();
                 return;
             }
 
@@ -1735,35 +1753,40 @@
         roiCanvas.addEventListener('wheel', (e) => {
             e.preventDefault();
 
-            const rect = roiCanvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
             // Zoom factor
             const delta = e.deltaY > 0 ? 0.9 : 1.1;
             const newZoom = Math.max(0.25, Math.min(10, zoom * delta));
 
-            // Zoom toward mouse position
+            // Zoom toward mouse position (adjust pan to keep point under cursor)
+            const wrapperRect = canvasWrapper.getBoundingClientRect();
+            const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+            const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
+
+            // Calculate offset from wrapper center
+            const offsetX = e.clientX - wrapperCenterX;
+            const offsetY = e.clientY - wrapperCenterY;
+
+            // Adjust pan to zoom toward cursor
             const scale = newZoom / zoom;
-            panX = mouseX - (mouseX - panX) * scale;
-            panY = mouseY - (mouseY - panY) * scale;
+            panX = panX * scale - offsetX * (scale - 1);
+            panY = panY * scale - offsetY * (scale - 1);
 
             zoom = newZoom;
             updateZoomDisplay();
-            renderFrame();
+            updateCanvasTransform();
         });
 
         // Zoom controls
         document.getElementById('zoomInBtn').addEventListener('click', () => {
             zoom = Math.min(10, zoom * 1.25);
             updateZoomDisplay();
-            renderFrame();
+            updateCanvasTransform();
         });
 
         document.getElementById('zoomOutBtn').addEventListener('click', () => {
             zoom = Math.max(0.25, zoom / 1.25);
             updateZoomDisplay();
-            renderFrame();
+            updateCanvasTransform();
         });
 
         document.getElementById('zoomResetBtn').addEventListener('click', () => {
@@ -1771,7 +1794,7 @@
             panX = 0;
             panY = 0;
             updateZoomDisplay();
-            renderFrame();
+            updateCanvasTransform();
         });
 
         document.getElementById('zoomFitBtn').addEventListener('click', () => {
@@ -1779,7 +1802,7 @@
             panX = 0;
             panY = 0;
             updateZoomDisplay();
-            renderFrame();
+            updateCanvasTransform();
         });
 
         function updateZoomDisplay() {
