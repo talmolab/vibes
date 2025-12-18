@@ -14,6 +14,7 @@ Inspired by [simonw/tools](https://github.com/simonw/tools) and the [vibe coding
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 - [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
+- [Calibration Studio](calibration-studio/) - Multi-camera calibration tool with ChArUco detection, intrinsic/extrinsic calibration, and TOML export
 
 ---
 

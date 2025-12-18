@@ -1,0 +1,3995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Camera Calibration</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1, h2, h3 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+
+        /* Pipeline stages */
+        .stage {
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid #444;
+        }
+        .stage-header {
+            background: #333;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            border-bottom: 1px solid #444;
+        }
+        .stage-header:hover { background: #3a3a3a; }
+        .stage-header h2 { margin: 0; font-size: 18px; }
+        .stage-number {
+            background: #667eea;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            margin-right: 12px;
+        }
+        .stage-title {
+            display: flex;
+            align-items: center;
+        }
+        .stage-status {
+            font-size: 12px;
+            color: #888;
+        }
+        .stage-status.complete { color: #4ade80; }
+        .stage-status.active { color: #667eea; }
+        .stage-status.error { color: #ff6b6b; }
+        .stage-content {
+            padding: 20px;
+        }
+        .stage.collapsed .stage-content { display: none; }
+        .stage-expand {
+            color: #888;
+            font-size: 20px;
+            transition: transform 0.2s;
+        }
+        .stage.collapsed .stage-expand { transform: rotate(-90deg); }
+
+        /* Video grid */
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .video-cell {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            cursor: zoom-in;
+        }
+        .video-cell.zoomed {
+            cursor: grab;
+        }
+        .video-cell.zoomed.panning {
+            cursor: grabbing;
+        }
+        .video-cell canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+        }
+        .video-label {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .video-metrics {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.7);
+            color: #aaa;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        /* Controls */
+        .controls {
+            background: #333;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        button.secondary {
+            background: #444;
+        }
+        button.secondary:hover { background: #555; }
+        button.active {
+            background: #4ade80;
+            color: #1a1a1a;
+        }
+
+        /* Overlay controls */
+        .overlay-controls {
+            background: #333;
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 8px 0;
+        }
+        .overlay-controls h3 {
+            margin: 0 0 6px 0 !important;
+            font-size: 11px;
+            color: #888;
+        }
+        .overlay-checkboxes {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 4px 12px;
+            align-items: center;
+        }
+        .overlay-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            color: #ccc;
+            white-space: nowrap;
+        }
+        .overlay-checkbox:hover {
+            color: #fff;
+        }
+        .overlay-checkbox input[type="checkbox"] {
+            width: 12px;
+            height: 12px;
+            accent-color: #667eea;
+            cursor: pointer;
+        }
+        button.active:hover { background: #22c55e; }
+
+        /* Seekbar */
+        .seekbar-container {
+            background: #333;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .seekbar {
+            width: 100%;
+            height: 10px;
+            background: #444;
+            border-radius: 5px;
+            position: relative;
+            cursor: pointer;
+        }
+        .seekbar-progress {
+            height: 100%;
+            background: #667eea;
+            border-radius: 5px;
+            width: 0%;
+            pointer-events: none;
+        }
+        .seekbar-thumb {
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            left: 0%;
+            pointer-events: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+        }
+        .frame-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #aaa;
+            font-family: monospace;
+        }
+
+        /* Config panel */
+        .config-panel {
+            background: #333;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .config-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 10px 0;
+        }
+        .config-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .config-item label {
+            color: #aaa;
+            font-size: 13px;
+        }
+        .config-item input, .config-item select {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .config-item input[type="number"] {
+            width: 80px;
+        }
+
+        /* Diagnostic console */
+        .diagnostic-console {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        .diagnostic-header {
+            background: #2a2a2a;
+            padding: 8px 15px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .diagnostic-header h3 { margin: 0; font-size: 12px; }
+        .diagnostic-header button {
+            background: #444;
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+        .diagnostic-body {
+            height: 150px;
+            overflow-y: auto;
+            padding: 10px 15px;
+        }
+        .log-entry { margin: 2px 0; display: flex; gap: 10px; }
+        .log-time { color: #666; flex-shrink: 0; }
+        .log-msg { color: #aaa; }
+        .log-msg.info { color: #667eea; }
+        .log-msg.success { color: #4ade80; }
+        .log-msg.warn { color: #fbbf24; }
+        .log-msg.error { color: #ff6b6b; }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin: 15px 0;
+        }
+        .data-table th {
+            background: #333;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 1px solid #444;
+        }
+        .data-table td {
+            padding: 10px;
+            border-bottom: 1px solid #333;
+        }
+        .data-table tr:hover { background: #333; }
+        .data-table tr.selected { background: #3d4a6b; }
+
+        /* Hotkeys */
+        .hotkeys {
+            background: #333;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+        .hotkeys h3 { margin-top: 0; }
+        .hotkeys-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+        }
+        .hotkey {
+            display: flex;
+            gap: 10px;
+        }
+        .hotkey-key {
+            color: #667eea;
+            font-family: monospace;
+            min-width: 80px;
+        }
+        .hotkey-desc { color: #aaa; }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+        .loading-spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #444;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Error message */
+        .error-msg {
+            background: #4a2020;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+
+        /* File input styling */
+        .file-drop-zone {
+            border: 2px dashed #444;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            color: #888;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .file-drop-zone:hover, .file-drop-zone.drag-over {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .file-drop-zone input { display: none; }
+
+        /* View config */
+        .view-list {
+            margin: 15px 0;
+        }
+        .view-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            background: #333;
+            border-radius: 6px;
+            margin: 8px 0;
+        }
+        .view-item .view-name {
+            flex: 1;
+            font-weight: 600;
+        }
+        .view-item .view-path {
+            color: #888;
+            font-size: 12px;
+            font-family: monospace;
+        }
+        .view-item .view-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #444;
+        }
+        .view-item .view-status.loaded { background: #4ade80; }
+        .view-item .view-status.loading { background: #fbbf24; }
+        .view-item .view-status.error { background: #ff6b6b; }
+
+        /* Split layout - floating video panel on left, scrollable pipeline on right */
+        .main-layout {
+            display: flex;
+            gap: 0;
+        }
+        .video-panel {
+            position: sticky;
+            top: 20px;
+            width: 50%;
+            flex-shrink: 0;
+            height: fit-content;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            padding-right: 10px;
+        }
+        .resize-handle {
+            width: 12px;
+            flex-shrink: 0;
+            background: #2a2a2a;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: sticky;
+            top: 50vh;
+            transform: translateY(-50%);
+            height: 60px;
+            border-radius: 4px;
+            transition: background 0.15s;
+        }
+        .resize-handle:hover, .resize-handle.dragging {
+            background: #3a3a3a;
+        }
+        .resize-handle-dots {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .resize-handle-dots span {
+            width: 4px;
+            height: 4px;
+            background: #666;
+            border-radius: 50%;
+        }
+        .resize-handle:hover .resize-handle-dots span,
+        .resize-handle.dragging .resize-handle-dots span {
+            background: #888;
+        }
+        .main-layout.resizing {
+            user-select: none;
+            cursor: col-resize;
+        }
+        .video-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        .video-panel::-webkit-scrollbar-track {
+            background: #1a1a1a;
+        }
+        .video-panel::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 3px;
+        }
+        .pipeline-panel {
+            flex: 1;
+            min-width: 0;
+            padding-left: 10px;
+        }
+        .video-panel .video-grid {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin: 10px 0;
+        }
+        .video-panel .video-label {
+            font-size: 11px;
+            padding: 2px 6px;
+        }
+        .video-panel .video-metrics {
+            font-size: 9px;
+            padding: 2px 6px;
+        }
+        .video-panel .seekbar-container {
+            padding: 10px 12px;
+            margin: 8px 0;
+        }
+        .video-panel .controls {
+            padding: 10px 12px;
+            margin: 8px 0;
+            gap: 6px;
+        }
+        .video-panel .controls button {
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+        .video-panel .frame-info {
+            font-size: 11px;
+        }
+        .video-panel h3 {
+            font-size: 14px;
+            margin: 10px 0 5px 0;
+        }
+        .video-panel-header {
+            background: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .video-panel-header h2 {
+            margin: 0;
+            font-size: 16px;
+        }
+        .video-panel-header p {
+            margin: 5px 0 0 0;
+            font-size: 12px;
+            color: #888;
+        }
+        /* Hide video panel and resize handle when no videos loaded */
+        .video-panel.hidden {
+            display: none;
+        }
+        .main-layout.no-videos .resize-handle {
+            display: none;
+        }
+        /* Adjust pipeline panel when video panel is hidden */
+        .main-layout.no-videos .pipeline-panel {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Multi-Camera Calibration</h1>
+    <p class="description">Load multi-view calibration videos, detect ChArUco boards, and compute camera calibration parameters.</p>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <div class="main-layout no-videos" id="mainLayout">
+        <!-- Floating Video Panel (left side) -->
+        <div class="video-panel hidden" id="videoPanel">
+            <div class="video-panel-header">
+                <h2>Video Preview</h2>
+                <p>Synchronized multi-view display</p>
+            </div>
+
+            <div class="video-grid" id="videoGrid">
+                <!-- Video cells will be added dynamically -->
+            </div>
+
+            <div class="seekbar-container" id="seekbarContainer" style="display: none;">
+                <div class="seekbar" id="seekbar">
+                    <div class="seekbar-progress" id="seekbarProgress"></div>
+                    <div class="seekbar-thumb" id="seekbarThumb"></div>
+                </div>
+                <div class="frame-info">
+                    <span>Frame: <span id="currentFrame">0</span> / <span id="totalFrames">0</span></span>
+                    <span>Time: <span id="currentTime">0:00.000</span></span>
+                </div>
+            </div>
+
+            <div class="controls" id="videoControls" style="display: none;">
+                <button id="playBtn">Play</button>
+                <button id="prevFrameBtn" class="secondary">◀</button>
+                <button id="nextFrameBtn" class="secondary">▶</button>
+                <button id="prev10Btn" class="secondary">◀◀</button>
+                <button id="next10Btn" class="secondary">▶▶</button>
+            </div>
+
+            <div class="overlay-controls" id="overlayControls" style="display: none;">
+                <h3>Overlays:</h3>
+                <div class="overlay-checkboxes">
+                    <label class="overlay-checkbox">
+                        <input type="checkbox" id="detectionsOverlayCheck" checked>
+                        <span>Detections</span>
+                    </label>
+                    <label class="overlay-checkbox">
+                        <input type="checkbox" id="intrinsicsOverlayCheck" checked>
+                        <span>Intrinsics</span>
+                    </label>
+                    <label class="overlay-checkbox">
+                        <input type="checkbox" id="extrinsicsOverlayCheck" checked>
+                        <span>Extrinsics</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="hotkeys" style="padding: 10px 12px; font-size: 11px;">
+                <h3 style="font-size: 12px; margin: 0 0 8px 0;">Keyboard Shortcuts</h3>
+                <div class="hotkeys-grid" style="gap: 4px;">
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">← / →</span><span class="hotkey-desc">±1 frame</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">↑ / ↓</span><span class="hotkey-desc">±10 frames</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">[ / ]</span><span class="hotkey-desc">Reproj frames</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">+ / -</span><span class="hotkey-desc">Zoom all</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">0</span><span class="hotkey-desc">Reset zoom</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">Scroll</span><span class="hotkey-desc">Zoom video</span></div>
+                    <div class="hotkey"><span class="hotkey-key" style="min-width: 60px;">Dbl-click</span><span class="hotkey-desc">Reset video</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resize Handle -->
+        <div class="resize-handle" id="resizeHandle">
+            <div class="resize-handle-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+
+        <!-- Pipeline Panel (right side, scrollable) -->
+        <div class="pipeline-panel" id="pipelinePanel">
+
+    <!-- STAGE 1: Video Loading -->
+    <div class="stage" id="stage1">
+        <div class="stage-header" onclick="toggleStage('stage1')">
+            <div class="stage-title">
+                <span class="stage-number">1</span>
+                <h2>Load Multi-View Videos</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="stage-status" id="stage1Status">Not started</span>
+                <span class="stage-expand">▼</span>
+            </div>
+        </div>
+        <div class="stage-content">
+            <p>Load synchronized calibration videos from multiple camera views.</p>
+
+            <div class="config-panel">
+                <h3>Data Source</h3>
+                <div class="config-row">
+                    <button id="loadTestDataBtn">Load Test Data (sleap-anipose minimal_session)</button>
+                    <button id="loadFolderBtn" class="secondary">Load Custom Folder</button>
+                </div>
+            </div>
+
+            <div class="view-list" id="viewList">
+                <p style="color: #888;">No videos loaded. Click "Load Test Data" to begin.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAGE 2: Board Detection -->
+    <div class="stage collapsed" id="stage2">
+        <div class="stage-header" onclick="toggleStage('stage2')">
+            <div class="stage-title">
+                <span class="stage-number">2</span>
+                <h2>Detect Landmarks</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="stage-status" id="stage2Status">Waiting for videos</span>
+                <span class="stage-expand">▼</span>
+            </div>
+        </div>
+        <div class="stage-content">
+            <p>Configure ChArUco board parameters and detect corners across frames.</p>
+
+            <div class="config-panel">
+                <h3>Board Configuration</h3>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>Board X:</label>
+                        <input type="number" id="boardX" value="8" min="3" max="20">
+                    </div>
+                    <div class="config-item">
+                        <label>Board Y:</label>
+                        <input type="number" id="boardY" value="11" min="3" max="20">
+                    </div>
+                    <div class="config-item">
+                        <label>Square Length (mm):</label>
+                        <input type="number" id="squareLength" value="24" step="0.1">
+                    </div>
+                    <div class="config-item">
+                        <label>Marker Length (mm):</label>
+                        <input type="number" id="markerLength" value="18.75" step="0.1">
+                    </div>
+                </div>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>Dictionary:</label>
+                        <select id="arucoDict">
+                            <option value="DICT_4X4_50">4x4 (50)</option>
+                            <option value="DICT_4X4_100">4x4 (100)</option>
+                            <option value="DICT_4X4_250">4x4 (250)</option>
+                            <option value="DICT_4X4_1000" selected>4x4 (1000)</option>
+                            <option value="DICT_5X5_50">5x5 (50)</option>
+                            <option value="DICT_5X5_100">5x5 (100)</option>
+                            <option value="DICT_5X5_250">5x5 (250)</option>
+                            <option value="DICT_5X5_1000">5x5 (1000)</option>
+                            <option value="DICT_6X6_50">6x6 (50)</option>
+                            <option value="DICT_6X6_100">6x6 (100)</option>
+                            <option value="DICT_6X6_250">6x6 (250)</option>
+                            <option value="DICT_6X6_1000">6x6 (1000)</option>
+                        </select>
+                    </div>
+                </div>
+                <button id="detectCurrentBtn" disabled>Detect Current Frame</button>
+            </div>
+
+            <div class="config-panel">
+                <h3>Batch Detection</h3>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>Target Samples:</label>
+                        <input type="number" id="targetSamples" value="50" min="10" max="500">
+                    </div>
+                    <div class="config-item">
+                        <label>Computed Stride:</label>
+                        <span id="computedStride">-</span>
+                    </div>
+                </div>
+                <button id="runDetectionBtn" disabled>Run Batch Detection</button>
+            </div>
+
+            <div id="detectionResults" style="display: none;">
+                <h3>Detection Results</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Frame</th>
+                            <th>Back</th>
+                            <th>Mid</th>
+                            <th>Side</th>
+                            <th>Top</th>
+                            <th>Common Points</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detectionTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAGE 3: Intrinsics -->
+    <div class="stage collapsed" id="stage3">
+        <div class="stage-header" onclick="toggleStage('stage3')">
+            <div class="stage-title">
+                <span class="stage-number">3</span>
+                <h2>Compute Intrinsics</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="stage-status" id="stage3Status">Waiting for detections</span>
+                <span class="stage-expand">▼</span>
+            </div>
+        </div>
+        <div class="stage-content">
+            <p>Estimate camera intrinsic parameters (focal length, principal point, distortion).</p>
+
+            <div class="config-panel">
+                <h3>Filtering</h3>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>Min Corners per Frame:</label>
+                        <input type="number" id="minCorners" value="6" min="4" max="50">
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="computeIntrinsicsBtn" disabled>Compute Intrinsics</button>
+            </div>
+
+            <div id="intrinsicsResults" style="display: none;">
+                <h3>Intrinsic Parameters</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Camera</th>
+                            <th>fx</th>
+                            <th>fy</th>
+                            <th>cx</th>
+                            <th>cy</th>
+                            <th>k1</th>
+                            <th>k2</th>
+                            <th>RMS Error</th>
+                        </tr>
+                    </thead>
+                    <tbody id="intrinsicsTableBody">
+                    </tbody>
+                </table>
+
+                <h3>Reprojection Error Distribution</h3>
+                <p style="color: #888; font-size: 13px; margin-bottom: 10px;">
+                    Per-image reprojection errors (RMS pixels). Hover over points to view that image's reprojection.
+                </p>
+                <div id="swarmPlotContainer" style="background: #1a1a1a; border-radius: 8px; padding: 15px; position: relative;">
+                    <canvas id="swarmPlotCanvas" width="800" height="250"></canvas>
+                    <div id="swarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- STAGE 4: Extrinsics -->
+    <div class="stage collapsed" id="stage4">
+        <div class="stage-header" onclick="toggleStage('stage4')">
+            <div class="stage-title">
+                <span class="stage-number">4</span>
+                <h2>Compute Extrinsics</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="stage-status" id="stage4Status">Waiting for intrinsics</span>
+                <span class="stage-expand">▼</span>
+            </div>
+        </div>
+        <div class="stage-content">
+            <p>Estimate camera extrinsic parameters (rotation, translation) relative to a reference camera.</p>
+
+            <div class="config-panel">
+                <h3>Reference Camera</h3>
+                <div class="config-row">
+                    <div class="config-item">
+                        <label>Reference View:</label>
+                        <select id="referenceCamera">
+                            <option value="0">back</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label>Min Covisible Points:</label>
+                        <input type="number" id="minCovisible" value="10" min="4" max="50">
+                    </div>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics</button>
+                <button id="runBundleBtn" class="secondary" disabled>Bundle Adjustment</button>
+            </div>
+
+            <div id="extrinsicsResults" style="display: none;">
+                <h3>Extrinsic Parameters</h3>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Camera</th>
+                            <th>Rx</th>
+                            <th>Ry</th>
+                            <th>Rz</th>
+                            <th>Tx</th>
+                            <th>Ty</th>
+                            <th>Tz</th>
+                        </tr>
+                    </thead>
+                    <tbody id="extrinsicsTableBody">
+                    </tbody>
+                </table>
+
+                <h3>Cross-View Reprojection Error</h3>
+                <p style="color: #888; font-size: 13px; margin-bottom: 10px;">
+                    Triangulated 3D points reprojected to each camera. Lower error = better multi-view consistency.
+                </p>
+                <div id="extrinsicsSwarmContainer" style="background: #1a1a1a; border-radius: 8px; padding: 15px; position: relative;">
+                    <canvas id="extrinsicsSwarmCanvas" width="800" height="250"></canvas>
+                    <div id="extrinsicsSwarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
+                </div>
+            </div>
+
+            <div id="viz3dContainer" style="height: 400px; background: #000; border-radius: 8px; margin: 15px 0; display: none;">
+                <!-- Three.js visualization will go here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- STAGE 5: Export -->
+    <div class="stage collapsed" id="stage5">
+        <div class="stage-header" onclick="toggleStage('stage5')">
+            <div class="stage-title">
+                <span class="stage-number">5</span>
+                <h2>Export Results</h2>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <span class="stage-status" id="stage5Status">Waiting for calibration</span>
+                <span class="stage-expand">▼</span>
+            </div>
+        </div>
+        <div class="stage-content">
+            <p>Export calibration in TOML format and raw data for bundle adjustment.</p>
+
+            <div class="controls">
+                <button id="exportTomlBtn" disabled>Export calibration.toml</button>
+                <button id="exportSbaJsonBtn" class="secondary" disabled>Export SBA Data (JSON)</button>
+            </div>
+
+            <div id="exportPreview">
+                <h3>calibration.toml</h3>
+                <pre id="tomlPreview" style="background: #1a1a1a; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 12px; max-height: 400px; overflow-y: auto; color: #888;"># Complete intrinsic and extrinsic calibration to generate TOML</pre>
+            </div>
+        </div>
+    </div>
+
+        </div> <!-- End pipeline-panel -->
+    </div> <!-- End main-layout -->
+
+    <!-- Diagnostic Console -->
+    <div class="diagnostic-console">
+        <div class="diagnostic-header">
+            <h3>Diagnostic Log</h3>
+            <div>
+                <button id="copyLogBtn">Copy</button>
+                <button id="clearLogBtn">Clear</button>
+            </div>
+        </div>
+        <div class="diagnostic-body" id="logBody"></div>
+    </div>
+
+    <!-- mp4box.js for demuxing -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+    <script src="https://unpkg.com/svd-js@1.1.1/build-umd/svd-js.min.js"></script>
+    <script src="video.js"></script>
+    <script src="calibration.js"></script>
+
+    <!-- OpenCV.js for computer vision -->
+    <script async id="opencvScript" src="https://docs.opencv.org/4.x/opencv.js" onload="onOpenCVReady()"></script>
+
+    <script>
+        // ============================================
+        // Global State
+        // ============================================
+        const state = {
+            views: [],           // Array of view objects with decoder, canvas, etc.
+            currentFrame: 0,
+            totalFrames: 0,
+            fps: 30,
+            isPlaying: false,
+            playInterval: null,
+            opencvReady: false,
+            detections: [],      // Detection results per frame
+            intrinsics: {},      // Per-camera intrinsic parameters
+            extrinsics: {},      // Per-camera extrinsic parameters
+            showOverlay: true,
+        };
+
+        // Test data paths (relative to vibe root)
+        const TEST_DATA_BASE = 'sample_session';
+        const TEST_VIEWS = [
+            { name: 'back', path: `${TEST_DATA_BASE}/back.mp4` },
+            { name: 'mid', path: `${TEST_DATA_BASE}/mid.mp4` },
+            { name: 'side', path: `${TEST_DATA_BASE}/side.mp4` },
+            { name: 'top', path: `${TEST_DATA_BASE}/top.mp4` },
+        ];
+
+        // ============================================
+        // Logging System
+        // ============================================
+        const logBody = document.getElementById('logBody');
+        const MAX_LOG_ENTRIES = 200;
+
+        function log(msg, level = 'info') {
+            const time = new Date().toLocaleTimeString('en-US', {
+                hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3
+            });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${level}">${escapeHtml(msg)}</span>`;
+            logBody.appendChild(entry);
+
+            while (logBody.children.length > MAX_LOG_ENTRIES) {
+                logBody.removeChild(logBody.firstChild);
+            }
+            logBody.scrollTop = logBody.scrollHeight;
+
+            // Also log to console for debugging
+            console.log(`[${level}] ${msg}`);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('copyLogBtn').addEventListener('click', () => {
+            const lines = Array.from(logBody.querySelectorAll('.log-entry')).map(entry => {
+                const time = entry.querySelector('.log-time').textContent;
+                const msg = entry.querySelector('.log-msg').textContent;
+                return `${time} ${msg}`;
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(() => {
+                log('Log copied to clipboard', 'success');
+            });
+        });
+
+        document.getElementById('clearLogBtn').addEventListener('click', () => {
+            logBody.innerHTML = '';
+            log('Log cleared', 'info');
+        });
+
+        // ============================================
+        // Stage Toggle
+        // ============================================
+        function toggleStage(stageId) {
+            const stage = document.getElementById(stageId);
+            stage.classList.toggle('collapsed');
+        }
+
+        function setStageStatus(stageId, status, className = '') {
+            const statusEl = document.getElementById(`${stageId}Status`);
+            statusEl.textContent = status;
+            statusEl.className = 'stage-status ' + className;
+        }
+
+        // ============================================
+        // Error Display
+        // ============================================
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+            log(msg, 'error');
+        }
+
+        function hideError() {
+            document.getElementById('errorMsg').style.display = 'none';
+        }
+
+        // ============================================
+        // OpenCV.js Ready Handler
+        // ============================================
+        function onOpenCVReady() {
+            state.opencvReady = true;
+            log('OpenCV.js loaded successfully', 'success');
+
+            // Enable detection buttons if videos are loaded
+            if (state.views.length > 0) {
+                document.getElementById('detectCurrentBtn').disabled = false;
+                document.getElementById('runDetectionBtn').disabled = false;
+            }
+        }
+
+        // Check if OpenCV is ready
+        if (typeof cv !== 'undefined') {
+            onOpenCVReady();
+        }
+
+        // ============================================
+        // Multi-View Video Loading
+        // ============================================
+        async function loadTestData() {
+            hideError();
+            log('Loading test data from sleap-anipose minimal_session...', 'info');
+            setStageStatus('stage1', 'Loading...', 'active');
+
+            // Update view list UI
+            const viewList = document.getElementById('viewList');
+            viewList.innerHTML = TEST_VIEWS.map(v => `
+                <div class="view-item">
+                    <span class="view-status loading"></span>
+                    <span class="view-name">${v.name}</span>
+                    <span class="view-path">${v.path}</span>
+                </div>
+            `).join('');
+
+            const videoGrid = document.getElementById('videoGrid');
+            videoGrid.innerHTML = '';
+            videoGrid.style.display = 'grid';
+
+            // Show video panel
+            document.getElementById('videoPanel').classList.remove('hidden');
+            document.getElementById('mainLayout').classList.remove('no-videos');
+
+            state.views = [];
+
+            for (let i = 0; i < TEST_VIEWS.length; i++) {
+                const view = TEST_VIEWS[i];
+                try {
+                    const decoder = new OnDemandVideoDecoder({ cacheSize: 30, lookahead: 5 });
+                    const info = await decoder.init(view.path);
+
+                    // Create video cell
+                    const cell = document.createElement('div');
+                    cell.className = 'video-cell';
+                    cell.innerHTML = `
+                        <canvas id="canvas-${view.name}"></canvas>
+                        <div class="video-label">${view.name}</div>
+                        <div class="video-metrics" id="metrics-${view.name}">
+                            ${info.width}x${info.height} @ ${info.fps.toFixed(1)} fps | ${info.totalFrames} frames
+                        </div>
+                    `;
+                    videoGrid.appendChild(cell);
+
+                    const canvas = cell.querySelector('canvas');
+                    canvas.width = info.width;
+                    canvas.height = info.height;
+
+                    state.views.push({
+                        name: view.name,
+                        decoder: decoder,
+                        canvas: canvas,
+                        ctx: canvas.getContext('2d'),
+                        info: info,
+                    });
+
+                    // Setup zoom handlers for this video
+                    setupVideoZoomHandlers(view.name, canvas);
+
+                    // Update status indicator
+                    viewList.children[i].querySelector('.view-status').classList.remove('loading');
+                    viewList.children[i].querySelector('.view-status').classList.add('loaded');
+
+                    log(`Loaded ${view.name}: ${info.width}x${info.height}, ${info.totalFrames} frames`, 'success');
+
+                } catch (err) {
+                    viewList.children[i].querySelector('.view-status').classList.remove('loading');
+                    viewList.children[i].querySelector('.view-status').classList.add('error');
+                    log(`Failed to load ${view.name}: ${err.message}`, 'error');
+                }
+            }
+
+            if (state.views.length > 0) {
+                // Use minimum frame count across all views
+                state.totalFrames = Math.min(...state.views.map(v => v.info.totalFrames));
+                state.fps = state.views[0].info.fps;
+                state.currentFrame = 0;
+
+                document.getElementById('totalFrames').textContent = state.totalFrames;
+                document.getElementById('seekbarContainer').style.display = 'block';
+                document.getElementById('videoControls').style.display = 'flex';
+
+                // Show first frame
+                await seekToFrame(0);
+
+                setStageStatus('stage1', `${state.views.length} views loaded`, 'complete');
+                setStageStatus('stage2', 'Ready', '');
+
+                // Expand stage 2 and enable detection if OpenCV ready
+                document.getElementById('stage2').classList.remove('collapsed');
+                if (state.opencvReady) {
+                    document.getElementById('detectCurrentBtn').disabled = false;
+                    document.getElementById('runDetectionBtn').disabled = false;
+                }
+
+                // Show overlay controls section
+                document.getElementById('overlayControls').style.display = 'block';
+
+                // Update reference camera dropdown
+                const refCamSelect = document.getElementById('referenceCamera');
+                refCamSelect.innerHTML = state.views.map((v, i) =>
+                    `<option value="${i}">${v.name}</option>`
+                ).join('');
+
+                log(`All views loaded. Total synchronized frames: ${state.totalFrames}`, 'success');
+            } else {
+                setStageStatus('stage1', 'Failed', 'error');
+                showError('Failed to load any video views');
+            }
+        }
+
+        // ============================================
+        // Frame Navigation
+        // ============================================
+        async function seekToFrame(frameIndex) {
+            if (state.views.length === 0) return;
+
+            frameIndex = Math.max(0, Math.min(frameIndex, state.totalFrames - 1));
+            state.currentFrame = frameIndex;
+
+            const startTime = performance.now();
+
+            // Seek all views in parallel
+            const results = await Promise.all(
+                state.views.map(view => view.decoder.getFrame(frameIndex))
+            );
+
+            const seekTime = performance.now() - startTime;
+
+            // Render all frames
+            for (let i = 0; i < state.views.length; i++) {
+                const result = results[i];
+                const view = state.views[i];
+                if (result && result.bitmap) {
+                    view.ctx.clearRect(0, 0, view.canvas.width, view.canvas.height);
+                    view.ctx.drawImage(result.bitmap, 0, 0);
+                }
+            }
+
+            updateSeekbar();
+
+            // Sync all overlay state flags with checkbox values (ensures they stay in sync)
+            const detectionsCheck = document.getElementById('detectionsOverlayCheck');
+            const intrinsicsCheck = document.getElementById('intrinsicsOverlayCheck');
+            const extrinsicsCheck = document.getElementById('extrinsicsOverlayCheck');
+            if (detectionsCheck) state.showOverlay = detectionsCheck.checked;
+            if (intrinsicsCheck) state.showReprojection = intrinsicsCheck.checked;
+            if (extrinsicsCheck) state.showExtrinsicsReproj = extrinsicsCheck.checked;
+
+            // Draw overlays in phases to ensure proper layering:
+            // Phase 1: Detection overlay (circles with IDs)
+            // Phase 2: All reprojection circles
+            // Phase 3: All reprojection markers (on top of circles)
+            // Phase 4: Unified legend
+
+            // Phase 1: Draw detection overlay if enabled
+            if (state.showOverlay && state.detections.length > 0) {
+                const frameDetection = state.detections.find(d => d.frame === frameIndex);
+                if (frameDetection) {
+                    // Convert to format expected by drawDetectionOverlay
+                    const results = state.views.map(view => {
+                        const viewResult = frameDetection.views[view.name];
+                        return viewResult || null;
+                    });
+                    drawDetectionOverlay(results);
+                }
+            }
+
+            // Phase 2: Draw reprojection circles (both intrinsics and extrinsics)
+            if (state.showReprojection && Object.keys(state.intrinsics).length > 0) {
+                try {
+                    drawReprojectionOverlay('circles');
+                } catch (err) {
+                    console.error('Error drawing intrinsics circles:', err);
+                }
+            }
+            if (state.showExtrinsicsReproj && state.extrinsicsReprojData && state.extrinsicsReprojData.length > 0) {
+                drawExtrinsicsReprojectionOverlay('circles');
+            }
+
+            // Phase 3: Draw reprojection markers (on top of all circles)
+            if (state.showReprojection && Object.keys(state.intrinsics).length > 0) {
+                try {
+                    drawReprojectionOverlay('markers');
+                } catch (err) {
+                    console.error('Error drawing intrinsics markers:', err);
+                }
+            }
+            if (state.showExtrinsicsReproj && state.extrinsicsReprojData && state.extrinsicsReprojData.length > 0) {
+                drawExtrinsicsReprojectionOverlay('markers');
+            }
+
+            // Phase 4: Draw unified legend
+            drawOverlayLegends();
+
+            if (!state.isPlaying) {
+                log(`Frame ${frameIndex}: ${seekTime.toFixed(0)}ms`, 'info');
+            }
+        }
+
+        function updateSeekbar() {
+            const progress = state.totalFrames > 0 ? (state.currentFrame / state.totalFrames) * 100 : 0;
+            document.getElementById('seekbarProgress').style.width = progress + '%';
+            document.getElementById('seekbarThumb').style.left = progress + '%';
+            document.getElementById('currentFrame').textContent = state.currentFrame;
+
+            const time = state.currentFrame / state.fps;
+            const mins = Math.floor(time / 60);
+            const secs = (time % 60).toFixed(3);
+            document.getElementById('currentTime').textContent = `${mins}:${secs.padStart(6, '0')}`;
+        }
+
+        // ============================================
+        // Playback Controls
+        // ============================================
+        function togglePlayback() {
+            if (state.isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function startPlayback() {
+            if (state.views.length === 0) return;
+            state.isPlaying = true;
+            document.getElementById('playBtn').textContent = 'Pause';
+            log('Playback started', 'info');
+
+            const interval = 1000 / state.fps;
+            state.playInterval = setInterval(async () => {
+                let nextFrame = state.currentFrame + 1;
+                if (nextFrame >= state.totalFrames) nextFrame = 0;
+                await seekToFrame(nextFrame);
+            }, interval);
+        }
+
+        function stopPlayback() {
+            state.isPlaying = false;
+            document.getElementById('playBtn').textContent = 'Play';
+            if (state.playInterval) {
+                clearInterval(state.playInterval);
+                state.playInterval = null;
+            }
+            log('Playback stopped', 'info');
+        }
+
+        // ============================================
+        // Event Listeners
+        // ============================================
+        document.getElementById('loadTestDataBtn').addEventListener('click', loadTestData);
+
+        document.getElementById('playBtn').addEventListener('click', togglePlayback);
+        document.getElementById('prevFrameBtn').addEventListener('click', () => seekToFrame(state.currentFrame - 1));
+        document.getElementById('nextFrameBtn').addEventListener('click', () => seekToFrame(state.currentFrame + 1));
+        document.getElementById('prev10Btn').addEventListener('click', () => seekToFrame(state.currentFrame - 10));
+        document.getElementById('next10Btn').addEventListener('click', () => seekToFrame(state.currentFrame + 10));
+
+        // Seekbar scrubbing
+        const seekbar = document.getElementById('seekbar');
+        let isScrubbing = false;
+        let scrubTargetFrame = null;
+        let isSeeking = false;
+
+        function getFrameFromSeekbar(e) {
+            const rect = seekbar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = x / rect.width;
+            return Math.floor(percent * state.totalFrames);
+        }
+
+        function updateSeekbarVisual(frame) {
+            const progress = state.totalFrames > 0 ? (frame / state.totalFrames) * 100 : 0;
+            document.getElementById('seekbarProgress').style.width = progress + '%';
+            document.getElementById('seekbarThumb').style.left = progress + '%';
+            document.getElementById('currentFrame').textContent = frame;
+        }
+
+        async function scrubToFrame(frame) {
+            if (isSeeking) {
+                scrubTargetFrame = frame;
+                return;
+            }
+            isSeeking = true;
+            await seekToFrame(frame);
+            isSeeking = false;
+
+            // If target changed while seeking, seek to new target
+            if (scrubTargetFrame !== null && scrubTargetFrame !== frame) {
+                const nextFrame = scrubTargetFrame;
+                scrubTargetFrame = null;
+                scrubToFrame(nextFrame);
+            }
+        }
+
+        seekbar.addEventListener('mousedown', (e) => {
+            isScrubbing = true;
+            const frame = getFrameFromSeekbar(e);
+            updateSeekbarVisual(frame);
+            scrubToFrame(frame);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isScrubbing) return;
+            const frame = getFrameFromSeekbar(e);
+            updateSeekbarVisual(frame);
+            scrubTargetFrame = frame;
+            scrubToFrame(frame);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isScrubbing && scrubTargetFrame !== null) {
+                seekToFrame(scrubTargetFrame);
+            }
+            isScrubbing = false;
+            scrubTargetFrame = null;
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (state.views.length === 0) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+            let delta = 0;
+            if (e.key === 'ArrowLeft') delta = -1;
+            else if (e.key === 'ArrowRight') delta = 1;
+            else if (e.key === 'ArrowUp') delta = 10;
+            else if (e.key === 'ArrowDown') delta = -10;
+            else if (e.key === ' ') {
+                togglePlayback();
+                e.preventDefault();
+                return;
+            }
+            else if (e.key === 'Home') {
+                seekToFrame(0);
+                e.preventDefault();
+                return;
+            }
+            else if (e.key === 'End') {
+                seekToFrame(state.totalFrames - 1);
+                e.preventDefault();
+                return;
+            }
+
+            if (delta !== 0) {
+                seekToFrame(state.currentFrame + delta);
+                e.preventDefault();
+            }
+
+            // Global zoom with +/- keys
+            if (e.key === '+' || e.key === '=') {
+                zoomAllVideos(1.2);
+                e.preventDefault();
+            } else if (e.key === '-' || e.key === '_') {
+                zoomAllVideos(1 / 1.2);
+                e.preventDefault();
+            } else if (e.key === '0') {
+                resetAllZoom();
+                e.preventDefault();
+            }
+        });
+
+        // ============================================
+        // Video Zoom & Pan
+        // ============================================
+        const videoZoomState = {};  // viewName -> {scale, panX, panY}
+
+        function initVideoZoom(viewName) {
+            if (!videoZoomState[viewName]) {
+                videoZoomState[viewName] = { scale: 1, panX: 0, panY: 0 };
+            }
+        }
+
+        function applyVideoZoom(viewName) {
+            const view = state.views.find(v => v.name === viewName);
+            if (!view || !view.canvas) return;
+
+            const zs = videoZoomState[viewName];
+            if (!zs) return;
+
+            const cell = view.canvas.closest('.video-cell');
+            if (zs.scale > 1) {
+                cell.classList.add('zoomed');
+            } else {
+                cell.classList.remove('zoomed');
+            }
+
+            view.canvas.style.transform = `scale(${zs.scale}) translate(${zs.panX}px, ${zs.panY}px)`;
+        }
+
+        function zoomVideo(viewName, factor, centerX = 0.5, centerY = 0.5) {
+            initVideoZoom(viewName);
+            const zs = videoZoomState[viewName];
+
+            const oldScale = zs.scale;
+            zs.scale = Math.max(1, Math.min(10, zs.scale * factor));
+
+            // If zooming out to 1x, reset pan
+            if (zs.scale === 1) {
+                zs.panX = 0;
+                zs.panY = 0;
+            }
+
+            applyVideoZoom(viewName);
+        }
+
+        function zoomAllVideos(factor) {
+            state.views.forEach(view => {
+                zoomVideo(view.name, factor);
+            });
+        }
+
+        function resetAllZoom() {
+            state.views.forEach(view => {
+                videoZoomState[view.name] = { scale: 1, panX: 0, panY: 0 };
+                applyVideoZoom(view.name);
+            });
+        }
+
+        function setupVideoZoomHandlers(viewName, canvas) {
+            const cell = canvas.closest('.video-cell');
+            initVideoZoom(viewName);
+
+            // Scroll wheel zoom
+            cell.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                zoomVideo(viewName, factor);
+            }, { passive: false });
+
+            // Pan with mouse drag when zoomed
+            let isPanning = false;
+            let panStartX, panStartY;
+            let panStartPosX, panStartPosY;
+
+            cell.addEventListener('mousedown', (e) => {
+                const zs = videoZoomState[viewName];
+                if (zs && zs.scale > 1) {
+                    isPanning = true;
+                    cell.classList.add('panning');
+                    panStartX = e.clientX;
+                    panStartY = e.clientY;
+                    panStartPosX = zs.panX;
+                    panStartPosY = zs.panY;
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isPanning) return;
+                const zs = videoZoomState[viewName];
+                if (!zs) return;
+
+                const dx = (e.clientX - panStartX) / zs.scale;
+                const dy = (e.clientY - panStartY) / zs.scale;
+
+                // Limit pan to keep image visible based on actual canvas dimensions
+                const view = state.views.find(v => v.name === viewName);
+                const canvasW = view ? view.canvas.width : 640;
+                const canvasH = view ? view.canvas.height : 480;
+                const maxPanX = canvasW * (1 - 1 / zs.scale) / 2;
+                const maxPanY = canvasH * (1 - 1 / zs.scale) / 2;
+                zs.panX = Math.max(-maxPanX, Math.min(maxPanX, panStartPosX + dx));
+                zs.panY = Math.max(-maxPanY, Math.min(maxPanY, panStartPosY + dy));
+
+                applyVideoZoom(viewName);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isPanning) {
+                    isPanning = false;
+                    cell.classList.remove('panning');
+                }
+            });
+
+            // Double-click to reset zoom
+            cell.addEventListener('dblclick', (e) => {
+                videoZoomState[viewName] = { scale: 1, panX: 0, panY: 0 };
+                applyVideoZoom(viewName);
+                e.preventDefault();
+            });
+        }
+
+        // Update computed stride when target samples changes
+        document.getElementById('targetSamples').addEventListener('input', () => {
+            const target = parseInt(document.getElementById('targetSamples').value) || 50;
+            const stride = Math.max(1, Math.floor(state.totalFrames / target));
+            document.getElementById('computedStride').textContent = stride;
+        });
+
+        // ============================================
+        // ChArUco Board Detection (OpenCV.js)
+        // ============================================
+
+        // ArUco dictionary mapping - dictionaries are directly on cv object
+        function getArucoDictId(dictName) {
+            // OpenCV.js exposes dictionary constants directly on cv, not cv.aruco
+            const ARUCO_DICT_MAP = {
+                'DICT_4X4_50': cv.DICT_4X4_50,
+                'DICT_4X4_100': cv.DICT_4X4_100,
+                'DICT_4X4_250': cv.DICT_4X4_250,
+                'DICT_4X4_1000': cv.DICT_4X4_1000,
+                'DICT_5X5_50': cv.DICT_5X5_50,
+                'DICT_5X5_100': cv.DICT_5X5_100,
+                'DICT_5X5_250': cv.DICT_5X5_250,
+                'DICT_5X5_1000': cv.DICT_5X5_1000,
+                'DICT_6X6_50': cv.DICT_6X6_50,
+                'DICT_6X6_100': cv.DICT_6X6_100,
+                'DICT_6X6_250': cv.DICT_6X6_250,
+                'DICT_6X6_1000': cv.DICT_6X6_1000,
+            };
+            return ARUCO_DICT_MAP[dictName];
+        }
+
+        function getBoardConfig() {
+            return {
+                boardX: parseInt(document.getElementById('boardX').value) || 8,
+                boardY: parseInt(document.getElementById('boardY').value) || 11,
+                squareLength: parseFloat(document.getElementById('squareLength').value) || 24.0,
+                markerLength: parseFloat(document.getElementById('markerLength').value) || 18.75,
+                dictName: document.getElementById('arucoDict').value,
+            };
+        }
+
+        function createCharucoBoard(config) {
+            if (!state.opencvReady) {
+                throw new Error('OpenCV.js not ready');
+            }
+
+            const dictId = getArucoDictId(config.dictName);
+            if (dictId === undefined) {
+                throw new Error(`Unknown dictionary: ${config.dictName}`);
+            }
+
+            // OpenCV.js uses cv.getPredefinedDictionary and cv.aruco_CharucoBoard
+            const dictionary = cv.getPredefinedDictionary(dictId);
+            // CharucoBoard(size, squareLength, markerLength, dictionary, ids)
+            // ids parameter is required in OpenCV.js even though it's optional in C++
+            const ids = new cv.Mat();  // Empty mat for default ids
+            const board = new cv.aruco_CharucoBoard(
+                new cv.Size(config.boardX, config.boardY),
+                config.squareLength,
+                config.markerLength,
+                dictionary,
+                ids
+            );
+            ids.delete();  // Clean up the temporary ids mat
+
+            return { board, dictionary };
+        }
+
+        async function detectCharucoInView(viewIndex, config) {
+            const view = state.views[viewIndex];
+            if (!view) return null;
+
+            const startTime = performance.now();
+
+            // Get current frame as ImageData
+            const canvas = view.canvas;
+            const ctx = view.ctx;
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+            // Convert to OpenCV Mat
+            const src = cv.matFromImageData(imageData);
+            const gray = new cv.Mat();
+            cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+            // Create detector - OpenCV.js uses cv.aruco_* naming
+            const { board, dictionary } = createCharucoBoard(config);
+            const detectorParams = new cv.aruco_DetectorParameters();
+            // RefineParameters needs (minRepDistance, errorCorrectionRate, checkAllOrders)
+            const refineParams = new cv.aruco_RefineParameters(10.0, 3.0, true);
+            const detector = new cv.aruco_ArucoDetector(dictionary, detectorParams, refineParams);
+
+            // Detect ArUco markers first
+            const markerCorners = new cv.MatVector();
+            const markerIds = new cv.Mat();
+            const rejectedCandidates = new cv.MatVector();
+
+            detector.detectMarkers(gray, markerCorners, markerIds, rejectedCandidates);
+
+            const numMarkers = markerIds.rows;
+            let result = {
+                viewName: view.name,
+                numMarkers: numMarkers,
+                markerIds: [],
+                charucoCorners: null,
+                charucoIds: null,
+                numCharucoCorners: 0,
+                detectTime: 0,
+            };
+
+            // Extract marker IDs
+            for (let i = 0; i < numMarkers; i++) {
+                result.markerIds.push(markerIds.intAt(i, 0));
+            }
+
+            // If we have markers, try to detect ChArUco corners
+            if (numMarkers > 0) {
+                const charucoCorners = new cv.Mat();
+                const charucoIds = new cv.Mat();
+
+                // Create CharucoDetector - needs (board, charucoParams, detectorParams, refineParams)
+                const charucoParams = new cv.aruco_CharucoParameters();
+                const charucoDetector = new cv.aruco_CharucoDetector(board, charucoParams, detectorParams, refineParams);
+
+                // Detect board
+                charucoDetector.detectBoard(gray, charucoCorners, charucoIds, markerCorners, markerIds);
+
+                result.numCharucoCorners = charucoIds.rows;
+
+                // Extract corners for later use
+                if (charucoIds.rows > 0) {
+                    result.charucoCorners = [];
+                    result.charucoIds = [];
+                    for (let i = 0; i < charucoIds.rows; i++) {
+                        result.charucoIds.push(charucoIds.intAt(i, 0));
+                        result.charucoCorners.push({
+                            x: charucoCorners.floatAt(i, 0),
+                            y: charucoCorners.floatAt(i, 1)
+                        });
+                    }
+                }
+
+                charucoCorners.delete();
+                charucoIds.delete();
+                charucoDetector.delete();
+                charucoParams.delete();
+            }
+
+            result.detectTime = performance.now() - startTime;
+
+            // Cleanup
+            src.delete();
+            gray.delete();
+            markerCorners.delete();
+            markerIds.delete();
+            rejectedCandidates.delete();
+            detector.delete();
+            detectorParams.delete();
+            refineParams.delete();
+            board.delete();
+            dictionary.delete();
+
+            return result;
+        }
+
+        async function detectCurrentFrame() {
+            if (!state.opencvReady) {
+                showError('OpenCV.js not loaded yet');
+                return;
+            }
+
+            if (state.views.length === 0) {
+                showError('No videos loaded');
+                return;
+            }
+
+            log(`Detecting ChArUco board on frame ${state.currentFrame}...`, 'info');
+            const config = getBoardConfig();
+            log(`Board config: ${config.boardX}x${config.boardY}, dict=${config.dictName}`, 'info');
+
+            // IMPORTANT: Re-render clean video frames before detection
+            // The canvas may have overlays drawn on it which would confuse ArUco detection
+            const frameResults = await Promise.all(
+                state.views.map(view => view.decoder.getFrame(state.currentFrame))
+            );
+            for (let i = 0; i < state.views.length; i++) {
+                const result = frameResults[i];
+                const view = state.views[i];
+                if (result && result.bitmap) {
+                    view.ctx.clearRect(0, 0, view.canvas.width, view.canvas.height);
+                    view.ctx.drawImage(result.bitmap, 0, 0);
+                }
+            }
+
+            const results = [];
+            for (let i = 0; i < state.views.length; i++) {
+                try {
+                    const result = await detectCharucoInView(i, config);
+                    results.push(result);
+                    log(`${result.viewName}: ${result.numMarkers} markers, ${result.numCharucoCorners} corners (${result.detectTime.toFixed(0)}ms)`,
+                        result.numCharucoCorners > 0 ? 'success' : 'warn');
+                } catch (err) {
+                    log(`${state.views[i].name}: Detection failed - ${err.message}`, 'error');
+                    results.push({ viewName: state.views[i].name, error: err.message });
+                }
+            }
+
+            // Store and visualize results
+            state.currentDetection = results;
+
+            if (state.showOverlay) {
+                drawDetectionOverlay(results);
+            }
+
+            return results;
+        }
+
+        function drawDetectionOverlay(results) {
+            for (let i = 0; i < state.views.length; i++) {
+                const view = state.views[i];
+                const result = results[i];
+                if (!result || result.error || !result.charucoCorners) continue;
+
+                const ctx = view.ctx;
+
+                // Draw detected corners
+                ctx.fillStyle = '#4ade80';
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 2;
+
+                for (let j = 0; j < result.charucoCorners.length; j++) {
+                    const corner = result.charucoCorners[j];
+                    const id = result.charucoIds[j];
+
+                    // Draw corner point
+                    ctx.beginPath();
+                    ctx.arc(corner.x, corner.y, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // Draw ID label
+                    ctx.font = '12px monospace';
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(id.toString(), corner.x + 8, corner.y - 8);
+                    ctx.fillStyle = '#4ade80';
+                }
+            }
+        }
+
+        // Unified legend drawing function - combines all overlay legends into one
+        function drawOverlayLegends() {
+            const showIntrinsics = state.showReprojection && Object.keys(state.intrinsics).length > 0;
+            const showExtrinsics = state.showExtrinsicsReproj && state.extrinsicsReprojData && state.extrinsicsReprojData.length > 0;
+
+            if (!showIntrinsics && !showExtrinsics) return;
+
+            // Calculate legend height based on what's shown
+            // Each entry is ~20px, plus 8px padding top/bottom
+            let numEntries = 1;  // "Detected" is always shown
+            if (showIntrinsics) numEntries++;  // "Reproj (intrinsic)"
+            if (showExtrinsics) numEntries++;  // "Triangulated"
+            const legendHeight = 16 + numEntries * 20;
+
+            for (let i = 0; i < state.views.length; i++) {
+                const view = state.views[i];
+                const ctx = view.ctx;
+                const legendX = view.canvas.width - 148;
+
+                ctx.font = '12px system-ui, sans-serif';
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(legendX, 8, 140, legendHeight);
+
+                let yOffset = 22;
+
+                // Detected (pastel green circle) - always shown when any reprojection overlay is on
+                ctx.fillStyle = '#86efac';
+                ctx.beginPath();
+                ctx.arc(legendX + 14, yOffset, 5, 0, 2 * Math.PI);
+                ctx.fill();
+                ctx.strokeStyle = '#166534';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.fillStyle = '#fff';
+                ctx.fillText('Detected', legendX + 27, yOffset + 4);
+                yOffset += 20;
+
+                // Reproj (intrinsic) - red X
+                if (showIntrinsics) {
+                    ctx.strokeStyle = '#ef4444';
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(legendX + 9, yOffset - 5);
+                    ctx.lineTo(legendX + 19, yOffset + 5);
+                    ctx.moveTo(legendX + 19, yOffset - 5);
+                    ctx.lineTo(legendX + 9, yOffset + 5);
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText('Reproj (intrinsic)', legendX + 27, yOffset + 4);
+                    yOffset += 20;
+                }
+
+                // Triangulated - pastel blue cross
+                if (showExtrinsics) {
+                    ctx.strokeStyle = '#60a5fa';
+                    ctx.lineWidth = 1.5;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(legendX + 9, yOffset);
+                    ctx.lineTo(legendX + 19, yOffset);
+                    ctx.moveTo(legendX + 14, yOffset - 5);
+                    ctx.lineTo(legendX + 14, yOffset + 5);
+                    ctx.stroke();
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText('Triangulated', legendX + 27, yOffset + 4);
+                }
+            }
+        }
+
+        async function runBatchDetection() {
+            if (!state.opencvReady || state.views.length === 0) return;
+
+            const targetSamples = parseInt(document.getElementById('targetSamples').value) || 50;
+            const stride = Math.max(1, Math.floor(state.totalFrames / targetSamples));
+            const config = getBoardConfig();
+
+            log(`Starting batch detection: ${targetSamples} target samples, stride=${stride}`, 'info');
+            setStageStatus('stage2', 'Detecting...', 'active');
+
+            state.detections = [];
+            const tableBody = document.getElementById('detectionTableBody');
+            tableBody.innerHTML = '';
+            document.getElementById('detectionResults').style.display = 'block';
+
+            let processedFrames = 0;
+            for (let frame = 0; frame < state.totalFrames; frame += stride) {
+                // Seek to frame
+                await seekToFrame(frame);
+
+                // Detect in all views
+                const frameResults = {
+                    frame: frame,
+                    views: {},
+                    commonCorners: 0,
+                };
+
+                let minCorners = Infinity;
+                for (let i = 0; i < state.views.length; i++) {
+                    try {
+                        const result = await detectCharucoInView(i, config);
+                        frameResults.views[state.views[i].name] = result;
+                        minCorners = Math.min(minCorners, result.numCharucoCorners);
+                    } catch (err) {
+                        frameResults.views[state.views[i].name] = { error: err.message, numCharucoCorners: 0 };
+                        minCorners = 0;
+                    }
+                }
+                frameResults.commonCorners = minCorners === Infinity ? 0 : minCorners;
+
+                state.detections.push(frameResults);
+
+                // Add to table
+                const row = document.createElement('tr');
+                row.dataset.frame = frame;
+                row.innerHTML = `
+                    <td>${frame}</td>
+                    ${state.views.map(v => {
+                        const r = frameResults.views[v.name];
+                        const n = r ? r.numCharucoCorners : 0;
+                        const cls = n > 6 ? 'color: #4ade80' : (n > 0 ? 'color: #fbbf24' : 'color: #888');
+                        return `<td style="${cls}">${n}</td>`;
+                    }).join('')}
+                    <td style="${frameResults.commonCorners > 6 ? 'color: #4ade80; font-weight: bold' : ''}">${frameResults.commonCorners}</td>
+                `;
+                row.addEventListener('click', async () => {
+                    await seekToFrame(frame);
+                    // Highlight row
+                    tableBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected'));
+                    row.classList.add('selected');
+                });
+                tableBody.appendChild(row);
+
+                processedFrames++;
+                if (processedFrames % 5 === 0) {
+                    log(`Processed ${processedFrames} frames...`, 'info');
+                }
+            }
+
+            const goodFrames = state.detections.filter(d => d.commonCorners >= 6).length;
+            log(`Batch detection complete: ${processedFrames} frames, ${goodFrames} with sufficient corners`, 'success');
+            setStageStatus('stage2', `${goodFrames} good frames`, 'complete');
+            setStageStatus('stage3', 'Ready', '');
+
+            // Enable intrinsics computation
+            document.getElementById('computeIntrinsicsBtn').disabled = false;
+
+            // Redraw current frame to show detection overlay
+            await seekToFrame(state.currentFrame);
+        }
+
+        // Detection event listeners
+        document.getElementById('detectCurrentBtn').addEventListener('click', detectCurrentFrame);
+        document.getElementById('detectionsOverlayCheck').addEventListener('change', (e) => {
+            state.showOverlay = e.target.checked;
+            log(`Detection overlay ${state.showOverlay ? 'enabled' : 'disabled'}`, 'info');
+            seekToFrame(state.currentFrame);
+        });
+        document.getElementById('runDetectionBtn').addEventListener('click', runBatchDetection);
+
+        // ============================================
+        // Intrinsic Calibration
+        // ============================================
+
+        async function computeIntrinsicsForView(viewIndex, config, minCorners) {
+            const viewName = state.views[viewIndex].name;
+            const viewInfo = state.views[viewIndex].info;
+            const imageSize = { width: viewInfo.width, height: viewInfo.height };
+
+            log(`Computing intrinsics for ${viewName}...`, 'info');
+
+            // Collect all detections for this view with sufficient corners
+            const allObjectPoints = [];  // Per-frame 3D object points
+            const allImagePoints = [];   // Per-frame 2D image points
+            const frameIndices = [];     // Video frame indices for each calibration frame
+            let usedFrames = 0;
+
+            for (const detection of state.detections) {
+                const viewResult = detection.views[viewName];
+                if (!viewResult || viewResult.error || !viewResult.charucoCorners) continue;
+                if (viewResult.numCharucoCorners < minCorners) continue;
+
+                // Get object points (3D)
+                const objPts = getObjectPointsForCharucoCorners(viewResult.charucoIds, config);
+
+                // Get image points (2D)
+                const imgPts = viewResult.charucoCorners;
+
+                allObjectPoints.push(objPts);
+                allImagePoints.push(imgPts);
+                frameIndices.push(detection.frame);  // Store video frame number
+                usedFrames++;
+            }
+
+            if (usedFrames < 3) {
+                log(`${viewName}: Insufficient frames with detections (${usedFrames} < 3)`, 'error');
+                return null;
+            }
+
+            log(`${viewName}: Using ${usedFrames} frames for calibration`, 'info');
+
+            // Convert to OpenCV format
+            const objectPointsMat = new cv.MatVector();
+            const imagePointsMat = new cv.MatVector();
+
+            for (let i = 0; i < allObjectPoints.length; i++) {
+                const objPts = allObjectPoints[i];
+                const imgPts = allImagePoints[i];
+
+                // Create Mat for object points (Nx1x3, CV_32F)
+                const objMat = new cv.Mat(objPts.length, 1, cv.CV_32FC3);
+                for (let j = 0; j < objPts.length; j++) {
+                    objMat.floatPtr(j, 0)[0] = objPts[j].x;
+                    objMat.floatPtr(j, 0)[1] = objPts[j].y;
+                    objMat.floatPtr(j, 0)[2] = objPts[j].z;
+                }
+                objectPointsMat.push_back(objMat);
+
+                // Create Mat for image points (Nx1x2, CV_32F)
+                const imgMat = new cv.Mat(imgPts.length, 1, cv.CV_32FC2);
+                for (let j = 0; j < imgPts.length; j++) {
+                    imgMat.floatPtr(j, 0)[0] = imgPts[j].x;
+                    imgMat.floatPtr(j, 0)[1] = imgPts[j].y;
+                }
+                imagePointsMat.push_back(imgMat);
+            }
+
+            // Initialize camera matrix with reasonable defaults
+            // For the principal point, use image center
+            const cx = imageSize.width / 2;
+            const cy = imageSize.height / 2;
+            // For focal length, use a rough estimate based on image size
+            // A typical camera has FOV around 60 degrees
+            const focalEstimate = imageSize.width / (2 * Math.tan(30 * Math.PI / 180));
+
+            const cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [
+                focalEstimate, 0, cx,
+                0, focalEstimate, cy,
+                0, 0, 1
+            ]);
+
+            const distCoeffs = cv.Mat.zeros(5, 1, cv.CV_64F);
+            const rvecs = new cv.MatVector();
+            const tvecs = new cv.MatVector();
+
+            const imageSizeMat = new cv.Size(imageSize.width, imageSize.height);
+
+            try {
+                // Run calibration
+                // Use CALIB_USE_INTRINSIC_GUESS to use our initial estimate
+                const flags = cv.CALIB_USE_INTRINSIC_GUESS;
+
+                // Additional output matrices for calibrateCameraExtended
+                const stdDeviationsIntrinsics = new cv.Mat();
+                const stdDeviationsExtrinsics = new cv.Mat();
+                const perViewErrors = new cv.Mat();
+
+                log(`${viewName}: Running cv.calibrateCameraExtended...`, 'info');
+                const rmsError = cv.calibrateCameraExtended(
+                    objectPointsMat,
+                    imagePointsMat,
+                    imageSizeMat,
+                    cameraMatrix,
+                    distCoeffs,
+                    rvecs,
+                    tvecs,
+                    stdDeviationsIntrinsics,
+                    stdDeviationsExtrinsics,
+                    perViewErrors,
+                    flags
+                );
+
+                // Extract per-view errors for diagnostics and visualization
+                const perImageErrors = [];
+                for (let i = 0; i < perViewErrors.rows; i++) {
+                    perImageErrors.push(perViewErrors.doubleAt(i, 0));
+                }
+                log(`${viewName}: Per-view errors: min=${Math.min(...perImageErrors).toFixed(4)}, max=${Math.max(...perImageErrors).toFixed(4)}, mean=${(perImageErrors.reduce((a,b)=>a+b,0)/perImageErrors.length).toFixed(4)}`, 'info');
+
+                // Cleanup extra mats
+                stdDeviationsIntrinsics.delete();
+                stdDeviationsExtrinsics.delete();
+                perViewErrors.delete();
+
+                // Extract results
+                const fx = cameraMatrix.doubleAt(0, 0);
+                const fy = cameraMatrix.doubleAt(1, 1);
+                const cx_out = cameraMatrix.doubleAt(0, 2);
+                const cy_out = cameraMatrix.doubleAt(1, 2);
+
+                const k1 = distCoeffs.doubleAt(0, 0);
+                const k2 = distCoeffs.doubleAt(1, 0);
+                const p1 = distCoeffs.doubleAt(2, 0);
+                const p2 = distCoeffs.doubleAt(3, 0);
+                const k3 = distCoeffs.doubleAt(4, 0);
+
+                const result = {
+                    viewName: viewName,
+                    imageSize: imageSize,
+                    cameraMatrix: [[fx, 0, cx_out], [0, fy, cy_out], [0, 0, 1]],
+                    distCoeffs: [k1, k2, p1, p2, k3],
+                    fx, fy, cx: cx_out, cy: cy_out,
+                    k1, k2, p1, p2, k3,
+                    rmsError: rmsError,
+                    framesUsed: usedFrames,
+                    // Store rvecs and tvecs for later extrinsic computation
+                    rvecs: [],
+                    tvecs: [],
+                    // Store object and image points for reprojection visualization
+                    objectPoints: allObjectPoints,
+                    imagePoints: allImagePoints,
+                    frameIndices: frameIndices,  // Video frame numbers corresponding to each calibration frame
+                    // Per-image reprojection errors (RMS)
+                    perImageErrors: perImageErrors,
+                };
+
+                // Extract per-frame poses
+                for (let i = 0; i < rvecs.size(); i++) {
+                    const rvec = rvecs.get(i);
+                    const tvec = tvecs.get(i);
+                    result.rvecs.push([rvec.doubleAt(0, 0), rvec.doubleAt(1, 0), rvec.doubleAt(2, 0)]);
+                    result.tvecs.push([tvec.doubleAt(0, 0), tvec.doubleAt(1, 0), tvec.doubleAt(2, 0)]);
+                    rvec.delete();
+                    tvec.delete();
+                }
+
+                log(`${viewName}: RMS=${rmsError.toFixed(4)}, fx=${fx.toFixed(1)}, fy=${fy.toFixed(1)}, cx=${cx_out.toFixed(1)}, cy=${cy_out.toFixed(1)}`, 'success');
+                log(`${viewName}: Distortion k1=${k1.toFixed(6)}, k2=${k2.toFixed(6)}, p1=${p1.toFixed(6)}, p2=${p2.toFixed(6)}, k3=${k3.toFixed(6)}`, 'info');
+
+                // Cleanup
+                for (let i = 0; i < objectPointsMat.size(); i++) {
+                    objectPointsMat.get(i).delete();
+                    imagePointsMat.get(i).delete();
+                }
+                objectPointsMat.delete();
+                imagePointsMat.delete();
+                cameraMatrix.delete();
+                distCoeffs.delete();
+                rvecs.delete();
+                tvecs.delete();
+
+                return result;
+
+            } catch (err) {
+                log(`${viewName}: Calibration failed - ${err.message}`, 'error');
+                console.error('Calibration error:', err);
+
+                // Cleanup on error
+                for (let i = 0; i < objectPointsMat.size(); i++) {
+                    objectPointsMat.get(i).delete();
+                    imagePointsMat.get(i).delete();
+                }
+                objectPointsMat.delete();
+                imagePointsMat.delete();
+                cameraMatrix.delete();
+                distCoeffs.delete();
+                rvecs.delete();
+                tvecs.delete();
+
+                return null;
+            }
+        }
+
+        async function computeAllIntrinsics() {
+            if (state.detections.length === 0) {
+                showError('No detections available. Run batch detection first.');
+                return;
+            }
+
+            const minCorners = parseInt(document.getElementById('minCorners').value) || 6;
+            const config = getBoardConfig();
+
+            log(`Computing intrinsics for all cameras (min corners: ${minCorners})...`, 'info');
+            setStageStatus('stage3', 'Computing...', 'active');
+
+            state.intrinsics = {};
+            const tableBody = document.getElementById('intrinsicsTableBody');
+            tableBody.innerHTML = '';
+            document.getElementById('intrinsicsResults').style.display = 'block';
+
+            let successCount = 0;
+            for (let i = 0; i < state.views.length; i++) {
+                const result = await computeIntrinsicsForView(i, config, minCorners);
+                if (result) {
+                    state.intrinsics[state.views[i].name] = result;
+                    successCount++;
+
+                    // Add to table
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><strong>${result.viewName}</strong></td>
+                        <td>${result.fx.toFixed(2)}</td>
+                        <td>${result.fy.toFixed(2)}</td>
+                        <td>${result.cx.toFixed(2)}</td>
+                        <td>${result.cy.toFixed(2)}</td>
+                        <td>${result.k1.toFixed(6)}</td>
+                        <td>${result.k2.toFixed(6)}</td>
+                        <td style="color: ${result.rmsError < 1 ? '#4ade80' : (result.rmsError < 2 ? '#fbbf24' : '#ff6b6b')}">${result.rmsError.toFixed(4)}</td>
+                    `;
+                    tableBody.appendChild(row);
+                }
+            }
+
+            // Draw swarm plot after all intrinsics are computed
+            if (successCount > 0) {
+                drawSwarmPlot();
+            }
+
+            if (successCount === state.views.length) {
+                log(`Intrinsic calibration complete for all ${successCount} cameras`, 'success');
+                setStageStatus('stage3', 'Complete', 'complete');
+                setStageStatus('stage4', 'Ready', '');
+
+                // Enable extrinsics computation
+                document.getElementById('computeExtrinsicsBtn').disabled = false;
+
+                // Draw reprojection overlay if checkbox is checked
+                if (document.getElementById('intrinsicsOverlayCheck').checked) {
+                    state.showReprojection = true;
+                    // Navigate to first calibration frame and redraw with overlay
+                    state.reprojectionFrameIndex = 0;
+                    const firstIntrinsics = Object.values(state.intrinsics)[0];
+                    const videoFrame = firstIntrinsics.frameIndices ? firstIntrinsics.frameIndices[0] : 0;
+                    await seekToFrame(videoFrame);
+                }
+
+                // Expand stage 4
+                document.getElementById('stage4').classList.remove('collapsed');
+            } else {
+                log(`Intrinsic calibration completed for ${successCount}/${state.views.length} cameras`, 'warn');
+                setStageStatus('stage3', `${successCount}/${state.views.length} complete`, 'error');
+
+                // Draw reprojection overlay if checkbox is checked and any cameras succeeded
+                if (successCount > 0 && document.getElementById('intrinsicsOverlayCheck').checked) {
+                    state.showReprojection = true;
+                    state.reprojectionFrameIndex = 0;
+                    const firstIntrinsics = Object.values(state.intrinsics)[0];
+                    const videoFrame = firstIntrinsics.frameIndices ? firstIntrinsics.frameIndices[0] : 0;
+                    await seekToFrame(videoFrame);
+                }
+            }
+        }
+
+        // Intrinsics event listener
+        document.getElementById('computeIntrinsicsBtn').addEventListener('click', computeAllIntrinsics);
+
+        // ============================================
+        // Reprojection Visualization
+        // ============================================
+
+        // State for reprojection visualization
+        state.showReprojection = false;
+        state.reprojectionFrameIndex = 0;
+
+        // phase: 'circles' = draw detected points only, 'markers' = draw reprojection X's only
+        function drawReprojectionOverlay(phase = 'all') {
+            if (!state.showReprojection || Object.keys(state.intrinsics).length === 0) return;
+
+            // Try to find the calibration frame index for the current video frame
+            const firstIntrinsics = Object.values(state.intrinsics)[0];
+            if (firstIntrinsics && firstIntrinsics.frameIndices) {
+                const matchIdx = firstIntrinsics.frameIndices.indexOf(state.currentFrame);
+                if (matchIdx !== -1) {
+                    state.reprojectionFrameIndex = matchIdx;
+                }
+            }
+
+            for (let i = 0; i < state.views.length; i++) {
+                const view = state.views[i];
+                const intrinsics = state.intrinsics[view.name];
+                if (!intrinsics || !intrinsics.objectPoints || !intrinsics.imagePoints) continue;
+
+                const frameIdx = state.reprojectionFrameIndex % intrinsics.objectPoints.length;
+                const objPts = intrinsics.objectPoints[frameIdx];
+                const imgPts = intrinsics.imagePoints[frameIdx];
+                const rvec = intrinsics.rvecs[frameIdx];
+                const tvec = intrinsics.tvecs[frameIdx];
+
+                if (!objPts || !imgPts || !rvec || !tvec) continue;
+
+                // Compute reprojected points using OpenCV
+                const objMat = new cv.Mat(objPts.length, 1, cv.CV_64FC3);
+                for (let j = 0; j < objPts.length; j++) {
+                    objMat.doublePtr(j, 0)[0] = objPts[j].x;
+                    objMat.doublePtr(j, 0)[1] = objPts[j].y;
+                    objMat.doublePtr(j, 0)[2] = objPts[j].z;
+                }
+
+                const rvecMat = cv.matFromArray(3, 1, cv.CV_64F, rvec);
+                const tvecMat = cv.matFromArray(3, 1, cv.CV_64F, tvec);
+                const cameraMat = cv.matFromArray(3, 3, cv.CV_64F, intrinsics.cameraMatrix.flat());
+                const distMat = cv.matFromArray(5, 1, cv.CV_64F, intrinsics.distCoeffs);
+                const projectedPts = new cv.Mat();
+
+                try {
+                    cv.projectPoints(objMat, rvecMat, tvecMat, cameraMat, distMat, projectedPts);
+                } catch (err) {
+                    console.error(`Intrinsics reprojection error for ${view.name}:`, err);
+                    objMat.delete();
+                    rvecMat.delete();
+                    tvecMat.delete();
+                    cameraMat.delete();
+                    distMat.delete();
+                    projectedPts.delete();
+                    continue;
+                }
+
+                try {
+                    const ctx = view.ctx;
+
+                    // Phase 1: Draw original detected points (pastel green circles with dark border)
+                    if (phase === 'circles' || phase === 'all') {
+                        for (let j = 0; j < imgPts.length; j++) {
+                            const pt = imgPts[j];
+                            ctx.beginPath();
+                            ctx.arc(pt.x, pt.y, 6, 0, 2 * Math.PI);
+                            ctx.fillStyle = '#86efac';  // Pastel green
+                            ctx.fill();
+                            ctx.strokeStyle = '#166534';  // Dark green border
+                            ctx.lineWidth = 1.5;
+                            ctx.stroke();
+                        }
+                    }
+
+                    // Phase 2: Draw reprojected points (red X's with white shadow)
+                    if (phase === 'markers' || phase === 'all') {
+                        const xSize = 5;
+                        for (let j = 0; j < projectedPts.rows; j++) {
+                            const px = projectedPts.doubleAt(j, 0);
+                            const py = projectedPts.doubleAt(j, 1);
+
+                            // White shadow for visibility
+                            ctx.strokeStyle = '#fff';
+                            ctx.lineWidth = 4;
+                            ctx.lineCap = 'round';
+                            ctx.beginPath();
+                            ctx.moveTo(px - xSize, py - xSize);
+                            ctx.lineTo(px + xSize, py + xSize);
+                            ctx.moveTo(px + xSize, py - xSize);
+                            ctx.lineTo(px - xSize, py + xSize);
+                            ctx.stroke();
+
+                            // Red X
+                            ctx.strokeStyle = '#ef4444';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(px - xSize, py - xSize);
+                            ctx.lineTo(px + xSize, py + xSize);
+                            ctx.moveTo(px + xSize, py - xSize);
+                            ctx.lineTo(px - xSize, py + xSize);
+                            ctx.stroke();
+                        }
+                    }
+
+                    // Frame info (only draw once in markers phase or 'all')
+                    if (phase === 'markers' || phase === 'all') {
+                        ctx.font = '12px system-ui, sans-serif';
+                        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                        ctx.fillRect(8, view.canvas.height - 30, 140, 22);
+                        ctx.fillStyle = '#aaa';
+                        ctx.fillText(`Intr ${frameIdx + 1}/${intrinsics.objectPoints.length}`, 12, view.canvas.height - 14);
+                    }
+
+                } finally {
+                    objMat.delete();
+                    rvecMat.delete();
+                    tvecMat.delete();
+                    cameraMat.delete();
+                    distMat.delete();
+                    projectedPts.delete();
+                }
+            }
+        }
+
+        async function setIntrinsicsOverlay(enabled) {
+            state.showReprojection = enabled;
+
+            if (enabled) {
+                log('Intrinsics reprojection overlay enabled. Use [ and ] to navigate frames.', 'info');
+            } else {
+                log('Intrinsics reprojection overlay disabled', 'info');
+            }
+            // Redraw current frame with updated overlay state
+            await seekToFrame(state.currentFrame);
+        }
+
+        async function navigateReprojectionFrame(delta) {
+            if (!state.showReprojection || Object.keys(state.intrinsics).length === 0) return;
+
+            const firstIntrinsics = Object.values(state.intrinsics)[0];
+            const maxFrames = firstIntrinsics.objectPoints.length;
+
+            state.reprojectionFrameIndex = (state.reprojectionFrameIndex + delta + maxFrames) % maxFrames;
+
+            // Get the actual video frame number for this reprojection index
+            const videoFrame = firstIntrinsics.frameIndices ? firstIntrinsics.frameIndices[state.reprojectionFrameIndex] : state.reprojectionFrameIndex;
+            log(`Viewing reprojection frame ${state.reprojectionFrameIndex + 1}/${maxFrames} (video frame ${videoFrame})`, 'info');
+
+            // Seek to the correct video frame (overlay drawn automatically)
+            await seekToFrame(videoFrame);
+        }
+
+        // Add keyboard navigation for reprojection frames
+        document.addEventListener('keydown', (e) => {
+            if (state.showReprojection) {
+                if (e.key === '[') {
+                    navigateReprojectionFrame(-1);
+                } else if (e.key === ']') {
+                    navigateReprojectionFrame(1);
+                }
+            }
+        });
+
+        document.getElementById('intrinsicsOverlayCheck').addEventListener('change', (e) => {
+            setIntrinsicsOverlay(e.target.checked);
+        });
+
+        // ============================================
+        // Swarm Plot Visualization
+        // ============================================
+
+        // Store swarm plot dot positions for hover detection
+        state.swarmDots = [];
+
+        function drawSwarmPlot() {
+            const canvas = document.getElementById('swarmPlotCanvas');
+            const ctx = canvas.getContext('2d');
+            const tooltip = document.getElementById('swarmTooltip');
+
+            // Get all camera names and their errors
+            const cameras = Object.keys(state.intrinsics);
+            if (cameras.length === 0) return;
+
+            // Collect all errors for computing scale
+            let allErrors = [];
+            cameras.forEach(cam => {
+                const errors = state.intrinsics[cam].perImageErrors || [];
+                allErrors = allErrors.concat(errors);
+            });
+
+            if (allErrors.length === 0) return;
+
+            // Clear canvas
+            const width = canvas.width;
+            const height = canvas.height;
+            ctx.clearRect(0, 0, width, height);
+
+            // Layout constants
+            const padding = { left: 60, right: 30, top: 30, bottom: 50 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+
+            // Compute log scale range (ensure positive values)
+            const minError = Math.max(0.01, Math.min(...allErrors));
+            const maxError = Math.max(...allErrors);
+            const logMin = Math.log10(minError * 0.8);
+            const logMax = Math.log10(maxError * 1.2);
+
+            // Y scale function (log scale)
+            const yScale = (val) => {
+                const logVal = Math.log10(Math.max(0.01, val));
+                return padding.top + plotHeight - ((logVal - logMin) / (logMax - logMin)) * plotHeight;
+            };
+
+            // X scale function (categorical)
+            const xBandWidth = plotWidth / cameras.length;
+            const xScale = (cameraIndex) => padding.left + xBandWidth * (cameraIndex + 0.5);
+
+            // Draw grid lines and Y axis labels
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+
+            // Generate nice log scale tick values
+            const tickValues = [];
+            for (let exp = Math.floor(logMin); exp <= Math.ceil(logMax); exp++) {
+                tickValues.push(Math.pow(10, exp));
+                if (exp < Math.ceil(logMax)) {
+                    tickValues.push(2 * Math.pow(10, exp));
+                    tickValues.push(5 * Math.pow(10, exp));
+                }
+            }
+
+            tickValues.filter(v => v >= minError * 0.8 && v <= maxError * 1.2).forEach(val => {
+                const y = yScale(val);
+                if (y >= padding.top && y <= padding.top + plotHeight) {
+                    ctx.beginPath();
+                    ctx.moveTo(padding.left, y);
+                    ctx.lineTo(width - padding.right, y);
+                    ctx.stroke();
+                    ctx.fillText(val.toFixed(val < 1 ? 2 : 1), padding.left - 8, y + 4);
+                }
+            });
+
+            // Y axis label
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px system-ui, sans-serif';
+            ctx.fillText('RMS Error (pixels)', 0, 0);
+            ctx.restore();
+
+            // Clear swarm dots array
+            state.swarmDots = [];
+
+            // Camera colors (consistent with theme)
+            const colors = ['#667eea', '#4ade80', '#fbbf24', '#ef4444', '#a78bfa', '#22d3ee'];
+
+            // Draw dots for each camera
+            cameras.forEach((cam, camIdx) => {
+                const errors = state.intrinsics[cam].perImageErrors || [];
+                const x = xScale(camIdx);
+                const color = colors[camIdx % colors.length];
+
+                // Jitter dots horizontally to create swarm effect
+                // Use seeded random based on index for consistency
+                const jitterWidth = xBandWidth * 0.6;
+
+                errors.forEach((error, imgIdx) => {
+                    const y = yScale(error);
+                    // Deterministic jitter based on error value and index
+                    const jitter = ((imgIdx * 7919 + Math.floor(error * 1000)) % 100 - 50) / 50 * jitterWidth / 2;
+                    const dotX = x + jitter;
+                    const dotY = y;
+                    const radius = 5;
+
+                    // Store dot info for hover detection
+                    state.swarmDots.push({
+                        x: dotX,
+                        y: dotY,
+                        radius: radius,
+                        camera: cam,
+                        imageIndex: imgIdx,
+                        error: error,
+                        color: color
+                    });
+
+                    // Draw dot
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                });
+
+                // Draw camera label on X axis
+                ctx.fillStyle = color;
+                ctx.font = 'bold 12px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(cam, x, height - padding.bottom + 20);
+            });
+
+            // Draw axis lines
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, padding.top);
+            ctx.lineTo(padding.left, padding.top + plotHeight);
+            ctx.lineTo(width - padding.right, padding.top + plotHeight);
+            ctx.stroke();
+        }
+
+        // Swarm plot hover handling
+        function setupSwarmPlotHover() {
+            const canvas = document.getElementById('swarmPlotCanvas');
+            const tooltip = document.getElementById('swarmTooltip');
+            let hoveredDot = null;
+
+            canvas.addEventListener('mousemove', async (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const mx = (e.clientX - rect.left) * scaleX;
+                const my = (e.clientY - rect.top) * scaleY;
+
+                // Find closest dot
+                let closest = null;
+                let closestDist = Infinity;
+                for (const dot of state.swarmDots) {
+                    const dist = Math.sqrt((mx - dot.x) ** 2 + (my - dot.y) ** 2);
+                    if (dist < dot.radius + 5 && dist < closestDist) {
+                        closest = dot;
+                        closestDist = dist;
+                    }
+                }
+
+                if (closest) {
+                    // Show tooltip
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = `${e.clientX - canvas.parentElement.getBoundingClientRect().left + 10}px`;
+                    tooltip.style.top = `${e.clientY - canvas.parentElement.getBoundingClientRect().top - 30}px`;
+                    tooltip.innerHTML = `<strong>${closest.camera}</strong><br>Image ${closest.imageIndex + 1}<br>RMS: ${closest.error.toFixed(4)} px`;
+                    canvas.style.cursor = 'pointer';
+
+                    // If different dot than before, update reprojection view
+                    if (!hoveredDot || hoveredDot.camera !== closest.camera || hoveredDot.imageIndex !== closest.imageIndex) {
+                        hoveredDot = closest;
+
+                        // Show reprojection for this specific image
+                        state.showReprojection = true;
+                        state.reprojectionFrameIndex = closest.imageIndex;
+                        document.getElementById('intrinsicsOverlayCheck').checked = true;
+
+                        // Get the actual video frame for this calibration frame
+                        const firstIntrinsics = Object.values(state.intrinsics)[0];
+                        const videoFrame = firstIntrinsics?.frameIndices ? firstIntrinsics.frameIndices[closest.imageIndex] : closest.imageIndex;
+
+                        // Seek to correct video frame (overlay drawn automatically)
+                        await seekToFrame(videoFrame);
+                    }
+                } else {
+                    tooltip.style.display = 'none';
+                    canvas.style.cursor = 'default';
+                    hoveredDot = null;
+                }
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+                canvas.style.cursor = 'default';
+            });
+
+            // Click to lock the reprojection view
+            canvas.addEventListener('click', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const mx = (e.clientX - rect.left) * scaleX;
+                const my = (e.clientY - rect.top) * scaleY;
+
+                // Find clicked dot
+                for (const dot of state.swarmDots) {
+                    const dist = Math.sqrt((mx - dot.x) ** 2 + (my - dot.y) ** 2);
+                    if (dist < dot.radius + 5) {
+                        log(`Locked reprojection view: ${dot.camera} image ${dot.imageIndex + 1} (RMS: ${dot.error.toFixed(4)})`, 'info');
+                        break;
+                    }
+                }
+            });
+        }
+
+        // Initialize swarm plot hover after DOM is ready
+        setupSwarmPlotHover();
+
+        // ============================================
+        // Extrinsic Calibration
+        // ============================================
+
+        // Build covisibility graph - which camera pairs see the board together on which frames
+        function buildCovisibilityGraph(minCovisible) {
+            const graph = {};
+            const viewNames = state.views.map(v => v.name);
+
+            // Initialize adjacency list
+            for (const viewName of viewNames) {
+                graph[viewName] = {};
+                for (const otherView of viewNames) {
+                    if (otherView !== viewName) {
+                        graph[viewName][otherView] = [];
+                    }
+                }
+            }
+
+            // Find covisible frames for each camera pair
+            for (const detection of state.detections) {
+                // Get views with valid detections
+                const validViews = [];
+                for (const viewName of viewNames) {
+                    const viewResult = detection.views[viewName];
+                    if (viewResult && !viewResult.error && viewResult.charucoCorners &&
+                        viewResult.numCharucoCorners >= minCovisible) {
+                        validViews.push(viewName);
+                    }
+                }
+
+                // Record covisibility for all pairs
+                for (let i = 0; i < validViews.length; i++) {
+                    for (let j = i + 1; j < validViews.length; j++) {
+                        const view1 = validViews[i];
+                        const view2 = validViews[j];
+
+                        // Find common corner IDs
+                        const ids1 = new Set(detection.views[view1].charucoIds);
+                        const ids2 = new Set(detection.views[view2].charucoIds);
+                        const commonIds = [...ids1].filter(id => ids2.has(id));
+
+                        if (commonIds.length >= minCovisible) {
+                            graph[view1][view2].push({
+                                frame: detection.frame,
+                                commonIds: commonIds,
+                            });
+                            graph[view2][view1].push({
+                                frame: detection.frame,
+                                commonIds: commonIds,
+                            });
+                        }
+                    }
+                }
+            }
+
+            return graph;
+        }
+
+        // Get matched 2D points for a pair of views on a specific frame
+        function getMatchedPointsForFrame(view1Name, view2Name, frameIndex, commonIds) {
+            const detection = state.detections.find(d => d.frame === frameIndex);
+            if (!detection) return null;
+
+            const result1 = detection.views[view1Name];
+            const result2 = detection.views[view2Name];
+
+            if (!result1 || !result2) return null;
+
+            const points1 = [];
+            const points2 = [];
+
+            for (const id of commonIds) {
+                const idx1 = result1.charucoIds.indexOf(id);
+                const idx2 = result2.charucoIds.indexOf(id);
+
+                if (idx1 >= 0 && idx2 >= 0) {
+                    points1.push(result1.charucoCorners[idx1]);
+                    points2.push(result2.charucoCorners[idx2]);
+                }
+            }
+
+            return { points1, points2 };
+        }
+
+        // Compute board pose for a single view on a single frame using solvePnP
+        function computeBoardPose(viewName, frameIndex, config) {
+            const detection = state.detections.find(d => d.frame === frameIndex);
+            if (!detection) return null;
+
+            const viewResult = detection.views[viewName];
+            if (!viewResult || viewResult.error || !viewResult.charucoCorners || viewResult.numCharucoCorners < 6) {
+                return null;
+            }
+
+            const intrinsics = state.intrinsics[viewName];
+            if (!intrinsics) return null;
+
+            // Get object points (3D) and image points (2D)
+            const objPts = getObjectPointsForCharucoCorners(viewResult.charucoIds, config);
+            const imgPts = viewResult.charucoCorners;
+
+            // Create OpenCV mats
+            const objectPoints = cv.matFromArray(objPts.length, 3, cv.CV_64F,
+                objPts.flatMap(p => [p.x, p.y, p.z]));
+            const imagePoints = cv.matFromArray(imgPts.length, 2, cv.CV_64F,
+                imgPts.flatMap(p => [p.x, p.y]));
+            const cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, intrinsics.cameraMatrix.flat());
+            const distCoeffs = cv.matFromArray(5, 1, cv.CV_64F, intrinsics.distCoeffs);
+
+            const rvec = new cv.Mat();
+            const tvec = new cv.Mat();
+
+            try {
+                const success = cv.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+
+                if (!success) {
+                    objectPoints.delete();
+                    imagePoints.delete();
+                    cameraMatrix.delete();
+                    distCoeffs.delete();
+                    rvec.delete();
+                    tvec.delete();
+                    return null;
+                }
+
+                // Convert rvec to rotation matrix
+                const R = new cv.Mat();
+                cv.Rodrigues(rvec, R);
+
+                const result = {
+                    R: [
+                        [R.doubleAt(0, 0), R.doubleAt(0, 1), R.doubleAt(0, 2)],
+                        [R.doubleAt(1, 0), R.doubleAt(1, 1), R.doubleAt(1, 2)],
+                        [R.doubleAt(2, 0), R.doubleAt(2, 1), R.doubleAt(2, 2)],
+                    ],
+                    rvec: [rvec.doubleAt(0, 0), rvec.doubleAt(1, 0), rvec.doubleAt(2, 0)],
+                    tvec: [tvec.doubleAt(0, 0), tvec.doubleAt(1, 0), tvec.doubleAt(2, 0)],
+                };
+
+                R.delete();
+                objectPoints.delete();
+                imagePoints.delete();
+                cameraMatrix.delete();
+                distCoeffs.delete();
+                rvec.delete();
+                tvec.delete();
+
+                return result;
+
+            } catch (err) {
+                objectPoints.delete();
+                imagePoints.delete();
+                cameraMatrix.delete();
+                distCoeffs.delete();
+                rvec.delete();
+                tvec.delete();
+                return null;
+            }
+        }
+
+        // Compute relative pose between two cameras using solvePnP on common frames
+        // Returns transformation from refView to targetView: P_target = R * P_ref + T
+        async function computeRelativePose(refViewName, targetViewName, graph, config) {
+            const covisibleFrames = graph[refViewName][targetViewName];
+            if (covisibleFrames.length === 0) {
+                log(`No covisible frames between ${refViewName} and ${targetViewName}`, 'error');
+                return null;
+            }
+
+            log(`Computing relative pose ${refViewName} -> ${targetViewName} using ${covisibleFrames.length} frames`, 'info');
+
+            // Collect relative poses from all covisible frames
+            const relativePoses = [];
+
+            for (const covis of covisibleFrames) {
+                // Compute board pose in each camera frame
+                const pose1 = computeBoardPose(refViewName, covis.frame, config);
+                const pose2 = computeBoardPose(targetViewName, covis.frame, config);
+
+                if (!pose1 || !pose2) continue;
+
+                // pose1: T_board_to_cam1 (transforms board points to cam1 frame)
+                // pose2: T_board_to_cam2 (transforms board points to cam2 frame)
+                // We want T_cam1_to_cam2
+
+                // T_cam1_to_cam2 = T_board_to_cam2 * T_cam1_to_board
+                // T_cam1_to_board = inv(T_board_to_cam1) = [R1^T, -R1^T * t1]
+
+                // R_rel = R2 * R1^T
+                const R1_T = transposeMatrix(pose1.R);
+                const R_rel = composeRotation(R1_T, pose2.R);
+
+                // t_rel = t2 - R_rel * t1 = t2 + R2 * R1^T * (-t1) = t2 - R2 * R1^T * t1
+                const R1_T_t1 = rotateVector(R1_T, pose1.tvec);
+                const t_rel = addVectors(pose2.tvec, negateVector(rotateVector(pose2.R, R1_T_t1)));
+
+                relativePoses.push({ R: R_rel, tvec: t_rel });
+            }
+
+            if (relativePoses.length === 0) {
+                log(`No valid pose estimates for ${refViewName} -> ${targetViewName}`, 'error');
+                return null;
+            }
+
+            // Average the relative poses (simple mean - could use more robust methods)
+            // For rotation, we'll use the median of Rodrigues vectors
+            const rvecs = relativePoses.map(p => matrixToRodrigues(p.R));
+            const tvecs = relativePoses.map(p => p.tvec);
+
+            // Simple mean
+            const avgRvec = [
+                rvecs.reduce((s, v) => s + v[0], 0) / rvecs.length,
+                rvecs.reduce((s, v) => s + v[1], 0) / rvecs.length,
+                rvecs.reduce((s, v) => s + v[2], 0) / rvecs.length,
+            ];
+            const avgTvec = [
+                tvecs.reduce((s, v) => s + v[0], 0) / tvecs.length,
+                tvecs.reduce((s, v) => s + v[1], 0) / tvecs.length,
+                tvecs.reduce((s, v) => s + v[2], 0) / tvecs.length,
+            ];
+
+            // Convert averaged rvec back to rotation matrix
+            const rvecMat = cv.matFromArray(3, 1, cv.CV_64F, avgRvec);
+            const Rmat = new cv.Mat();
+            cv.Rodrigues(rvecMat, Rmat);
+
+            const R = [
+                [Rmat.doubleAt(0, 0), Rmat.doubleAt(0, 1), Rmat.doubleAt(0, 2)],
+                [Rmat.doubleAt(1, 0), Rmat.doubleAt(1, 1), Rmat.doubleAt(1, 2)],
+                [Rmat.doubleAt(2, 0), Rmat.doubleAt(2, 1), Rmat.doubleAt(2, 2)],
+            ];
+
+            rvecMat.delete();
+            Rmat.delete();
+
+            // Compute std dev for error estimate
+            const tStd = Math.sqrt(
+                tvecs.reduce((s, v) => s + (v[0] - avgTvec[0])**2 + (v[1] - avgTvec[1])**2 + (v[2] - avgTvec[2])**2, 0) / tvecs.length
+            );
+
+            const result = {
+                R: R,
+                rvec: avgRvec,
+                tvec: avgTvec,
+                rmsError: tStd,
+                framesUsed: relativePoses.length,
+            };
+
+            log(`${refViewName} -> ${targetViewName}: T=[${avgTvec.map(v => v.toFixed(2)).join(', ')}], std=${tStd.toFixed(2)}, frames=${relativePoses.length}`, 'success');
+
+            return result;
+        }
+
+        // BFS to find path from reference camera to all others
+        function findPoseChain(graph, refViewName, viewNames) {
+            const visited = new Set([refViewName]);
+            const queue = [refViewName];
+            const parent = { [refViewName]: null };
+
+            while (queue.length > 0) {
+                const current = queue.shift();
+                for (const neighbor of viewNames) {
+                    if (neighbor !== current && !visited.has(neighbor)) {
+                        // Check if there's a connection (covisible frames)
+                        if (graph[current][neighbor] && graph[current][neighbor].length > 0) {
+                            visited.add(neighbor);
+                            parent[neighbor] = current;
+                            queue.push(neighbor);
+                        }
+                    }
+                }
+            }
+
+            return parent;
+        }
+
+        async function computeAllExtrinsics() {
+            if (Object.keys(state.intrinsics).length === 0) {
+                showError('No intrinsics available. Compute intrinsics first.');
+                return;
+            }
+
+            const minCovisible = parseInt(document.getElementById('minCovisible').value) || 10;
+            const refCamIndex = parseInt(document.getElementById('referenceCamera').value) || 0;
+            const refViewName = state.views[refCamIndex].name;
+            const config = getBoardConfig();
+            const viewNames = state.views.map(v => v.name);
+
+            log(`Computing extrinsics with reference camera: ${refViewName}`, 'info');
+            setStageStatus('stage4', 'Computing...', 'active');
+
+            // Build covisibility graph
+            const graph = buildCovisibilityGraph(minCovisible);
+
+            // Log covisibility
+            for (const view1 of viewNames) {
+                for (const view2 of viewNames) {
+                    if (view1 < view2) {
+                        const count = graph[view1][view2].length;
+                        log(`Covisibility ${view1}-${view2}: ${count} frames`, count > 0 ? 'info' : 'warn');
+                    }
+                }
+            }
+
+            // Find path from reference to all other cameras
+            const parent = findPoseChain(graph, refViewName, viewNames);
+
+            // Check if all cameras are reachable
+            for (const viewName of viewNames) {
+                if (viewName !== refViewName && !parent[viewName]) {
+                    log(`Camera ${viewName} not reachable from ${refViewName}!`, 'error');
+                }
+            }
+
+            // Compute pairwise relative poses
+            const relativePoses = {};
+            for (const viewName of viewNames) {
+                if (viewName !== refViewName && parent[viewName]) {
+                    const pose = await computeRelativePose(parent[viewName], viewName, graph, config);
+                    if (pose) {
+                        relativePoses[`${parent[viewName]}->${viewName}`] = pose;
+                    }
+                }
+            }
+
+            // Chain poses to get absolute poses relative to reference
+            state.extrinsics = {};
+
+            // Reference camera is at origin
+            state.extrinsics[refViewName] = {
+                viewName: refViewName,
+                R: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                rvec: [0, 0, 0],
+                tvec: [0, 0, 0],
+                rmsError: 0,
+            };
+
+            // Compute absolute poses for other cameras
+            for (const viewName of viewNames) {
+                if (viewName === refViewName) continue;
+
+                // Build path from reference to this camera
+                const path = [];
+                let current = viewName;
+                while (current !== refViewName) {
+                    path.unshift(current);
+                    current = parent[current];
+                }
+
+                // Chain the transformations
+                let R_abs = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+                let t_abs = [0, 0, 0];
+                let totalError = 0;
+
+                current = refViewName;
+                for (const next of path) {
+                    const poseKey = `${current}->${next}`;
+                    const pose = relativePoses[poseKey];
+
+                    if (pose) {
+                        // T_abs = T_rel * T_abs
+                        // R_new = R_rel * R_abs
+                        // t_new = R_rel * t_abs + t_rel
+                        t_abs = addVectors(rotateVector(pose.R, t_abs), pose.tvec);
+                        R_abs = composeRotation(R_abs, pose.R);
+                        totalError += pose.rmsError;
+                    }
+                    current = next;
+                }
+
+                const rvec = matrixToRodrigues(R_abs);
+
+                state.extrinsics[viewName] = {
+                    viewName: viewName,
+                    R: R_abs,
+                    rvec: rvec,
+                    tvec: t_abs,
+                    rmsError: totalError / path.length,
+                };
+
+                log(`${viewName}: R=[${rvec.map(v => v.toFixed(4)).join(', ')}], T=[${t_abs.map(v => v.toFixed(2)).join(', ')}]`, 'success');
+            }
+
+            // Update extrinsics table
+            const tableBody = document.getElementById('extrinsicsTableBody');
+            tableBody.innerHTML = '';
+            document.getElementById('extrinsicsResults').style.display = 'block';
+
+            for (const viewName of viewNames) {
+                const ext = state.extrinsics[viewName];
+                if (!ext) continue;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${ext.viewName}</strong></td>
+                    <td>${ext.rvec[0].toFixed(6)}</td>
+                    <td>${ext.rvec[1].toFixed(6)}</td>
+                    <td>${ext.rvec[2].toFixed(6)}</td>
+                    <td>${ext.tvec[0].toFixed(2)}</td>
+                    <td>${ext.tvec[1].toFixed(2)}</td>
+                    <td>${ext.tvec[2].toFixed(2)}</td>
+                `;
+                tableBody.appendChild(row);
+            }
+
+            log(`Extrinsic calibration complete`, 'success');
+
+            // Compute cross-view reprojection errors
+            log('Computing cross-view reprojection errors...', 'info');
+            state.extrinsicsReprojData = computeCrossViewReprojectionErrors();
+            if (state.extrinsicsReprojData.length > 0) {
+                const totalPoints = state.extrinsicsReprojData.reduce((sum, f) => sum + f.pointErrors.length, 0);
+                log(`Cross-view reprojection: ${totalPoints} points triangulated across ${state.extrinsicsReprojData.length} frames`, 'success');
+                drawExtrinsicsSwarmPlot();
+
+                // Draw extrinsics reprojection overlay if checkbox is checked
+                if (document.getElementById('extrinsicsOverlayCheck').checked) {
+                    state.showExtrinsicsReproj = true;
+                    state.extrinsicsReprojFrameIndex = 0;
+                    const videoFrame = state.extrinsicsReprojData[0].frame;
+                    await seekToFrame(videoFrame);
+                }
+            } else {
+                log('No cross-view reprojection data available', 'warn');
+            }
+
+            setStageStatus('stage4', 'Complete', 'complete');
+            setStageStatus('stage5', 'Ready', '');
+
+            // Enable export and update preview
+            document.getElementById('exportTomlBtn').disabled = false;
+            document.getElementById('exportSbaJsonBtn').disabled = false;
+            updateTomlPreview();
+
+            // Expand stage 5
+            document.getElementById('stage5').classList.remove('collapsed');
+        }
+
+        // Extrinsics event listener
+        document.getElementById('computeExtrinsicsBtn').addEventListener('click', computeAllExtrinsics);
+
+        // ============================================
+        // Cross-View Reprojection Visualization
+        // ============================================
+
+        // State for extrinsics reprojection
+        state.showExtrinsicsReproj = false;
+        state.extrinsicsReprojFrameIndex = 0;
+        state.extrinsicsReprojData = null;
+        state.extrinsicsSwarmDots = [];
+
+        // Triangulate a 3D point from multiple 2D observations using DLT
+        // Uses svd-js library for SVD computation
+        let triangulateDebugCount = 0;
+        function triangulatePoint(observations, intrinsics, extrinsics) {
+            // observations: [{camera: name, point: {x, y}}]
+            // Returns {x, y, z} or null if failed
+
+            if (observations.length < 2) return null;
+
+            // Build the DLT matrix A for Ax = 0
+            const rows = [];
+
+            for (const obs of observations) {
+                const intr = intrinsics[obs.camera];
+                const extr = extrinsics[obs.camera];
+                if (!intr || !extr) {
+                    if (triangulateDebugCount < 3) {
+                        console.log(`triangulatePoint: missing intr/extr for ${obs.camera}`, intr, extr);
+                    }
+                    continue;
+                }
+
+                const K = intr.cameraMatrix;
+                const R = extr.R;
+                const t = extr.tvec;
+
+                // Projection matrix P = K * [R | t]
+                const P = [
+                    [K[0][0] * R[0][0] + K[0][1] * R[1][0] + K[0][2] * R[2][0],
+                     K[0][0] * R[0][1] + K[0][1] * R[1][1] + K[0][2] * R[2][1],
+                     K[0][0] * R[0][2] + K[0][1] * R[1][2] + K[0][2] * R[2][2],
+                     K[0][0] * t[0] + K[0][1] * t[1] + K[0][2] * t[2]],
+                    [K[1][0] * R[0][0] + K[1][1] * R[1][0] + K[1][2] * R[2][0],
+                     K[1][0] * R[0][1] + K[1][1] * R[1][1] + K[1][2] * R[2][1],
+                     K[1][0] * R[0][2] + K[1][1] * R[1][2] + K[1][2] * R[2][2],
+                     K[1][0] * t[0] + K[1][1] * t[1] + K[1][2] * t[2]],
+                    [K[2][0] * R[0][0] + K[2][1] * R[1][0] + K[2][2] * R[2][0],
+                     K[2][0] * R[0][1] + K[2][1] * R[1][1] + K[2][2] * R[2][1],
+                     K[2][0] * R[0][2] + K[2][1] * R[1][2] + K[2][2] * R[2][2],
+                     K[2][0] * t[0] + K[2][1] * t[1] + K[2][2] * t[2]]
+                ];
+
+                const x = obs.point.x;
+                const y = obs.point.y;
+
+                // Two equations per observation: x * P3 - P1 = 0, y * P3 - P2 = 0
+                rows.push([
+                    x * P[2][0] - P[0][0],
+                    x * P[2][1] - P[0][1],
+                    x * P[2][2] - P[0][2],
+                    x * P[2][3] - P[0][3]
+                ]);
+                rows.push([
+                    y * P[2][0] - P[1][0],
+                    y * P[2][1] - P[1][1],
+                    y * P[2][2] - P[1][2],
+                    y * P[2][3] - P[1][3]
+                ]);
+            }
+
+            if (rows.length < 4) {
+                if (triangulateDebugCount < 3) {
+                    console.log('triangulatePoint: not enough rows', rows.length);
+                }
+                return null;
+            }
+
+            try {
+                // Use svd-js library: SVDJS.SVD(matrix) returns {u, v, q}
+                // v contains right singular vectors (columns), last column corresponds to smallest singular value
+                const { u, v, q } = SVDJS.SVD(rows);
+
+                // Find index of smallest singular value
+                let minIdx = 0;
+                let minVal = q[0];
+                for (let i = 1; i < q.length; i++) {
+                    if (q[i] < minVal) {
+                        minVal = q[i];
+                        minIdx = i;
+                    }
+                }
+
+                // Solution is the column of V corresponding to smallest singular value
+                // v is array of rows, so v[i][minIdx] gives us column minIdx
+                const X = v[0][minIdx];
+                const Y = v[1][minIdx];
+                const Z = v[2][minIdx];
+                const W_h = v[3][minIdx];
+
+                if (triangulateDebugCount < 3) {
+                    console.log(`triangulatePoint SVD result: X=${X}, Y=${Y}, Z=${Z}, W_h=${W_h}, minSingular=${minVal}`);
+                    triangulateDebugCount++;
+                }
+
+                if (Math.abs(W_h) < 1e-10) return null;
+
+                return { x: X / W_h, y: Y / W_h, z: Z / W_h };
+            } catch (e) {
+                if (triangulateDebugCount < 3) {
+                    console.log('triangulatePoint SVD error:', e);
+                    triangulateDebugCount++;
+                }
+                return null;
+            }
+        }
+
+        // Project a 3D point to a camera
+        function projectPoint(point3D, camera, intrinsics, extrinsics) {
+            const intr = intrinsics[camera];
+            const extr = extrinsics[camera];
+            if (!intr || !extr) return null;
+
+            const K = intr.cameraMatrix;
+            const R = extr.R;
+            const t = extr.tvec;
+            const d = intr.distCoeffs;
+
+            // Transform to camera coordinates: X_cam = R * X_world + t
+            const X_cam = [
+                R[0][0] * point3D.x + R[0][1] * point3D.y + R[0][2] * point3D.z + t[0],
+                R[1][0] * point3D.x + R[1][1] * point3D.y + R[1][2] * point3D.z + t[1],
+                R[2][0] * point3D.x + R[2][1] * point3D.y + R[2][2] * point3D.z + t[2]
+            ];
+
+            if (X_cam[2] <= 0) return null; // Behind camera
+
+            // Normalized coordinates
+            const x_n = X_cam[0] / X_cam[2];
+            const y_n = X_cam[1] / X_cam[2];
+
+            // Apply distortion
+            const r2 = x_n * x_n + y_n * y_n;
+            const r4 = r2 * r2;
+            const r6 = r4 * r2;
+            const k1 = d[0], k2 = d[1], p1 = d[2], p2 = d[3], k3 = d[4];
+
+            const radial = 1 + k1 * r2 + k2 * r4 + k3 * r6;
+            const x_d = x_n * radial + 2 * p1 * x_n * y_n + p2 * (r2 + 2 * x_n * x_n);
+            const y_d = y_n * radial + p1 * (r2 + 2 * y_n * y_n) + 2 * p2 * x_n * y_n;
+
+            // Project to pixel coordinates
+            const u = K[0][0] * x_d + K[0][2];
+            const v = K[1][1] * y_d + K[1][2];
+
+            return { x: u, y: v };
+        }
+
+        // Compute cross-view reprojection errors
+        function computeCrossViewReprojectionErrors() {
+            const viewNames = state.views.map(v => v.name);
+            const config = getBoardConfig();
+
+            // For each frame with detections in multiple cameras
+            const frameErrors = []; // {frame, pointErrors: [{pointId, cameras, error3D, perCameraErrors: {cam: error}}]}
+
+            console.log('computeCrossViewReprojectionErrors: viewNames=', viewNames);
+            console.log('computeCrossViewReprojectionErrors: detections count=', state.detections.length);
+            console.log('computeCrossViewReprojectionErrors: intrinsics keys=', Object.keys(state.intrinsics));
+            console.log('computeCrossViewReprojectionErrors: extrinsics keys=', Object.keys(state.extrinsics));
+
+            for (const detection of state.detections) {
+                // Get cameras with valid detections
+                const validCameras = [];
+                for (const viewName of viewNames) {
+                    const viewResult = detection.views[viewName];
+                    if (viewResult && !viewResult.error && viewResult.charucoCorners && viewResult.numCharucoCorners >= 4) {
+                        validCameras.push(viewName);
+                    }
+                }
+
+                if (validCameras.length < 2) continue;
+
+                // Find common corner IDs across all valid cameras
+                let commonIds = new Set(detection.views[validCameras[0]].charucoIds);
+                for (let i = 1; i < validCameras.length; i++) {
+                    const ids = new Set(detection.views[validCameras[i]].charucoIds);
+                    commonIds = new Set([...commonIds].filter(id => ids.has(id)));
+                }
+
+                if (commonIds.size < 4) continue;
+
+                const pointErrors = [];
+                let triangulationFailures = 0;
+                let projectionFailures = 0;
+
+                for (const pointId of commonIds) {
+                    // Gather observations from all cameras
+                    const observations = [];
+                    for (const camera of validCameras) {
+                        const viewResult = detection.views[camera];
+                        const idx = viewResult.charucoIds.indexOf(pointId);
+                        if (idx >= 0) {
+                            observations.push({
+                                camera: camera,
+                                point: viewResult.charucoCorners[idx]
+                            });
+                        }
+                    }
+
+                    if (observations.length < 2) continue;
+
+                    // Triangulate 3D point
+                    const point3D = triangulatePoint(observations, state.intrinsics, state.extrinsics);
+                    if (!point3D) {
+                        triangulationFailures++;
+                        continue;
+                    }
+
+                    // Compute reprojection error for each camera
+                    const perCameraErrors = {};
+                    let totalError = 0;
+                    let numCameras = 0;
+
+                    for (const obs of observations) {
+                        const projected = projectPoint(point3D, obs.camera, state.intrinsics, state.extrinsics);
+                        if (projected) {
+                            const dx = projected.x - obs.point.x;
+                            const dy = projected.y - obs.point.y;
+                            const error = Math.sqrt(dx * dx + dy * dy);
+                            perCameraErrors[obs.camera] = {
+                                error: error,
+                                detected: obs.point,
+                                projected: projected
+                            };
+                            totalError += error;
+                            numCameras++;
+                        }
+                    }
+
+                    if (numCameras > 0) {
+                        pointErrors.push({
+                            pointId: pointId,
+                            point3D: point3D,
+                            cameras: validCameras,
+                            meanError: totalError / numCameras,
+                            perCameraErrors: perCameraErrors
+                        });
+                    }
+                }
+
+                if (detection.frame === 0) {
+                    console.log(`Frame ${detection.frame}: validCameras=${validCameras.length}, commonIds=${commonIds.size}, pointErrors=${pointErrors.length}, triangFail=${triangulationFailures}, projFail=${projectionFailures}`);
+                }
+
+                if (pointErrors.length > 0) {
+                    frameErrors.push({
+                        frame: detection.frame,
+                        pointErrors: pointErrors,
+                        cameras: validCameras
+                    });
+                }
+            }
+
+            console.log(`computeCrossViewReprojectionErrors: total frameErrors=${frameErrors.length}`);
+            return frameErrors;
+        }
+
+        // Draw extrinsics swarm plot
+        function drawExtrinsicsSwarmPlot() {
+            const canvas = document.getElementById('extrinsicsSwarmCanvas');
+            const ctx = canvas.getContext('2d');
+
+            if (!state.extrinsicsReprojData || state.extrinsicsReprojData.length === 0) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#888';
+                ctx.font = '14px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('No cross-view reprojection data available', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+
+            const cameras = state.views.map(v => v.name);
+
+            // Collect all per-camera errors
+            const cameraErrors = {};
+            cameras.forEach(cam => { cameraErrors[cam] = []; });
+
+            state.extrinsicsReprojData.forEach((frameData, frameIdx) => {
+                frameData.pointErrors.forEach((pt, ptIdx) => {
+                    for (const [cam, errData] of Object.entries(pt.perCameraErrors)) {
+                        cameraErrors[cam].push({
+                            error: errData.error,
+                            frameIndex: frameIdx,
+                            pointIndex: ptIdx,
+                            pointId: pt.pointId,
+                            frame: frameData.frame
+                        });
+                    }
+                });
+            });
+
+            // Collect all errors for scale
+            let allErrors = [];
+            cameras.forEach(cam => {
+                allErrors = allErrors.concat(cameraErrors[cam].map(e => e.error));
+            });
+
+            if (allErrors.length === 0) return;
+
+            // Clear canvas
+            const width = canvas.width;
+            const height = canvas.height;
+            ctx.clearRect(0, 0, width, height);
+
+            // Layout
+            const padding = { left: 60, right: 30, top: 30, bottom: 50 };
+            const plotWidth = width - padding.left - padding.right;
+            const plotHeight = height - padding.top - padding.bottom;
+
+            // Log scale
+            const minError = Math.max(0.01, Math.min(...allErrors));
+            const maxError = Math.max(...allErrors);
+            const logMin = Math.log10(minError * 0.8);
+            const logMax = Math.log10(maxError * 1.2);
+
+            const yScale = (val) => {
+                const logVal = Math.log10(Math.max(0.01, val));
+                return padding.top + plotHeight - ((logVal - logMin) / (logMax - logMin)) * plotHeight;
+            };
+
+            const xBandWidth = plotWidth / cameras.length;
+            const xScale = (camIdx) => padding.left + xBandWidth * (camIdx + 0.5);
+
+            // Grid lines
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = '#888';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+
+            const tickValues = [];
+            for (let exp = Math.floor(logMin); exp <= Math.ceil(logMax); exp++) {
+                tickValues.push(Math.pow(10, exp));
+                if (exp < Math.ceil(logMax)) {
+                    tickValues.push(2 * Math.pow(10, exp));
+                    tickValues.push(5 * Math.pow(10, exp));
+                }
+            }
+
+            tickValues.filter(v => v >= minError * 0.8 && v <= maxError * 1.2).forEach(val => {
+                const y = yScale(val);
+                if (y >= padding.top && y <= padding.top + plotHeight) {
+                    ctx.beginPath();
+                    ctx.moveTo(padding.left, y);
+                    ctx.lineTo(width - padding.right, y);
+                    ctx.stroke();
+                    ctx.fillText(val.toFixed(val < 1 ? 2 : 1), padding.left - 8, y + 4);
+                }
+            });
+
+            // Y axis label
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#aaa';
+            ctx.font = '12px system-ui, sans-serif';
+            ctx.fillText('Reproj Error (pixels)', 0, 0);
+            ctx.restore();
+
+            // Clear dots array
+            state.extrinsicsSwarmDots = [];
+
+            const colors = ['#667eea', '#4ade80', '#fbbf24', '#ef4444', '#a78bfa', '#22d3ee'];
+
+            // Draw dots
+            cameras.forEach((cam, camIdx) => {
+                const errors = cameraErrors[cam];
+                const x = xScale(camIdx);
+                const color = colors[camIdx % colors.length];
+                const jitterWidth = xBandWidth * 0.6;
+
+                errors.forEach((errData, idx) => {
+                    const y = yScale(errData.error);
+                    const jitter = ((idx * 7919 + Math.floor(errData.error * 1000)) % 100 - 50) / 50 * jitterWidth / 2;
+                    const dotX = x + jitter;
+                    const dotY = y;
+                    const radius = 4;
+
+                    state.extrinsicsSwarmDots.push({
+                        x: dotX,
+                        y: dotY,
+                        radius: radius,
+                        camera: cam,
+                        frameIndex: errData.frameIndex,
+                        pointIndex: errData.pointIndex,
+                        pointId: errData.pointId,
+                        frame: errData.frame,
+                        error: errData.error,
+                        color: color
+                    });
+
+                    ctx.beginPath();
+                    ctx.arc(dotX, dotY, radius, 0, 2 * Math.PI);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                });
+
+                // Camera label
+                ctx.fillStyle = color;
+                ctx.font = 'bold 12px system-ui, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(cam, x, height - padding.bottom + 20);
+            });
+
+            // Axes
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(padding.left, padding.top);
+            ctx.lineTo(padding.left, padding.top + plotHeight);
+            ctx.lineTo(width - padding.right, padding.top + plotHeight);
+            ctx.stroke();
+
+            // Stats summary
+            const meanError = allErrors.reduce((a, b) => a + b, 0) / allErrors.length;
+            const medianError = [...allErrors].sort((a, b) => a - b)[Math.floor(allErrors.length / 2)];
+            ctx.fillStyle = '#aaa';
+            ctx.font = '11px monospace';
+            ctx.textAlign = 'right';
+            ctx.fillText(`Mean: ${meanError.toFixed(3)} px | Median: ${medianError.toFixed(3)} px | N: ${allErrors.length}`, width - padding.right, padding.top - 10);
+        }
+
+        // Draw extrinsics reprojection overlay on videos
+        // phase: 'circles' = draw detected points only, 'markers' = draw triangulated crosses only
+        function drawExtrinsicsReprojectionOverlay(phase = 'all') {
+            if (!state.showExtrinsicsReproj || !state.extrinsicsReprojData || state.extrinsicsReprojData.length === 0) return;
+
+            // Try to find extrinsics data for the current video frame
+            let frameIdx = state.extrinsicsReprojData.findIndex(d => d.frame === state.currentFrame);
+            if (frameIdx === -1) {
+                // Fall back to the stored reprojection frame index
+                frameIdx = state.extrinsicsReprojFrameIndex % state.extrinsicsReprojData.length;
+            } else {
+                // Update the stored index to match
+                state.extrinsicsReprojFrameIndex = frameIdx;
+            }
+            const frameData = state.extrinsicsReprojData[frameIdx];
+
+            for (let i = 0; i < state.views.length; i++) {
+                const view = state.views[i];
+                const viewName = view.name;
+                const ctx = view.ctx;
+
+                // Draw all points for this frame
+                for (const pt of frameData.pointErrors) {
+                    const errData = pt.perCameraErrors[viewName];
+                    if (!errData) continue;
+
+                    // Phase 1: Pastel green circle for detected
+                    if (phase === 'circles' || phase === 'all') {
+                        ctx.beginPath();
+                        ctx.arc(errData.detected.x, errData.detected.y, 6, 0, 2 * Math.PI);
+                        ctx.fillStyle = '#86efac';  // Pastel green
+                        ctx.fill();
+                        ctx.strokeStyle = '#166534';  // Dark green border
+                        ctx.lineWidth = 1.5;
+                        ctx.stroke();
+                    }
+
+                    // Phase 2: Pastel blue thin cross (+) for triangulated
+                    if (phase === 'markers' || phase === 'all') {
+                        const px = errData.projected.x;
+                        const py = errData.projected.y;
+                        const crossSize = 6;
+
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 3;
+                        ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        ctx.moveTo(px - crossSize, py);
+                        ctx.lineTo(px + crossSize, py);
+                        ctx.moveTo(px, py - crossSize);
+                        ctx.lineTo(px, py + crossSize);
+                        ctx.stroke();
+
+                        ctx.strokeStyle = '#60a5fa';  // Pastel blue
+                        ctx.lineWidth = 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(px - crossSize, py);
+                        ctx.lineTo(px + crossSize, py);
+                        ctx.moveTo(px, py - crossSize);
+                        ctx.lineTo(px, py + crossSize);
+                        ctx.stroke();
+                    }
+                }
+
+                // Frame info (only draw once in markers phase or 'all')
+                if (phase === 'markers' || phase === 'all') {
+                    ctx.font = '12px system-ui, sans-serif';
+                    const frameInfoX = state.showReprojection ? 156 : 8;
+                    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                    ctx.fillRect(frameInfoX, view.canvas.height - 30, 150, 22);
+                    ctx.fillStyle = '#aaa';
+                    ctx.fillText(`Extr ${frameIdx + 1}/${state.extrinsicsReprojData.length}`, frameInfoX + 4, view.canvas.height - 14);
+                }
+            }
+        }
+
+        async function setExtrinsicsOverlay(enabled) {
+            state.showExtrinsicsReproj = enabled;
+
+            if (enabled) {
+                log('Extrinsics reprojection overlay enabled. Use [ and ] to navigate frames.', 'info');
+            } else {
+                log('Extrinsics reprojection overlay disabled', 'info');
+            }
+            // Redraw current frame with updated overlay state
+            await seekToFrame(state.currentFrame);
+        }
+
+        async function navigateExtrinsicsReprojFrame(delta) {
+            if (!state.showExtrinsicsReproj || !state.extrinsicsReprojData || state.extrinsicsReprojData.length === 0) return;
+
+            const maxFrames = state.extrinsicsReprojData.length;
+            state.extrinsicsReprojFrameIndex = (state.extrinsicsReprojFrameIndex + delta + maxFrames) % maxFrames;
+
+            // Get the video frame for this extrinsics reprojection index
+            const videoFrame = state.extrinsicsReprojData[state.extrinsicsReprojFrameIndex].frame;
+            log(`Viewing extrinsics reprojection frame ${state.extrinsicsReprojFrameIndex + 1}/${maxFrames} (video frame ${videoFrame})`, 'info');
+
+            // Seek to the correct video frame (overlay drawn automatically)
+            await seekToFrame(videoFrame);
+        }
+
+        // Keyboard navigation for extrinsics reprojection
+        document.addEventListener('keydown', (e) => {
+            if (state.showExtrinsicsReproj) {
+                if (e.key === '{') {
+                    navigateExtrinsicsReprojFrame(-1);
+                } else if (e.key === '}') {
+                    navigateExtrinsicsReprojFrame(1);
+                }
+            }
+        });
+
+        // Swarm plot hover for extrinsics
+        function setupExtrinsicsSwarmHover() {
+            const canvas = document.getElementById('extrinsicsSwarmCanvas');
+            const tooltip = document.getElementById('extrinsicsSwarmTooltip');
+            let hoveredDot = null;
+
+            canvas.addEventListener('mousemove', async (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const mx = (e.clientX - rect.left) * scaleX;
+                const my = (e.clientY - rect.top) * scaleY;
+
+                let closest = null;
+                let closestDist = Infinity;
+                for (const dot of state.extrinsicsSwarmDots) {
+                    const dist = Math.sqrt((mx - dot.x) ** 2 + (my - dot.y) ** 2);
+                    if (dist < dot.radius + 5 && dist < closestDist) {
+                        closest = dot;
+                        closestDist = dist;
+                    }
+                }
+
+                if (closest) {
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = `${e.clientX - canvas.parentElement.getBoundingClientRect().left + 10}px`;
+                    tooltip.style.top = `${e.clientY - canvas.parentElement.getBoundingClientRect().top - 30}px`;
+                    tooltip.innerHTML = `<strong>${closest.camera}</strong><br>Frame ${closest.frame}, Point ${closest.pointId}<br>Error: ${closest.error.toFixed(4)} px`;
+                    canvas.style.cursor = 'pointer';
+
+                    if (!hoveredDot || hoveredDot.frameIndex !== closest.frameIndex || hoveredDot.pointIndex !== closest.pointIndex) {
+                        hoveredDot = closest;
+
+                        state.showExtrinsicsReproj = true;
+                        state.extrinsicsReprojFrameIndex = closest.frameIndex;
+                        document.getElementById('extrinsicsOverlayCheck').checked = true;
+
+                        // Seek to the video frame corresponding to this point
+                        await seekToFrame(closest.frame);
+                    }
+                } else {
+                    tooltip.style.display = 'none';
+                    canvas.style.cursor = 'default';
+                    hoveredDot = null;
+                }
+            });
+
+            canvas.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+                canvas.style.cursor = 'default';
+            });
+        }
+
+        setupExtrinsicsSwarmHover();
+        document.getElementById('extrinsicsOverlayCheck').addEventListener('change', (e) => {
+            setExtrinsicsOverlay(e.target.checked);
+        });
+
+        // ============================================
+        // TOML Export
+        // ============================================
+
+        function generateTomlOutput() {
+            if (Object.keys(state.intrinsics).length === 0 || Object.keys(state.extrinsics).length === 0) {
+                showError('Missing calibration data. Complete intrinsic and extrinsic calibration first.');
+                return null;
+            }
+
+            const viewNames = state.views.map(v => v.name);
+            let toml = '# Multi-Camera Calibration Output\n';
+            toml += `# Generated: ${new Date().toISOString()}\n`;
+            toml += `# Reference camera: ${viewNames[0]}\n\n`;
+
+            for (let i = 0; i < viewNames.length; i++) {
+                const name = viewNames[i];
+                const intr = state.intrinsics[name];
+                const extr = state.extrinsics[name];
+
+                if (!intr || !extr) continue;
+
+                toml += `[cam_${i}]\n`;
+                toml += `name = "${name}"\n`;
+                toml += `size = [${intr.imageSize.width}, ${intr.imageSize.height}]\n`;
+
+                // Camera matrix as nested array
+                const K = intr.cameraMatrix;
+                toml += `matrix = [[${K[0][0].toFixed(6)}, ${K[0][1].toFixed(6)}, ${K[0][2].toFixed(6)}], `;
+                toml += `[${K[1][0].toFixed(6)}, ${K[1][1].toFixed(6)}, ${K[1][2].toFixed(6)}], `;
+                toml += `[${K[2][0].toFixed(6)}, ${K[2][1].toFixed(6)}, ${K[2][2].toFixed(6)}]]\n`;
+
+                // Distortion coefficients
+                const d = intr.distCoeffs;
+                toml += `distortions = [${d.map(v => v.toFixed(10)).join(', ')}]\n`;
+
+                // Rotation (Rodrigues vector)
+                const r = extr.rvec;
+                toml += `rotation = [${r.map(v => v.toFixed(10)).join(', ')}]\n`;
+
+                // Translation
+                const t = extr.tvec;
+                toml += `translation = [${t.map(v => v.toFixed(6)).join(', ')}]\n`;
+
+                toml += '\n';
+            }
+
+            return toml;
+        }
+
+        function updateTomlPreview() {
+            const preview = document.getElementById('tomlPreview');
+            const toml = generateTomlOutput();
+            if (toml) {
+                preview.textContent = toml;
+                preview.style.color = '';  // Reset to default color
+            } else {
+                preview.textContent = '# Complete intrinsic and extrinsic calibration to generate TOML';
+                preview.style.color = '#888';
+            }
+        }
+
+        function exportToml() {
+            const toml = generateTomlOutput();
+            if (!toml) return;
+
+            // Trigger download
+            const blob = new Blob([toml], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'calibration.toml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log('Exported calibration.toml', 'success');
+            setStageStatus('stage5', 'Exported', 'complete');
+        }
+
+        // Export event listener
+        document.getElementById('exportTomlBtn').addEventListener('click', exportToml);
+
+        // ============================================
+        // SBA JSON Export
+        // ============================================
+
+        function generateSbaJsonOutput() {
+            if (Object.keys(state.intrinsics).length === 0 || Object.keys(state.extrinsics).length === 0) {
+                showError('Missing calibration data. Complete intrinsic and extrinsic calibration first.');
+                return null;
+            }
+
+            const config = getBoardConfig();
+            const viewNames = state.views.map(v => v.name);
+
+            // Build cameras object with intrinsics and extrinsics
+            const cameras = {};
+            for (const name of viewNames) {
+                const intr = state.intrinsics[name];
+                const extr = state.extrinsics[name];
+                if (!intr || !extr) continue;
+
+                cameras[name] = {
+                    image_size: [intr.imageSize.width, intr.imageSize.height],
+                    // Intrinsics
+                    K: intr.cameraMatrix,
+                    dist_coeffs: intr.distCoeffs,
+                    intrinsics_rms_error: intr.rmsError,
+                    // Extrinsics (relative to reference camera)
+                    R: extr.R,
+                    rvec: extr.rvec,
+                    tvec: extr.tvec,
+                    extrinsics_rms_error: extr.rmsError,
+                    // Per-frame intrinsic calibration poses (board-to-camera)
+                    intrinsic_poses: {
+                        frames: intr.frameIndices,
+                        rvecs: intr.rvecs,
+                        tvecs: intr.tvecs,
+                        per_frame_errors: intr.perImageErrors
+                    }
+                };
+            }
+
+            // Build observations: 2D detections per frame per camera
+            const observations = [];
+            for (const detection of state.detections) {
+                const frameObs = {
+                    frame: detection.frame,
+                    views: {}
+                };
+
+                for (const viewName of viewNames) {
+                    const viewResult = detection.views[viewName];
+                    if (viewResult && !viewResult.error && viewResult.charucoCorners) {
+                        frameObs.views[viewName] = {
+                            corner_ids: viewResult.charucoIds,
+                            corners_2d: viewResult.charucoCorners.map(pt => [pt.x, pt.y]),
+                            num_corners: viewResult.numCharucoCorners
+                        };
+                    }
+                }
+
+                // Only include frames with at least one valid detection
+                if (Object.keys(frameObs.views).length > 0) {
+                    observations.push(frameObs);
+                }
+            }
+
+            // Build triangulated points from extrinsics reprojection data
+            const triangulated_points = [];
+            if (state.extrinsicsReprojData && state.extrinsicsReprojData.length > 0) {
+                for (const frameData of state.extrinsicsReprojData) {
+                    for (const pt of frameData.pointErrors) {
+                        triangulated_points.push({
+                            frame: frameData.frame,
+                            corner_id: pt.pointId,
+                            point_3d: [pt.point3D.x, pt.point3D.y, pt.point3D.z],
+                            mean_reproj_error: pt.meanError,
+                            per_camera_errors: Object.fromEntries(
+                                Object.entries(pt.perCameraErrors).map(([cam, data]) => [
+                                    cam,
+                                    {
+                                        error: data.error,
+                                        detected: [data.detected.x, data.detected.y],
+                                        projected: [data.projected.x, data.projected.y]
+                                    }
+                                ])
+                            )
+                        });
+                    }
+                }
+            }
+
+            // Compute board corner 3D positions (in board coordinate frame)
+            const board_corners_3d = {};
+            const numCornersX = config.board_x - 1;
+            const numCornersY = config.board_y - 1;
+            for (let y = 0; y < numCornersY; y++) {
+                for (let x = 0; x < numCornersX; x++) {
+                    const cornerId = y * numCornersX + x;
+                    board_corners_3d[cornerId] = [
+                        x * config.square_length,
+                        y * config.square_length,
+                        0
+                    ];
+                }
+            }
+
+            const output = {
+                metadata: {
+                    generated: new Date().toISOString(),
+                    generator: 'multicam-calibration-gui',
+                    reference_camera: viewNames[0],
+                    num_cameras: viewNames.length,
+                    num_frames: state.totalFrames,
+                    num_detection_frames: observations.length,
+                    num_triangulated_points: triangulated_points.length
+                },
+                board: {
+                    type: 'charuco',
+                    board_x: config.board_x,
+                    board_y: config.board_y,
+                    square_length: config.square_length,
+                    marker_length: config.marker_length,
+                    marker_bits: config.marker_bits,
+                    dict_size: config.dict_size,
+                    corners_3d: board_corners_3d
+                },
+                cameras: cameras,
+                observations: observations,
+                triangulated_points: triangulated_points
+            };
+
+            return output;
+        }
+
+        function exportSbaJson() {
+            const data = generateSbaJsonOutput();
+            if (!data) return;
+
+            const json = JSON.stringify(data, null, 2);
+
+            // Trigger download
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'calibration_sba_data.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            log(`Exported SBA data: ${data.observations.length} frames, ${data.triangulated_points.length} points`, 'success');
+        }
+
+        document.getElementById('exportSbaJsonBtn').addEventListener('click', exportSbaJson);
+
+        // ============================================
+        // Resize Handle
+        // ============================================
+        const resizeHandle = document.getElementById('resizeHandle');
+        const videoPanel = document.getElementById('videoPanel');
+        const mainLayout = document.getElementById('mainLayout');
+        let isResizing = false;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            resizeHandle.classList.add('dragging');
+            mainLayout.classList.add('resizing');
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+
+            const containerRect = mainLayout.getBoundingClientRect();
+            const newWidth = e.clientX - containerRect.left;
+            const containerWidth = containerRect.width;
+
+            // Clamp between 20% and 80%
+            const minWidth = containerWidth * 0.2;
+            const maxWidth = containerWidth * 0.8;
+            const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+            const percentage = (clampedWidth / containerWidth) * 100;
+            videoPanel.style.width = percentage + '%';
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                resizeHandle.classList.remove('dragging');
+                mainLayout.classList.remove('resizing');
+            }
+        });
+
+        // ============================================
+        // Initialize
+        // ============================================
+        log('Multi-Camera Calibration GUI initialized', 'info');
+        log('Waiting for OpenCV.js to load...', 'info');
+
+        // Check WebCodecs support
+        if (!('VideoDecoder' in window)) {
+            showError('WebCodecs API not supported in this browser. Please use Chrome, Edge, or a recent Firefox.');
+        }
+    </script>
+</body>
+</html>
