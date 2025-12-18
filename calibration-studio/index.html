@@ -153,6 +153,43 @@
             color: #1a1a1a;
         }
 
+        /* Progress indicator */
+        .progress-container {
+            display: none;
+            flex: 1;
+            min-width: 150px;
+            max-width: 300px;
+            background: #1a1a1a;
+            border-radius: 6px;
+            overflow: hidden;
+            height: 32px;
+            position: relative;
+        }
+        .progress-container.active {
+            display: block;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.15s ease-out;
+            border-radius: 6px;
+        }
+        .progress-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
         /* Overlay controls */
         .overlay-controls {
             background: #333;
@@ -746,6 +783,10 @@
                     </div>
                 </div>
                 <button id="runDetectionBtn" disabled>Run Batch Detection</button>
+                <div id="detectionProgress" class="progress-container">
+                    <div class="progress-bar"></div>
+                    <div class="progress-text">0%</div>
+                </div>
             </div>
 
             <div id="detectionResults" style="display: none;">
@@ -795,6 +836,10 @@
 
             <div class="controls">
                 <button id="computeIntrinsicsBtn" disabled>Compute Intrinsics</button>
+                <div id="intrinsicsProgress" class="progress-container">
+                    <div class="progress-bar"></div>
+                    <div class="progress-text">0%</div>
+                </div>
             </div>
 
             <div id="intrinsicsResults" style="display: none;">
@@ -861,6 +906,10 @@
 
             <div class="controls">
                 <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics</button>
+                <div id="extrinsicsProgress" class="progress-container">
+                    <div class="progress-bar"></div>
+                    <div class="progress-text">0%</div>
+                </div>
                 <button id="runBundleBtn" class="secondary" disabled>Bundle Adjustment</button>
             </div>
 
@@ -1048,6 +1097,31 @@
 
         function hideError() {
             document.getElementById('errorMsg').style.display = 'none';
+        }
+
+        // Progress bar utility functions
+        function showProgress(progressId) {
+            const container = document.getElementById(progressId);
+            if (container) {
+                container.classList.add('active');
+                updateProgress(progressId, 0);
+            }
+        }
+
+        function updateProgress(progressId, percent, text = null) {
+            const container = document.getElementById(progressId);
+            if (!container) return;
+            const bar = container.querySelector('.progress-bar');
+            const textEl = container.querySelector('.progress-text');
+            if (bar) bar.style.width = `${percent}%`;
+            if (textEl) textEl.textContent = text || `${Math.round(percent)}%`;
+        }
+
+        function hideProgress(progressId) {
+            const container = document.getElementById(progressId);
+            if (container) {
+                container.classList.remove('active');
+            }
         }
 
         // ============================================
@@ -1879,8 +1953,13 @@
             const stride = Math.max(1, Math.floor(state.totalFrames / targetSamples));
             const config = getBoardConfig();
 
+            // Calculate total frames to process
+            const totalToProcess = Math.ceil(state.totalFrames / stride);
+
             log(`Starting batch detection: ${targetSamples} target samples, stride=${stride}`, 'info');
             setStageStatus('stage2', 'Detecting...', 'active');
+            showProgress('detectionProgress');
+            document.getElementById('runDetectionBtn').disabled = true;
 
             state.detections = [];
             const tableBody = document.getElementById('detectionTableBody');
@@ -1936,18 +2015,19 @@
                 tableBody.appendChild(row);
 
                 processedFrames++;
-                if (processedFrames % 5 === 0) {
-                    log(`Processed ${processedFrames} frames...`, 'info');
-                }
+                const percent = (processedFrames / totalToProcess) * 100;
+                updateProgress('detectionProgress', percent, `${processedFrames}/${totalToProcess} frames`);
             }
 
+            hideProgress('detectionProgress');
             const goodFrames = state.detections.filter(d => d.commonCorners >= 6).length;
             log(`Batch detection complete: ${processedFrames} frames, ${goodFrames} with sufficient corners`, 'success');
             setStageStatus('stage2', `${goodFrames} good frames`, 'complete');
             setStageStatus('stage3', 'Ready', '');
 
-            // Enable intrinsics computation
+            // Enable intrinsics computation and re-enable detection button
             document.getElementById('computeIntrinsicsBtn').disabled = false;
+            document.getElementById('runDetectionBtn').disabled = false;
 
             // Redraw current frame to show detection overlay
             await seekToFrame(state.currentFrame);
@@ -2173,9 +2253,12 @@
 
             const minCorners = parseInt(document.getElementById('minCorners').value) || 6;
             const config = getBoardConfig();
+            const totalCameras = state.views.length;
 
             log(`Computing intrinsics for all cameras (min corners: ${minCorners})...`, 'info');
             setStageStatus('stage3', 'Computing...', 'active');
+            showProgress('intrinsicsProgress');
+            document.getElementById('computeIntrinsicsBtn').disabled = true;
 
             state.intrinsics = {};
             const tableBody = document.getElementById('intrinsicsTableBody');
@@ -2184,6 +2267,7 @@
 
             let successCount = 0;
             for (let i = 0; i < state.views.length; i++) {
+                updateProgress('intrinsicsProgress', ((i + 0.5) / totalCameras) * 100, `Camera ${i + 1}/${totalCameras}`);
                 const result = await computeIntrinsicsForView(i, config, minCorners);
                 if (result) {
                     state.intrinsics[state.views[i].name] = result;
@@ -2203,12 +2287,16 @@
                     `;
                     tableBody.appendChild(row);
                 }
+                updateProgress('intrinsicsProgress', ((i + 1) / totalCameras) * 100, `Camera ${i + 1}/${totalCameras}`);
             }
 
             // Draw swarm plot after all intrinsics are computed
             if (successCount > 0) {
                 drawSwarmPlot();
             }
+
+            hideProgress('intrinsicsProgress');
+            document.getElementById('computeIntrinsicsBtn').disabled = false;
 
             if (successCount === state.views.length) {
                 log(`Intrinsic calibration complete for all ${successCount} cameras`, 'success');
@@ -2943,6 +3031,10 @@
 
             log(`Computing extrinsics with reference camera: ${refViewName}`, 'info');
             setStageStatus('stage4', 'Computing...', 'active');
+            showProgress('extrinsicsProgress');
+            document.getElementById('computeExtrinsicsBtn').disabled = true;
+
+            updateProgress('extrinsicsProgress', 10, 'Building covisibility...');
 
             // Build covisibility graph
             const graph = buildCovisibilityGraph(minCovisible);
@@ -2957,6 +3049,8 @@
                 }
             }
 
+            updateProgress('extrinsicsProgress', 20, 'Finding pose chain...');
+
             // Find path from reference to all other cameras
             const parent = findPoseChain(graph, refViewName, viewNames);
 
@@ -2967,16 +3061,25 @@
                 }
             }
 
+            // Count cameras that need pose computation
+            const camerasToCompute = viewNames.filter(v => v !== refViewName && parent[v]).length;
+            let computedCameras = 0;
+
             // Compute pairwise relative poses
             const relativePoses = {};
             for (const viewName of viewNames) {
                 if (viewName !== refViewName && parent[viewName]) {
+                    const posePercent = 20 + (computedCameras / camerasToCompute) * 50;
+                    updateProgress('extrinsicsProgress', posePercent, `Pose ${computedCameras + 1}/${camerasToCompute}`);
                     const pose = await computeRelativePose(parent[viewName], viewName, graph, config);
                     if (pose) {
                         relativePoses[`${parent[viewName]}->${viewName}`] = pose;
                     }
+                    computedCameras++;
                 }
             }
+
+            updateProgress('extrinsicsProgress', 70, 'Chaining poses...');
 
             // Chain poses to get absolute poses relative to reference
             state.extrinsics = {};
@@ -3060,6 +3163,8 @@
 
             log(`Extrinsic calibration complete`, 'success');
 
+            updateProgress('extrinsicsProgress', 85, 'Computing reprojection...');
+
             // Compute cross-view reprojection errors
             log('Computing cross-view reprojection errors...', 'info');
             state.extrinsicsReprojData = computeCrossViewReprojectionErrors();
@@ -3078,6 +3183,9 @@
             } else {
                 log('No cross-view reprojection data available', 'warn');
             }
+
+            hideProgress('extrinsicsProgress');
+            document.getElementById('computeExtrinsicsBtn').disabled = false;
 
             setStageStatus('stage4', 'Complete', 'complete');
             setStageStatus('stage5', 'Ready', '');
