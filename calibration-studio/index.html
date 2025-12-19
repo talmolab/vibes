@@ -1035,6 +1035,7 @@
 
             <div class="controls">
                 <button id="computeIntrinsicsBtn" disabled>Compute Intrinsics</button>
+                <button id="recomputeIntrinsicsBtn" class="secondary" disabled>Re-compute Intrinsics</button>
                 <div id="intrinsicsProgress" class="progress-container">
                     <div class="progress-bar"></div>
                     <div class="progress-text">0%</div>
@@ -1042,6 +1043,22 @@
             </div>
 
             <div id="intrinsicsResults" style="display: none;">
+                <div class="exclusion-gallery" id="intrinsicsExclusionGallery" style="display: none;">
+                    <div class="exclusion-gallery-header">
+                        <h3>Calibration Frames</h3>
+                        <div class="exclusion-stats" id="intrinsicsExclusionStats">0 / 0 excluded</div>
+                    </div>
+                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
+                        Click frames to view, click ✕ to exclude. Excluded frames are dimmed but still shown for comparison. Press X to toggle exclusion.
+                    </p>
+                    <div class="exclusion-controls">
+                        <button id="clearIntrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
+                    </div>
+                    <div class="exclusion-grid" id="intrinsicsExclusionGrid">
+                        <!-- Thumbnails will be added dynamically -->
+                    </div>
+                </div>
+
                 <h3>Intrinsic Parameters</h3>
                 <table class="data-table">
                     <thead>
@@ -1067,24 +1084,6 @@
                 <div id="swarmPlotContainer" style="background: #1a1a1a; border-radius: 8px; padding: 15px; position: relative;">
                     <canvas id="swarmPlotCanvas" width="800" height="250"></canvas>
                     <div id="swarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
-                </div>
-
-                <div class="exclusion-gallery" id="intrinsicsExclusionGallery" style="display: none;">
-                    <div class="exclusion-gallery-header">
-                        <h3>Calibration Frames</h3>
-                        <div class="exclusion-stats" id="intrinsicsExclusionStats">0 excluded</div>
-                    </div>
-                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
-                        Click frames to view, click ✕ to exclude from intrinsics calibration. Excluded frames are dimmed but still shown for comparison. Press <kbd style="background:#444;padding:2px 6px;border-radius:3px;">X</kbd> to toggle exclusion of current frame.
-                    </p>
-                    <div class="exclusion-controls">
-                        <button id="recomputeIntrinsicsBtn" class="secondary" disabled>Re-compute Intrinsics</button>
-                        <button id="clearIntrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
-                        <span class="exclusion-hint">Tip: Use [ ] keys to navigate calibration frames</span>
-                    </div>
-                    <div class="exclusion-grid" id="intrinsicsExclusionGrid">
-                        <!-- Thumbnails will be added dynamically -->
-                    </div>
                 </div>
             </div>
         </div>
@@ -1122,15 +1121,32 @@
             </div>
 
             <div class="controls">
-                <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics</button>
+                <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics (Initial)</button>
+                <button id="runBundleBtn" class="secondary" disabled>Refine (Bundle Adjustment)</button>
+                <button id="recomputeExtrinsicsBtn" class="secondary" disabled>Re-compute All</button>
                 <div id="extrinsicsProgress" class="progress-container">
                     <div class="progress-bar"></div>
                     <div class="progress-text">0%</div>
                 </div>
-                <button id="runBundleBtn" class="secondary" disabled>Bundle Adjustment</button>
             </div>
 
             <div id="extrinsicsResults" style="display: none;">
+                <div class="exclusion-gallery" id="extrinsicsExclusionGallery" style="display: none;">
+                    <div class="exclusion-gallery-header">
+                        <h3>Multi-View Frames</h3>
+                        <div class="exclusion-stats" id="extrinsicsExclusionStats">0 / 0 excluded</div>
+                    </div>
+                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
+                        Click frames to view, click ✕ to exclude. Excluded frames won't be used for calibration. Press X to toggle exclusion.
+                    </p>
+                    <div class="exclusion-controls">
+                        <button id="clearExtrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
+                    </div>
+                    <div class="exclusion-grid" id="extrinsicsExclusionGrid">
+                        <!-- Thumbnails will be added dynamically -->
+                    </div>
+                </div>
+
                 <h3>Extrinsic Parameters</h3>
                 <table class="data-table">
                     <thead>
@@ -1155,23 +1171,6 @@
                 <div id="extrinsicsSwarmContainer" style="background: #1a1a1a; border-radius: 8px; padding: 15px; position: relative;">
                     <canvas id="extrinsicsSwarmCanvas" width="800" height="250"></canvas>
                     <div id="extrinsicsSwarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
-                </div>
-
-                <div class="exclusion-gallery" id="extrinsicsExclusionGallery" style="display: none;">
-                    <div class="exclusion-gallery-header">
-                        <h3>Multi-View Frames</h3>
-                        <div class="exclusion-stats" id="extrinsicsExclusionStats">0 excluded</div>
-                    </div>
-                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
-                        Click frames to view, click ✕ to exclude from extrinsics calibration. Excluded frames won't be used for triangulation or camera pose estimation.
-                    </p>
-                    <div class="exclusion-controls">
-                        <button id="recomputeExtrinsicsBtn" class="secondary" disabled>Re-compute Extrinsics</button>
-                        <button id="clearExtrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
-                    </div>
-                    <div class="exclusion-grid" id="extrinsicsExclusionGrid">
-                        <!-- Thumbnails will be added dynamically -->
-                    </div>
                 </div>
             </div>
 
@@ -4253,16 +4252,19 @@
             // Enable export and update preview
             document.getElementById('exportTomlBtn').disabled = false;
             document.getElementById('exportSbaJsonBtn').disabled = false;
+            document.getElementById('runBundleBtn').disabled = false;
             updateTomlPreview();
 
             // Expand stage 5
             document.getElementById('stage5').classList.remove('collapsed');
         }
 
-        // Re-compute extrinsics with exclusions
+        // Re-compute extrinsics + SBA with exclusions
         async function recomputeExtrinsicsWithExclusions() {
-            log('Re-computing extrinsics with exclusions...', 'info');
+            log('Re-computing extrinsics + bundle adjustment...', 'info');
             await computeAllExtrinsics();
+            // Also run SBA refinement
+            await runSbaRefinement();
             document.getElementById('recomputeExtrinsicsBtn').disabled = true;
         }
 
@@ -5123,6 +5125,297 @@
         }
 
         document.getElementById('exportSbaJsonBtn').addEventListener('click', exportSbaJson);
+
+        // ============================================
+        // Bundle Adjustment (SBA) Integration
+        // ============================================
+
+        // Update intrinsics table from current state
+        function updateIntrinsicsTable() {
+            const tableBody = document.getElementById('intrinsicsTableBody');
+            tableBody.innerHTML = '';
+            for (const viewName of state.views.map(v => v.name)) {
+                const result = state.intrinsics[viewName];
+                if (!result) continue;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${result.viewName || viewName}</strong></td>
+                    <td>${result.fx.toFixed(2)}</td>
+                    <td>${result.fy.toFixed(2)}</td>
+                    <td>${result.cx.toFixed(2)}</td>
+                    <td>${result.cy.toFixed(2)}</td>
+                    <td>${result.k1.toFixed(6)}</td>
+                    <td>${result.k2.toFixed(6)}</td>
+                    <td style="color: ${result.rmsError < 1 ? '#4ade80' : (result.rmsError < 2 ? '#fbbf24' : '#ff6b6b')}">${result.rmsError.toFixed(4)}</td>
+                `;
+                tableBody.appendChild(row);
+            }
+        }
+
+        // Update extrinsics table from current state
+        function updateExtrinsicsTable() {
+            const tableBody = document.getElementById('extrinsicsTableBody');
+            tableBody.innerHTML = '';
+            for (const viewName of state.views.map(v => v.name)) {
+                const ext = state.extrinsics[viewName];
+                if (!ext) continue;
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><strong>${ext.viewName || viewName}</strong></td>
+                    <td>${ext.rvec[0].toFixed(6)}</td>
+                    <td>${ext.rvec[1].toFixed(6)}</td>
+                    <td>${ext.rvec[2].toFixed(6)}</td>
+                    <td>${ext.tvec[0].toFixed(2)}</td>
+                    <td>${ext.tvec[1].toFixed(2)}</td>
+                    <td>${ext.tvec[2].toFixed(2)}</td>
+                `;
+                tableBody.appendChild(row);
+            }
+        }
+
+        // Helper: Convert 3x3 rotation matrix to quaternion [w, x, y, z]
+        function rotationMatrixToQuaternion(R) {
+            const trace = R[0][0] + R[1][1] + R[2][2];
+            let w, x, y, z;
+
+            if (trace > 0) {
+                const s = 0.5 / Math.sqrt(trace + 1.0);
+                w = 0.25 / s;
+                x = (R[2][1] - R[1][2]) * s;
+                y = (R[0][2] - R[2][0]) * s;
+                z = (R[1][0] - R[0][1]) * s;
+            } else if (R[0][0] > R[1][1] && R[0][0] > R[2][2]) {
+                const s = 2.0 * Math.sqrt(1.0 + R[0][0] - R[1][1] - R[2][2]);
+                w = (R[2][1] - R[1][2]) / s;
+                x = 0.25 * s;
+                y = (R[0][1] + R[1][0]) / s;
+                z = (R[0][2] + R[2][0]) / s;
+            } else if (R[1][1] > R[2][2]) {
+                const s = 2.0 * Math.sqrt(1.0 + R[1][1] - R[0][0] - R[2][2]);
+                w = (R[0][2] - R[2][0]) / s;
+                x = (R[0][1] + R[1][0]) / s;
+                y = 0.25 * s;
+                z = (R[1][2] + R[2][1]) / s;
+            } else {
+                const s = 2.0 * Math.sqrt(1.0 + R[2][2] - R[0][0] - R[1][1]);
+                w = (R[1][0] - R[0][1]) / s;
+                x = (R[0][2] + R[2][0]) / s;
+                y = (R[1][2] + R[2][1]) / s;
+                z = 0.25 * s;
+            }
+
+            // Normalize
+            const norm = Math.sqrt(w*w + x*x + y*y + z*z);
+            return [w/norm, x/norm, y/norm, z/norm];
+        }
+
+        // Helper: Convert quaternion [w, x, y, z] to 3x3 rotation matrix
+        function quaternionToRotationMatrix(q) {
+            const [w, x, y, z] = q;
+            return [
+                [1 - 2*y*y - 2*z*z,     2*x*y - 2*z*w,     2*x*z + 2*y*w],
+                [    2*x*y + 2*z*w, 1 - 2*x*x - 2*z*z,     2*y*z - 2*x*w],
+                [    2*x*z - 2*y*w,     2*y*z + 2*x*w, 1 - 2*x*x - 2*y*y]
+            ];
+        }
+
+        // Prepare SBA input from current state
+        function prepareSbaInput() {
+            const exportData = generateSbaJsonOutput();
+            if (!exportData) return null;
+
+            const cameraNames = state.views.map(v => v.name);
+
+            // Build cameras array in WASM format
+            const cameras = cameraNames.map(name => {
+                const intr = state.intrinsics[name];
+                const extr = state.extrinsics[name];
+
+                // Convert rotation matrix to quaternion [w, x, y, z]
+                const quat = rotationMatrixToQuaternion(extr.R);
+
+                return {
+                    rotation: quat,
+                    translation: [extr.tvec[0], extr.tvec[1], extr.tvec[2]],
+                    focal: [intr.fx, intr.fy],
+                    principal: [intr.cx, intr.cy],
+                    distortion: [intr.k1, intr.k2, intr.p1, intr.p2, intr.k3]
+                };
+            });
+
+            // Build points array from triangulated points
+            const points = [];
+            const pointToFrame = [];
+            const pointIdMap = new Map();
+
+            for (const tp of exportData.triangulated_points) {
+                const pointIdx = points.length;
+                points.push([tp.point_3d[0], tp.point_3d[1], tp.point_3d[2]]);
+                pointToFrame.push(tp.frame);
+                pointIdMap.set(`${tp.frame}-${tp.corner_id}`, pointIdx);
+            }
+
+            // Build observations array
+            const observations = [];
+            const cameraIndexMap = new Map(cameraNames.map((n, i) => [n, i]));
+
+            for (const obs of exportData.observations) {
+                for (const [camName, camObs] of Object.entries(obs.views)) {
+                    const camIdx = cameraIndexMap.get(camName);
+
+                    for (let i = 0; i < camObs.corner_ids.length; i++) {
+                        const cornerId = camObs.corner_ids[i];
+                        const key = `${obs.frame}-${cornerId}`;
+                        const pointIdx = pointIdMap.get(key);
+
+                        if (pointIdx !== undefined) {
+                            observations.push({
+                                camera_idx: camIdx,
+                                point_idx: pointIdx,
+                                x: camObs.corners_2d[i][0],
+                                y: camObs.corners_2d[i][1]
+                            });
+                        }
+                    }
+                }
+            }
+
+            return {
+                cameras,
+                points,
+                observations,
+                point_to_frame: pointToFrame,
+                metadata: {
+                    camera_names: cameraNames,
+                    num_cameras: cameras.length,
+                    num_points: points.length,
+                    num_observations: observations.length
+                }
+            };
+        }
+
+        // Apply SBA results back to state
+        function applySbaResults(sbaResult, cameraNames) {
+            for (let i = 0; i < cameraNames.length; i++) {
+                const name = cameraNames[i];
+                const cam = sbaResult.cameras[i];
+
+                // Update intrinsics
+                state.intrinsics[name].fx = cam.focal[0];
+                state.intrinsics[name].fy = cam.focal[1];
+                state.intrinsics[name].cx = cam.principal[0];
+                state.intrinsics[name].cy = cam.principal[1];
+                state.intrinsics[name].k1 = cam.distortion[0];
+                state.intrinsics[name].k2 = cam.distortion[1];
+                state.intrinsics[name].p1 = cam.distortion[2];
+                state.intrinsics[name].p2 = cam.distortion[3];
+                state.intrinsics[name].k3 = cam.distortion[4];
+
+                // Update camera matrix
+                state.intrinsics[name].cameraMatrix = [
+                    [cam.focal[0], 0, cam.principal[0]],
+                    [0, cam.focal[1], cam.principal[1]],
+                    [0, 0, 1]
+                ];
+                state.intrinsics[name].distCoeffs = [...cam.distortion];
+
+                // Update extrinsics
+                const R = quaternionToRotationMatrix(cam.rotation);
+                state.extrinsics[name].R = R;
+                state.extrinsics[name].tvec = [...cam.translation];
+                state.extrinsics[name].rvec = matrixToRodrigues(R);
+            }
+        }
+
+        // Main SBA handler
+        async function runSbaRefinement() {
+            const btn = document.getElementById('runBundleBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running SBA...';
+
+            showProgress('extrinsicsProgress');
+            updateProgress('extrinsicsProgress', 0, 'Preparing data...');
+
+            try {
+                // Prepare input data
+                const sbaInput = prepareSbaInput();
+                if (!sbaInput) {
+                    throw new Error('Failed to prepare SBA input data');
+                }
+                log(`SBA input: ${sbaInput.metadata.num_cameras} cameras, ` +
+                    `${sbaInput.metadata.num_points} points, ` +
+                    `${sbaInput.metadata.num_observations} observations`, 'info');
+
+                updateProgress('extrinsicsProgress', 10, 'Loading WASM module...');
+
+                // Dynamically import the SBA module
+                const { runBundleAdjustment, initSBA } = await import('./lib/sba-wrapper.js');
+
+                updateProgress('extrinsicsProgress', 15, 'Initializing solver...');
+                await initSBA();
+
+                updateProgress('extrinsicsProgress', 20, 'Running optimization...');
+
+                // Run bundle adjustment
+                const result = await runBundleAdjustment({
+                    cameras: sbaInput.cameras,
+                    points: sbaInput.points,
+                    observations: sbaInput.observations,
+                    point_to_frame: sbaInput.point_to_frame
+                }, {
+                    max_iterations: 100,
+                    robust_loss: 'huber',
+                    robust_loss_param: 1.0,
+                    optimize_extrinsics: true,
+                    optimize_points: true,
+                    optimize_intrinsics: true,
+                    outlier_threshold: 30,
+                    reference_camera: 0
+                });
+
+                updateProgress('extrinsicsProgress', 80, 'Applying results...');
+
+                // Log results
+                const improvement = ((result.initial_cost - result.final_cost) / result.initial_cost * 100);
+                log(`SBA completed: ${result.iterations} iterations, ` +
+                    `cost ${result.initial_cost.toFixed(2)} → ${result.final_cost.toFixed(2)} ` +
+                    `(${improvement.toFixed(1)}% improvement)`, 'success');
+
+                if (result.num_observations_filtered > 0) {
+                    log(`Filtered ${result.num_observations_filtered} outlier observations`, 'info');
+                }
+
+                // Apply refined parameters to state
+                applySbaResults(result, sbaInput.metadata.camera_names);
+
+                updateProgress('extrinsicsProgress', 90, 'Updating visualizations...');
+
+                // Recompute cross-view reprojection errors with refined params
+                state.extrinsicsReprojData = computeCrossViewReprojectionErrors();
+
+                // Update UI tables and galleries
+                updateIntrinsicsTable();
+                updateExtrinsicsTable();
+                drawSwarmPlot();
+                drawExtrinsicsSwarmPlot();
+                await buildExtrinsicsExclusionGallery();
+                updateTomlPreview();
+
+                updateProgress('extrinsicsProgress', 100, 'Complete!');
+
+                log(`Bundle Adjustment complete! Cost reduction: ${improvement.toFixed(1)}%`, 'success');
+
+            } catch (err) {
+                console.error('SBA error:', err);
+                log(`Bundle Adjustment Error: ${err.message}`, 'error');
+            } finally {
+                hideProgress('extrinsicsProgress');
+                btn.disabled = false;
+                btn.textContent = 'Refine (Bundle Adjustment)';
+            }
+        }
+
+        document.getElementById('runBundleBtn').addEventListener('click', runSbaRefinement);
 
         // ============================================
         // Resize Handle
