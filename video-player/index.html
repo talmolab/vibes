@@ -45,19 +45,22 @@
             position: relative;
             background: #000;
             border-radius: 8px;
-            overflow: auto;
+            overflow: hidden;
             margin: 20px 0;
             cursor: grab;
             height: 400px;
             min-height: 150px;
             max-height: 90vh;
             resize: vertical;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .canvas-container:active { cursor: grabbing; }
         canvas {
             display: block;
             max-width: 100%;
-            height: auto;
+            max-height: 100%;
             image-rendering: crisp-edges;
         }
         .seekbar-container {
