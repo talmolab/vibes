@@ -600,6 +600,205 @@
             max-width: 900px;
             margin: 0 auto;
         }
+
+        /* Frame Exclusion Gallery */
+        .exclusion-gallery {
+            background: #252525;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 15px 0;
+        }
+        .exclusion-gallery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .exclusion-gallery-header h3 {
+            margin: 0;
+            font-size: 14px;
+            color: #fff;
+        }
+        .exclusion-stats {
+            font-size: 12px;
+            color: #888;
+        }
+        .exclusion-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            gap: 8px;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+        .exclusion-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+        .exclusion-grid::-webkit-scrollbar-thumb {
+            background: #444;
+            border-radius: 3px;
+        }
+        .frame-thumbnail {
+            position: relative;
+            aspect-ratio: 4/3;
+            background: #1a1a1a;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .frame-thumbnail:hover {
+            border-color: #667eea;
+        }
+        .frame-thumbnail.current {
+            border-color: #4ade80;
+        }
+        .frame-thumbnail.excluded {
+            opacity: 0.4;
+            border-color: #ef4444;
+        }
+        .frame-thumbnail.excluded:hover {
+            opacity: 0.7;
+        }
+        .frame-thumbnail img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .frame-thumbnail-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.85));
+            padding: 12px 4px 4px 4px;
+            font-size: 10px;
+            color: #fff;
+            text-align: center;
+        }
+        .frame-thumbnail-error {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        .frame-thumbnail-excluded-badge {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .frame-thumbnail-cross-warning {
+            position: absolute;
+            bottom: 22px;
+            left: 4px;
+            background: rgba(251, 191, 36, 0.9);
+            color: #000;
+            font-size: 9px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .frame-thumbnail-btn {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(0,0,0,0.6);
+            border: none;
+            color: white;
+            width: 22px;
+            height: 22px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .frame-thumbnail:hover .frame-thumbnail-btn {
+            opacity: 1;
+        }
+        .frame-thumbnail-btn:hover {
+            background: rgba(239, 68, 68, 0.8);
+        }
+        .frame-thumbnail.excluded .frame-thumbnail-btn {
+            opacity: 1;
+            background: rgba(74, 222, 128, 0.8);
+        }
+        .frame-thumbnail.excluded .frame-thumbnail-btn:hover {
+            background: rgba(74, 222, 128, 1);
+        }
+
+        /* Exclusion toggle in table */
+        .exclude-toggle {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+        }
+        .exclude-toggle:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: rgba(239, 68, 68, 0.5);
+        }
+        .exclude-toggle.excluded {
+            background: rgba(239, 68, 68, 0.3);
+            border-color: #ef4444;
+            color: #ff6b6b;
+        }
+        .data-table tr.excluded-row {
+            opacity: 0.5;
+            background: rgba(239, 68, 68, 0.1);
+        }
+        .data-table tr.excluded-row:hover {
+            opacity: 0.7;
+        }
+
+        /* Quick exclusion controls */
+        .exclusion-controls {
+            background: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .exclusion-controls button.exclude-btn {
+            background: #dc2626;
+        }
+        .exclusion-controls button.exclude-btn:hover {
+            background: #b91c1c;
+        }
+        .exclusion-controls button.include-btn {
+            background: #16a34a;
+        }
+        .exclusion-controls button.include-btn:hover {
+            background: #15803d;
+        }
+        .exclusion-controls .exclusion-hint {
+            color: #888;
+            font-size: 11px;
+        }
+
+        /* Swarm plot excluded dot styling */
+        .swarm-dot-excluded {
+            opacity: 0.3;
+        }
     </style>
 </head>
 <body>
@@ -869,6 +1068,24 @@
                     <canvas id="swarmPlotCanvas" width="800" height="250"></canvas>
                     <div id="swarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
                 </div>
+
+                <div class="exclusion-gallery" id="intrinsicsExclusionGallery" style="display: none;">
+                    <div class="exclusion-gallery-header">
+                        <h3>Calibration Frames</h3>
+                        <div class="exclusion-stats" id="intrinsicsExclusionStats">0 excluded</div>
+                    </div>
+                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
+                        Click frames to view, click ✕ to exclude from intrinsics calibration. Excluded frames are dimmed but still shown for comparison. Press <kbd style="background:#444;padding:2px 6px;border-radius:3px;">X</kbd> to toggle exclusion of current frame.
+                    </p>
+                    <div class="exclusion-controls">
+                        <button id="recomputeIntrinsicsBtn" class="secondary" disabled>Re-compute Intrinsics</button>
+                        <button id="clearIntrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
+                        <span class="exclusion-hint">Tip: Use [ ] keys to navigate calibration frames</span>
+                    </div>
+                    <div class="exclusion-grid" id="intrinsicsExclusionGrid">
+                        <!-- Thumbnails will be added dynamically -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -938,6 +1155,23 @@
                 <div id="extrinsicsSwarmContainer" style="background: #1a1a1a; border-radius: 8px; padding: 15px; position: relative;">
                     <canvas id="extrinsicsSwarmCanvas" width="800" height="250"></canvas>
                     <div id="extrinsicsSwarmTooltip" style="display: none; position: absolute; background: rgba(0,0,0,0.9); color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; pointer-events: none; z-index: 100;"></div>
+                </div>
+
+                <div class="exclusion-gallery" id="extrinsicsExclusionGallery" style="display: none;">
+                    <div class="exclusion-gallery-header">
+                        <h3>Multi-View Frames</h3>
+                        <div class="exclusion-stats" id="extrinsicsExclusionStats">0 excluded</div>
+                    </div>
+                    <p style="color: #888; font-size: 12px; margin: 0 0 10px 0;">
+                        Click frames to view, click ✕ to exclude from extrinsics calibration. Excluded frames won't be used for triangulation or camera pose estimation.
+                    </p>
+                    <div class="exclusion-controls">
+                        <button id="recomputeExtrinsicsBtn" class="secondary" disabled>Re-compute Extrinsics</button>
+                        <button id="clearExtrinsicsExclusionsBtn" class="secondary">Clear Exclusions</button>
+                    </div>
+                    <div class="exclusion-grid" id="extrinsicsExclusionGrid">
+                        <!-- Thumbnails will be added dynamically -->
+                    </div>
                 </div>
             </div>
 
@@ -1014,6 +1248,15 @@
             intrinsics: {},      // Per-camera intrinsic parameters
             extrinsics: {},      // Per-camera extrinsic parameters
             showOverlay: true,
+            // Frame exclusions - frames to exclude from calibration (but still shown for assessment)
+            exclusions: {
+                // Per-camera exclusions for intrinsics (calibration frame indices, not video frames)
+                intrinsics: {},  // {cameraName: Set of calibration frame indices}
+                // Frame exclusions for extrinsics (video frame numbers)
+                extrinsics: new Set(),
+            },
+            // Thumbnails for exclusion gallery
+            frameThumbnails: {},  // {frame: dataURL}
         };
 
         // Test data paths (relative to vibe root)
@@ -1339,6 +1582,10 @@
 
             // Phase 4: Draw unified legend
             drawOverlayLegends();
+
+            // Update gallery highlights to reflect current frame (without re-seeking)
+            updateIntrinsicsGalleryCurrentHighlight();
+            updateExtrinsicsGalleryCurrentHighlight();
 
             if (!state.isPlaying) {
                 log(`Frame ${frameIndex}: ${seekTime.toFixed(0)}ms`, 'info');
@@ -2053,27 +2300,46 @@
 
             log(`Computing intrinsics for ${viewName}...`, 'info');
 
-            // Collect all detections for this view with sufficient corners
-            const allObjectPoints = [];  // Per-frame 3D object points
-            const allImagePoints = [];   // Per-frame 2D image points
-            const frameIndices = [];     // Video frame indices for each calibration frame
-            let usedFrames = 0;
-
+            // First pass: Collect all valid detections (for frame indexing consistency)
+            const allValidFrames = [];
             for (const detection of state.detections) {
                 const viewResult = detection.views[viewName];
                 if (!viewResult || viewResult.error || !viewResult.charucoCorners) continue;
                 if (viewResult.numCharucoCorners < minCorners) continue;
 
-                // Get object points (3D)
-                const objPts = getObjectPointsForCharucoCorners(viewResult.charucoIds, config);
+                allValidFrames.push({
+                    frame: detection.frame,
+                    objPts: getObjectPointsForCharucoCorners(viewResult.charucoIds, config),
+                    imgPts: viewResult.charucoCorners
+                });
+            }
 
-                // Get image points (2D)
-                const imgPts = viewResult.charucoCorners;
+            // Check for exclusions (by calibration frame index)
+            const exclusions = state.exclusions.intrinsics[viewName] || new Set();
 
-                allObjectPoints.push(objPts);
-                allImagePoints.push(imgPts);
-                frameIndices.push(detection.frame);  // Store video frame number
-                usedFrames++;
+            // Second pass: Filter out excluded frames
+            const allObjectPoints = [];  // Per-frame 3D object points
+            const allImagePoints = [];   // Per-frame 2D image points
+            const frameIndices = [];     // Video frame indices for each calibration frame
+            const originalCalibIndices = []; // Original calibration frame indices (for tracking)
+
+            for (let calibIdx = 0; calibIdx < allValidFrames.length; calibIdx++) {
+                if (exclusions.has(calibIdx)) {
+                    continue; // Skip excluded frames
+                }
+
+                const validFrame = allValidFrames[calibIdx];
+                allObjectPoints.push(validFrame.objPts);
+                allImagePoints.push(validFrame.imgPts);
+                frameIndices.push(validFrame.frame);
+                originalCalibIndices.push(calibIdx);
+            }
+
+            const usedFrames = allObjectPoints.length;
+            const excludedCount = exclusions.size;
+
+            if (excludedCount > 0) {
+                log(`${viewName}: ${excludedCount} frames excluded, using ${usedFrames}/${allValidFrames.length}`, 'info');
             }
 
             if (usedFrames < 3) {
@@ -2196,6 +2462,10 @@
                     frameIndices: frameIndices,  // Video frame numbers corresponding to each calibration frame
                     // Per-image reprojection errors (RMS)
                     perImageErrors: perImageErrors,
+                    // All valid frames before exclusion (for gallery display)
+                    allValidFrames: allValidFrames,
+                    // Mapping from current array index to original calibration frame index
+                    originalCalibIndices: originalCalibIndices,
                 };
 
                 // Extract per-frame poses
@@ -2207,6 +2477,88 @@
                     rvec.delete();
                     tvec.delete();
                 }
+
+                // Compute reprojection errors for ALL frames (including excluded) using new calibration
+                // This allows us to assess how excluded frames perform with the new parameters
+                const allPerImageErrors = [];
+                const allRvecs = [];
+                const allTvecs = [];
+
+                const camMatForReproj = cv.matFromArray(3, 3, cv.CV_64F, [
+                    fx, 0, cx_out,
+                    0, fy, cy_out,
+                    0, 0, 1
+                ]);
+                const distCoeffsForReproj = cv.matFromArray(5, 1, cv.CV_64F, [k1, k2, p1, p2, k3]);
+
+                for (let calibIdx = 0; calibIdx < allValidFrames.length; calibIdx++) {
+                    const frame = allValidFrames[calibIdx];
+                    const objPts = frame.objPts;
+                    const imgPts = frame.imgPts;
+
+                    // Create object points mat
+                    const objMat = new cv.Mat(objPts.length, 1, cv.CV_32FC3);
+                    for (let j = 0; j < objPts.length; j++) {
+                        objMat.floatPtr(j, 0)[0] = objPts[j].x;
+                        objMat.floatPtr(j, 0)[1] = objPts[j].y;
+                        objMat.floatPtr(j, 0)[2] = objPts[j].z;
+                    }
+
+                    // Solve PnP to get pose for this frame
+                    const rvecMat = new cv.Mat();
+                    const tvecMat = new cv.Mat();
+
+                    try {
+                        const imgMat = new cv.Mat(imgPts.length, 1, cv.CV_32FC2);
+                        for (let j = 0; j < imgPts.length; j++) {
+                            imgMat.floatPtr(j, 0)[0] = imgPts[j].x;
+                            imgMat.floatPtr(j, 0)[1] = imgPts[j].y;
+                        }
+
+                        cv.solvePnP(objMat, imgMat, camMatForReproj, distCoeffsForReproj, rvecMat, tvecMat);
+
+                        // Store pose
+                        allRvecs.push([rvecMat.doubleAt(0, 0), rvecMat.doubleAt(1, 0), rvecMat.doubleAt(2, 0)]);
+                        allTvecs.push([tvecMat.doubleAt(0, 0), tvecMat.doubleAt(1, 0), tvecMat.doubleAt(2, 0)]);
+
+                        // Project points to compute reprojection error
+                        const projectedPts = new cv.Mat();
+                        const jacobian = new cv.Mat();
+                        cv.projectPoints(objMat, rvecMat, tvecMat, camMatForReproj, distCoeffsForReproj, projectedPts, jacobian);
+
+                        // Compute RMS error
+                        let sumSqError = 0;
+                        for (let j = 0; j < imgPts.length; j++) {
+                            const dx = projectedPts.floatAt(j, 0) - imgPts[j].x;
+                            const dy = projectedPts.floatAt(j, 1) - imgPts[j].y;
+                            sumSqError += dx * dx + dy * dy;
+                        }
+                        const rmsErr = Math.sqrt(sumSqError / imgPts.length);
+                        allPerImageErrors.push(rmsErr);
+
+                        projectedPts.delete();
+                        jacobian.delete();
+                        imgMat.delete();
+                    } catch (e) {
+                        // If solvePnP fails for this frame, use NaN
+                        allPerImageErrors.push(NaN);
+                        allRvecs.push(null);
+                        allTvecs.push(null);
+                    }
+
+                    objMat.delete();
+                    rvecMat.delete();
+                    tvecMat.delete();
+                }
+
+                camMatForReproj.delete();
+                distCoeffsForReproj.delete();
+
+                // Store all-frame data
+                result.allPerImageErrors = allPerImageErrors;
+                result.allRvecs = allRvecs;
+                result.allTvecs = allTvecs;
+                result.allFrameIndices = allValidFrames.map(f => f.frame);
 
                 log(`${viewName}: RMS=${rmsError.toFixed(4)}, fx=${fx.toFixed(1)}, fy=${fy.toFixed(1)}, cx=${cx_out.toFixed(1)}, cy=${cy_out.toFixed(1)}`, 'success');
                 log(`${viewName}: Distortion k1=${k1.toFixed(6)}, k2=${k2.toFixed(6)}, p1=${p1.toFixed(6)}, p2=${p2.toFixed(6)}, k3=${k3.toFixed(6)}`, 'info');
@@ -2309,11 +2661,18 @@
                 // Draw reprojection overlay if checkbox is checked
                 if (document.getElementById('intrinsicsOverlayCheck').checked) {
                     state.showReprojection = true;
-                    // Navigate to first calibration frame and redraw with overlay
-                    state.reprojectionFrameIndex = 0;
+                    // Try to preserve current frame if it has calibration data
                     const firstIntrinsics = Object.values(state.intrinsics)[0];
-                    const videoFrame = firstIntrinsics.frameIndices ? firstIntrinsics.frameIndices[0] : 0;
-                    await seekToFrame(videoFrame);
+                    if (firstIntrinsics && firstIntrinsics.frameIndices) {
+                        const currentIdx = firstIntrinsics.frameIndices.indexOf(state.currentFrame);
+                        if (currentIdx !== -1) {
+                            state.reprojectionFrameIndex = currentIdx;
+                        } else {
+                            state.reprojectionFrameIndex = 0;
+                        }
+                    }
+                    // Redraw current frame with overlay (don't navigate away)
+                    await seekToFrame(state.currentFrame);
                 }
 
                 // Expand stage 4
@@ -2325,16 +2684,42 @@
                 // Draw reprojection overlay if checkbox is checked and any cameras succeeded
                 if (successCount > 0 && document.getElementById('intrinsicsOverlayCheck').checked) {
                     state.showReprojection = true;
-                    state.reprojectionFrameIndex = 0;
+                    // Try to preserve current frame if it has calibration data
                     const firstIntrinsics = Object.values(state.intrinsics)[0];
-                    const videoFrame = firstIntrinsics.frameIndices ? firstIntrinsics.frameIndices[0] : 0;
-                    await seekToFrame(videoFrame);
+                    if (firstIntrinsics && firstIntrinsics.frameIndices) {
+                        const currentIdx = firstIntrinsics.frameIndices.indexOf(state.currentFrame);
+                        if (currentIdx !== -1) {
+                            state.reprojectionFrameIndex = currentIdx;
+                        } else {
+                            state.reprojectionFrameIndex = 0;
+                        }
+                    }
+                    // Redraw current frame with overlay (don't navigate away)
+                    await seekToFrame(state.currentFrame);
                 }
+            }
+
+            // Build the exclusion gallery after intrinsics are computed
+            if (successCount > 0) {
+                await buildIntrinsicsExclusionGallery();
             }
         }
 
-        // Intrinsics event listener
+        // Re-compute intrinsics with exclusions
+        async function recomputeIntrinsicsWithExclusions() {
+            log('Re-computing intrinsics with exclusions...', 'info');
+
+            // Note: The exclusions are already set in state.exclusions.intrinsics
+            // We just need to re-run the computation which will respect them
+
+            await computeAllIntrinsics();
+
+            document.getElementById('recomputeIntrinsicsBtn').disabled = true;
+        }
+
+        // Intrinsics event listeners
         document.getElementById('computeIntrinsicsBtn').addEventListener('click', computeAllIntrinsics);
+        document.getElementById('recomputeIntrinsicsBtn').addEventListener('click', recomputeIntrinsicsWithExclusions);
 
         // ============================================
         // Reprojection Visualization
@@ -2523,11 +2908,11 @@
             const cameras = Object.keys(state.intrinsics);
             if (cameras.length === 0) return;
 
-            // Collect all errors for computing scale
+            // Collect all errors for computing scale (use allPerImageErrors to include excluded frames)
             let allErrors = [];
             cameras.forEach(cam => {
-                const errors = state.intrinsics[cam].perImageErrors || [];
-                allErrors = allErrors.concat(errors);
+                const errors = state.intrinsics[cam].allPerImageErrors || state.intrinsics[cam].perImageErrors || [];
+                allErrors = allErrors.concat(errors.filter(e => !isNaN(e)));
             });
 
             if (allErrors.length === 0) return;
@@ -2602,9 +2987,11 @@
             // Camera colors (consistent with theme)
             const colors = ['#667eea', '#4ade80', '#fbbf24', '#ef4444', '#a78bfa', '#22d3ee'];
 
-            // Draw dots for each camera
+            // Draw dots for each camera (all frames including excluded)
             cameras.forEach((cam, camIdx) => {
-                const errors = state.intrinsics[cam].perImageErrors || [];
+                // Use allPerImageErrors to show all frames, fall back to perImageErrors for compatibility
+                const errors = state.intrinsics[cam].allPerImageErrors || state.intrinsics[cam].perImageErrors || [];
+                const exclusions = state.exclusions.intrinsics[cam] || new Set();
                 const x = xScale(camIdx);
                 const color = colors[camIdx % colors.length];
 
@@ -2612,13 +2999,16 @@
                 // Use seeded random based on index for consistency
                 const jitterWidth = xBandWidth * 0.6;
 
-                errors.forEach((error, imgIdx) => {
+                errors.forEach((error, calibIdx) => {
+                    if (isNaN(error)) return; // Skip failed frames
+
+                    const isExcluded = exclusions.has(calibIdx);
                     const y = yScale(error);
                     // Deterministic jitter based on error value and index
-                    const jitter = ((imgIdx * 7919 + Math.floor(error * 1000)) % 100 - 50) / 50 * jitterWidth / 2;
+                    const jitter = ((calibIdx * 7919 + Math.floor(error * 1000)) % 100 - 50) / 50 * jitterWidth / 2;
                     const dotX = x + jitter;
                     const dotY = y;
-                    const radius = 5;
+                    const radius = isExcluded ? 4 : 5;
 
                     // Store dot info for hover detection
                     state.swarmDots.push({
@@ -2626,18 +3016,19 @@
                         y: dotY,
                         radius: radius,
                         camera: cam,
-                        imageIndex: imgIdx,
+                        imageIndex: calibIdx,
                         error: error,
-                        color: color
+                        color: color,
+                        isExcluded: isExcluded
                     });
 
-                    // Draw dot
+                    // Draw dot (excluded frames with reduced opacity and dashed stroke)
                     ctx.beginPath();
                     ctx.arc(dotX, dotY, radius, 0, 2 * Math.PI);
-                    ctx.fillStyle = color;
+                    ctx.fillStyle = isExcluded ? color + '40' : color; // 25% opacity for excluded
                     ctx.fill();
-                    ctx.strokeStyle = '#fff';
-                    ctx.lineWidth = 1.5;
+                    ctx.strokeStyle = isExcluded ? '#888' : '#fff';
+                    ctx.lineWidth = isExcluded ? 1 : 1.5;
                     ctx.stroke();
                 });
 
@@ -2741,6 +3132,655 @@
         setupSwarmPlotHover();
 
         // ============================================
+        // Frame Exclusion Management
+        // ============================================
+
+        // Initialize exclusions for a camera
+        function initCameraExclusions(cameraName) {
+            if (!state.exclusions.intrinsics[cameraName]) {
+                state.exclusions.intrinsics[cameraName] = new Set();
+            }
+        }
+
+        // Toggle intrinsics frame exclusion
+        function toggleIntrinsicsExclusion(cameraName, calibFrameIndex) {
+            initCameraExclusions(cameraName);
+            const exclusions = state.exclusions.intrinsics[cameraName];
+
+            if (exclusions.has(calibFrameIndex)) {
+                exclusions.delete(calibFrameIndex);
+                log(`Included intrinsics frame ${calibFrameIndex + 1} for ${cameraName}`, 'info');
+            } else {
+                exclusions.add(calibFrameIndex);
+                log(`Excluded intrinsics frame ${calibFrameIndex + 1} for ${cameraName}`, 'warn');
+            }
+
+            updateIntrinsicsExclusionUI();
+            document.getElementById('recomputeIntrinsicsBtn').disabled = false;
+        }
+
+        // Toggle extrinsics frame exclusion
+        function toggleExtrinsicsExclusion(videoFrame) {
+            if (state.exclusions.extrinsics.has(videoFrame)) {
+                state.exclusions.extrinsics.delete(videoFrame);
+                log(`Included extrinsics frame ${videoFrame}`, 'info');
+            } else {
+                state.exclusions.extrinsics.add(videoFrame);
+                log(`Excluded extrinsics frame ${videoFrame}`, 'warn');
+            }
+
+            updateExtrinsicsExclusionUI();
+            document.getElementById('recomputeExtrinsicsBtn').disabled = false;
+        }
+
+        // Check if a calibration frame is excluded for intrinsics
+        function isIntrinsicsFrameExcluded(cameraName, calibFrameIndex) {
+            return state.exclusions.intrinsics[cameraName]?.has(calibFrameIndex) || false;
+        }
+
+        // Check if a video frame is excluded for extrinsics
+        function isExtrinsicsFrameExcluded(videoFrame) {
+            return state.exclusions.extrinsics.has(videoFrame);
+        }
+
+        // Check if a video frame is excluded from intrinsics (by mapping to calibration index)
+        function isVideoFrameExcludedFromIntrinsics(videoFrame) {
+            const firstCam = Object.keys(state.intrinsics)[0];
+            if (!firstCam) return false;
+
+            const intrinsics = state.intrinsics[firstCam];
+            const allValidFrames = intrinsics.allValidFrames;
+            if (!allValidFrames) return false;
+
+            // Find the calibration index for this video frame
+            const calibIdx = allValidFrames.findIndex(f => f.frame === videoFrame);
+            if (calibIdx < 0) return false;
+
+            // Check if excluded in any camera
+            for (const camName of Object.keys(state.intrinsics)) {
+                if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Get exclusion counts
+        function getIntrinsicsExclusionCount() {
+            let total = 0;
+            for (const cam in state.exclusions.intrinsics) {
+                total += state.exclusions.intrinsics[cam].size;
+            }
+            return total;
+        }
+
+        // Capture thumbnail for a frame (using first camera)
+        async function captureThumbnail(videoFrame) {
+            if (state.frameThumbnails[videoFrame]) {
+                return state.frameThumbnails[videoFrame];
+            }
+
+            if (state.views.length === 0) return null;
+
+            const view = state.views[0];
+            const result = await view.decoder.getFrame(videoFrame);
+            if (result && result.bitmap) {
+                // Create small canvas for thumbnail
+                const thumbCanvas = document.createElement('canvas');
+                thumbCanvas.width = 160;
+                thumbCanvas.height = 120;
+                const thumbCtx = thumbCanvas.getContext('2d');
+                thumbCtx.drawImage(result.bitmap, 0, 0, thumbCanvas.width, thumbCanvas.height);
+                const dataURL = thumbCanvas.toDataURL('image/jpeg', 0.7);
+                state.frameThumbnails[videoFrame] = dataURL;
+                return dataURL;
+            }
+            return null;
+        }
+
+        // Build and populate intrinsics exclusion gallery
+        async function buildIntrinsicsExclusionGallery() {
+            const gallery = document.getElementById('intrinsicsExclusionGallery');
+            const grid = document.getElementById('intrinsicsExclusionGrid');
+
+            if (Object.keys(state.intrinsics).length === 0) {
+                gallery.style.display = 'none';
+                return;
+            }
+
+            gallery.style.display = 'block';
+            grid.innerHTML = '';
+
+            // Get first camera's calibration data
+            const firstCam = Object.keys(state.intrinsics)[0];
+            const intrinsics = state.intrinsics[firstCam];
+
+            // Use allValidFrames if available (shows all frames including excluded)
+            // Otherwise fall back to frameIndices (first computation before any exclusions)
+            const validFrames = intrinsics.allValidFrames || null;
+            if (!validFrames && !intrinsics.frameIndices) return;
+
+            // Initialize exclusions for all cameras
+            for (const camName of Object.keys(state.intrinsics)) {
+                initCameraExclusions(camName);
+            }
+
+            // Determine number of frames to show
+            const numFrames = validFrames ? validFrames.length : intrinsics.frameIndices.length;
+
+            // Build thumbnails for each calibration frame
+            for (let calibIdx = 0; calibIdx < numFrames; calibIdx++) {
+                const videoFrame = validFrames ? validFrames[calibIdx].frame : intrinsics.frameIndices[calibIdx];
+                const thumbnail = await captureThumbnail(videoFrame);
+
+                // Get error for this frame - use allPerImageErrors (includes excluded frames)
+                let error = null;
+                if (intrinsics.allPerImageErrors && intrinsics.allPerImageErrors[calibIdx] !== undefined) {
+                    error = intrinsics.allPerImageErrors[calibIdx];
+                    if (isNaN(error)) error = null;
+                } else if (intrinsics.perImageErrors && intrinsics.perImageErrors[calibIdx] !== undefined) {
+                    // Fall back to old perImageErrors for compatibility
+                    error = intrinsics.perImageErrors[calibIdx];
+                }
+
+                // Check if excluded in any camera
+                let isExcluded = false;
+                for (const camName of Object.keys(state.intrinsics)) {
+                    if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
+                        isExcluded = true;
+                        break;
+                    }
+                }
+
+                const isCurrent = (state.reprojectionFrameIndex === calibIdx);
+                const isExcludedFromExtrinsics = isExtrinsicsFrameExcluded(videoFrame);
+
+                // Show warning if exclusion status differs between intrinsics and extrinsics
+                let crossWarning = '';
+                if (isExcluded && !isExcludedFromExtrinsics) {
+                    crossWarning = '<div class="frame-thumbnail-cross-warning" title="Excluded here but included in extrinsics">⚠ in extr</div>';
+                } else if (!isExcluded && isExcludedFromExtrinsics) {
+                    crossWarning = '<div class="frame-thumbnail-cross-warning" title="Included here but excluded from extrinsics">⚠ excl extr</div>';
+                }
+
+                const item = document.createElement('div');
+                item.className = 'frame-thumbnail' + (isExcluded ? ' excluded' : '') + (isCurrent ? ' current' : '');
+                item.dataset.calibIndex = calibIdx;
+                item.dataset.videoFrame = videoFrame;
+
+                item.innerHTML = `
+                    ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame}">` : ''}
+                    <div class="frame-thumbnail-label">F${videoFrame}${error ? ` • ${error.toFixed(2)}px` : ''}</div>
+                    ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
+                    ${crossWarning}
+                    <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
+                `;
+
+                // Click to navigate to frame
+                item.addEventListener('click', async (e) => {
+                    if (e.target.classList.contains('frame-thumbnail-btn')) return;
+                    state.reprojectionFrameIndex = calibIdx;
+                    await seekToFrame(videoFrame);
+                    // Note: seekToFrame now calls updateIntrinsicsGalleryCurrentHighlight()
+                });
+
+                // Button to toggle exclusion
+                const btn = item.querySelector('.frame-thumbnail-btn');
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    // Check current exclusion state (not captured closure value)
+                    let currentlyExcluded = false;
+                    for (const camName of Object.keys(state.intrinsics)) {
+                        if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
+                            currentlyExcluded = true;
+                            break;
+                        }
+                    }
+                    // Toggle exclusion for ALL cameras at once
+                    for (const camName of Object.keys(state.intrinsics)) {
+                        if (currentlyExcluded) {
+                            state.exclusions.intrinsics[camName].delete(calibIdx);
+                        } else {
+                            state.exclusions.intrinsics[camName].add(calibIdx);
+                        }
+                    }
+                    log(`${currentlyExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, currentlyExcluded ? 'info' : 'warn');
+                    updateIntrinsicsExclusionUI();
+                    document.getElementById('recomputeIntrinsicsBtn').disabled = false;
+                });
+
+                grid.appendChild(item);
+            }
+
+            updateIntrinsicsExclusionStats();
+        }
+
+        // Update gallery highlight for current frame
+        function updateIntrinsicsGalleryCurrentHighlight() {
+            const grid = document.getElementById('intrinsicsExclusionGrid');
+            if (!grid) return;
+
+            grid.querySelectorAll('.frame-thumbnail').forEach(item => {
+                const calibIdx = parseInt(item.dataset.calibIndex);
+                if (calibIdx === state.reprojectionFrameIndex) {
+                    item.classList.add('current');
+                } else {
+                    item.classList.remove('current');
+                }
+            });
+        }
+
+        // Update exclusion UI for intrinsics gallery
+        function updateIntrinsicsExclusionUI() {
+            const grid = document.getElementById('intrinsicsExclusionGrid');
+            if (!grid) return;
+
+            const firstCam = Object.keys(state.intrinsics)[0];
+            if (!firstCam) return;
+
+            grid.querySelectorAll('.frame-thumbnail').forEach(item => {
+                const calibIdx = parseInt(item.dataset.calibIndex);
+                const videoFrame = parseInt(item.dataset.videoFrame);
+
+                // Check if excluded in any camera
+                let isExcluded = false;
+                for (const camName of Object.keys(state.intrinsics)) {
+                    if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
+                        isExcluded = true;
+                        break;
+                    }
+                }
+
+                const isExcludedFromExtrinsics = isExtrinsicsFrameExcluded(videoFrame);
+
+                if (isExcluded) {
+                    item.classList.add('excluded');
+                    const badge = item.querySelector('.frame-thumbnail-excluded-badge');
+                    if (!badge) {
+                        const newBadge = document.createElement('div');
+                        newBadge.className = 'frame-thumbnail-excluded-badge';
+                        newBadge.textContent = '✕';
+                        item.appendChild(newBadge);
+                    }
+                    const btn = item.querySelector('.frame-thumbnail-btn');
+                    if (btn) {
+                        btn.textContent = '✓';
+                        btn.title = 'Include frame';
+                    }
+                } else {
+                    item.classList.remove('excluded');
+                    const badge = item.querySelector('.frame-thumbnail-excluded-badge');
+                    if (badge) badge.remove();
+                    const btn = item.querySelector('.frame-thumbnail-btn');
+                    if (btn) {
+                        btn.textContent = '✕';
+                        btn.title = 'Exclude frame';
+                    }
+                }
+
+                // Update cross-exclusion warning
+                let crossWarning = item.querySelector('.frame-thumbnail-cross-warning');
+                if (isExcluded && !isExcludedFromExtrinsics) {
+                    if (!crossWarning) {
+                        crossWarning = document.createElement('div');
+                        crossWarning.className = 'frame-thumbnail-cross-warning';
+                        item.appendChild(crossWarning);
+                    }
+                    crossWarning.textContent = '⚠ in extr';
+                    crossWarning.title = 'Excluded here but included in extrinsics';
+                } else if (!isExcluded && isExcludedFromExtrinsics) {
+                    if (!crossWarning) {
+                        crossWarning = document.createElement('div');
+                        crossWarning.className = 'frame-thumbnail-cross-warning';
+                        item.appendChild(crossWarning);
+                    }
+                    crossWarning.textContent = '⚠ excl extr';
+                    crossWarning.title = 'Included here but excluded from extrinsics';
+                } else if (crossWarning) {
+                    crossWarning.remove();
+                }
+            });
+
+            updateIntrinsicsExclusionStats();
+
+            // Redraw swarm plot to show excluded dots differently
+            drawSwarmPlot();
+
+            // Update extrinsics gallery cross-warnings (without calling full updateExtrinsicsExclusionUI to avoid loop)
+            const extrGrid = document.getElementById('extrinsicsExclusionGrid');
+            if (extrGrid) {
+                extrGrid.querySelectorAll('.frame-thumbnail').forEach(item => {
+                    const videoFrame = parseInt(item.dataset.videoFrame);
+                    const isExcluded = isExtrinsicsFrameExcluded(videoFrame);
+                    const isExcludedFromIntrinsics = isVideoFrameExcludedFromIntrinsics(videoFrame);
+
+                    let crossWarning = item.querySelector('.frame-thumbnail-cross-warning');
+                    if (isExcluded && !isExcludedFromIntrinsics) {
+                        if (!crossWarning) {
+                            crossWarning = document.createElement('div');
+                            crossWarning.className = 'frame-thumbnail-cross-warning';
+                            item.appendChild(crossWarning);
+                        }
+                        crossWarning.textContent = '⚠ in intr';
+                        crossWarning.title = 'Excluded here but included in intrinsics';
+                    } else if (!isExcluded && isExcludedFromIntrinsics) {
+                        if (!crossWarning) {
+                            crossWarning = document.createElement('div');
+                            crossWarning.className = 'frame-thumbnail-cross-warning';
+                            item.appendChild(crossWarning);
+                        }
+                        crossWarning.textContent = '⚠ excl intr';
+                        crossWarning.title = 'Included here but excluded from intrinsics';
+                    } else if (crossWarning) {
+                        crossWarning.remove();
+                    }
+                });
+            }
+        }
+
+        // Update exclusion stats display
+        function updateIntrinsicsExclusionStats() {
+            const statsEl = document.getElementById('intrinsicsExclusionStats');
+            if (!statsEl) return;
+
+            const firstCam = Object.keys(state.intrinsics)[0];
+            const intr = firstCam ? state.intrinsics[firstCam] : null;
+
+            // Use allValidFrames for total count if available
+            const totalFrames = intr?.allValidFrames?.length || intr?.frameIndices?.length || 0;
+            const allValidFrames = intr?.allValidFrames;
+
+            // Count unique excluded frames (since we exclude across all cameras)
+            const excludedFrames = new Set();
+            for (const camName in state.exclusions.intrinsics) {
+                for (const idx of state.exclusions.intrinsics[camName]) {
+                    excludedFrames.add(idx);
+                }
+            }
+
+            // Count mismatched exclusions (excluded here but not in extrinsics, or vice versa)
+            let mismatchCount = 0;
+            if (allValidFrames) {
+                for (let calibIdx = 0; calibIdx < allValidFrames.length; calibIdx++) {
+                    const videoFrame = allValidFrames[calibIdx].frame;
+                    const excludedHere = excludedFrames.has(calibIdx);
+                    const excludedInExtrinsics = isExtrinsicsFrameExcluded(videoFrame);
+                    if (excludedHere !== excludedInExtrinsics) {
+                        mismatchCount++;
+                    }
+                }
+            }
+
+            let statsText = `${excludedFrames.size} / ${totalFrames} excluded`;
+            if (mismatchCount > 0) {
+                statsText += ` (⚠ ${mismatchCount} differ from extrinsics)`;
+            }
+            statsEl.textContent = statsText;
+
+            if (mismatchCount > 0) {
+                statsEl.style.color = '#f97316'; // Orange for mismatch warning
+            } else if (excludedFrames.size > 0) {
+                statsEl.style.color = '#fbbf24';
+            } else {
+                statsEl.style.color = '#888';
+            }
+        }
+
+        // Build extrinsics exclusion gallery
+        async function buildExtrinsicsExclusionGallery() {
+            const gallery = document.getElementById('extrinsicsExclusionGallery');
+            const grid = document.getElementById('extrinsicsExclusionGrid');
+
+            if (!state.extrinsicsReprojData || state.extrinsicsReprojData.length === 0) {
+                gallery.style.display = 'none';
+                return;
+            }
+
+            gallery.style.display = 'block';
+            grid.innerHTML = '';
+
+            // Build thumbnails for each frame with triangulation data
+            for (let idx = 0; idx < state.extrinsicsReprojData.length; idx++) {
+                const frameData = state.extrinsicsReprojData[idx];
+                const videoFrame = frameData.frame;
+                const thumbnail = await captureThumbnail(videoFrame);
+
+                // Calculate mean error for this frame
+                const errors = frameData.pointErrors.map(p => p.meanError);
+                const meanError = errors.reduce((a, b) => a + b, 0) / errors.length;
+
+                const isExcluded = isExtrinsicsFrameExcluded(videoFrame);
+                const isExcludedFromIntrinsics = isVideoFrameExcludedFromIntrinsics(videoFrame);
+                const isCurrent = (state.extrinsicsReprojFrameIndex === idx);
+
+                // Show warning if exclusion status differs between intrinsics and extrinsics
+                let crossWarning = '';
+                if (isExcluded && !isExcludedFromIntrinsics) {
+                    crossWarning = '<div class="frame-thumbnail-cross-warning" title="Excluded here but included in intrinsics">⚠ in intr</div>';
+                } else if (!isExcluded && isExcludedFromIntrinsics) {
+                    crossWarning = '<div class="frame-thumbnail-cross-warning" title="Included here but excluded from intrinsics">⚠ excl intr</div>';
+                }
+
+                const item = document.createElement('div');
+                item.className = 'frame-thumbnail' + (isExcluded ? ' excluded' : '') + (isCurrent ? ' current' : '');
+                item.dataset.frameIndex = idx;
+                item.dataset.videoFrame = videoFrame;
+
+                item.innerHTML = `
+                    ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame}">` : ''}
+                    <div class="frame-thumbnail-label">F${videoFrame} • ${meanError.toFixed(2)}px</div>
+                    ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
+                    ${crossWarning}
+                    <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
+                `;
+
+                // Click to navigate
+                item.addEventListener('click', async (e) => {
+                    if (e.target.classList.contains('frame-thumbnail-btn')) return;
+                    state.extrinsicsReprojFrameIndex = idx;
+                    await seekToFrame(videoFrame);
+                    // Note: seekToFrame now calls updateExtrinsicsGalleryCurrentHighlight()
+                });
+
+                // Button to toggle exclusion
+                const btn = item.querySelector('.frame-thumbnail-btn');
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleExtrinsicsExclusion(videoFrame);
+                });
+
+                grid.appendChild(item);
+            }
+
+            updateExtrinsicsExclusionStats();
+        }
+
+        // Update gallery highlight for extrinsics current frame
+        function updateExtrinsicsGalleryCurrentHighlight() {
+            const grid = document.getElementById('extrinsicsExclusionGrid');
+            if (!grid) return;
+
+            grid.querySelectorAll('.frame-thumbnail').forEach(item => {
+                const idx = parseInt(item.dataset.frameIndex);
+                if (idx === state.extrinsicsReprojFrameIndex) {
+                    item.classList.add('current');
+                } else {
+                    item.classList.remove('current');
+                }
+            });
+        }
+
+        // Update exclusion UI for extrinsics gallery
+        function updateExtrinsicsExclusionUI() {
+            const grid = document.getElementById('extrinsicsExclusionGrid');
+            if (!grid) return;
+
+            grid.querySelectorAll('.frame-thumbnail').forEach(item => {
+                const videoFrame = parseInt(item.dataset.videoFrame);
+                const isExcluded = isExtrinsicsFrameExcluded(videoFrame);
+                const isExcludedFromIntrinsics = isVideoFrameExcludedFromIntrinsics(videoFrame);
+
+                if (isExcluded) {
+                    item.classList.add('excluded');
+                    let badge = item.querySelector('.frame-thumbnail-excluded-badge');
+                    if (!badge) {
+                        badge = document.createElement('div');
+                        badge.className = 'frame-thumbnail-excluded-badge';
+                        badge.textContent = '✕';
+                        item.appendChild(badge);
+                    }
+                    const btn = item.querySelector('.frame-thumbnail-btn');
+                    if (btn) {
+                        btn.textContent = '✓';
+                        btn.title = 'Include frame';
+                    }
+                } else {
+                    item.classList.remove('excluded');
+                    const badge = item.querySelector('.frame-thumbnail-excluded-badge');
+                    if (badge) badge.remove();
+                    const btn = item.querySelector('.frame-thumbnail-btn');
+                    if (btn) {
+                        btn.textContent = '✕';
+                        btn.title = 'Exclude frame';
+                    }
+                }
+
+                // Update cross-exclusion warning
+                let crossWarning = item.querySelector('.frame-thumbnail-cross-warning');
+                if (isExcluded && !isExcludedFromIntrinsics) {
+                    if (!crossWarning) {
+                        crossWarning = document.createElement('div');
+                        crossWarning.className = 'frame-thumbnail-cross-warning';
+                        item.appendChild(crossWarning);
+                    }
+                    crossWarning.textContent = '⚠ in intr';
+                    crossWarning.title = 'Excluded here but included in intrinsics';
+                } else if (!isExcluded && isExcludedFromIntrinsics) {
+                    if (!crossWarning) {
+                        crossWarning = document.createElement('div');
+                        crossWarning.className = 'frame-thumbnail-cross-warning';
+                        item.appendChild(crossWarning);
+                    }
+                    crossWarning.textContent = '⚠ excl intr';
+                    crossWarning.title = 'Included here but excluded from intrinsics';
+                } else if (crossWarning) {
+                    crossWarning.remove();
+                }
+            });
+
+            updateExtrinsicsExclusionStats();
+
+            // Also update intrinsics gallery to reflect cross-exclusion state
+            updateIntrinsicsExclusionUI();
+
+            // Redraw extrinsics swarm plot
+            drawExtrinsicsSwarmPlot();
+        }
+
+        // Update extrinsics exclusion stats
+        function updateExtrinsicsExclusionStats() {
+            const statsEl = document.getElementById('extrinsicsExclusionStats');
+            if (!statsEl) return;
+
+            const excluded = state.exclusions.extrinsics.size;
+            const total = state.extrinsicsReprojData ? state.extrinsicsReprojData.length : 0;
+
+            // Count mismatched exclusions
+            let mismatchCount = 0;
+            if (state.extrinsicsReprojData) {
+                for (const frameData of state.extrinsicsReprojData) {
+                    const videoFrame = frameData.frame;
+                    const excludedHere = isExtrinsicsFrameExcluded(videoFrame);
+                    const excludedInIntrinsics = isVideoFrameExcludedFromIntrinsics(videoFrame);
+                    if (excludedHere !== excludedInIntrinsics) {
+                        mismatchCount++;
+                    }
+                }
+            }
+
+            let statsText = `${excluded} / ${total} excluded`;
+            if (mismatchCount > 0) {
+                statsText += ` (⚠ ${mismatchCount} differ from intrinsics)`;
+            }
+            statsEl.textContent = statsText;
+
+            if (mismatchCount > 0) {
+                statsEl.style.color = '#f97316'; // Orange for mismatch warning
+            } else if (excluded > 0) {
+                statsEl.style.color = '#fbbf24';
+            } else {
+                statsEl.style.color = '#888';
+            }
+        }
+
+        // Clear all intrinsics exclusions
+        function clearIntrinsicsExclusions() {
+            for (const cam in state.exclusions.intrinsics) {
+                state.exclusions.intrinsics[cam].clear();
+            }
+            log('Cleared all intrinsics exclusions', 'info');
+            updateIntrinsicsExclusionUI();
+            document.getElementById('recomputeIntrinsicsBtn').disabled = true;
+        }
+
+        // Clear all extrinsics exclusions
+        function clearExtrinsicsExclusions() {
+            state.exclusions.extrinsics.clear();
+            log('Cleared all extrinsics exclusions', 'info');
+            updateExtrinsicsExclusionUI();
+            document.getElementById('recomputeExtrinsicsBtn').disabled = true;
+        }
+
+        // Keyboard shortcut to toggle exclusion of current frame
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+            if (e.key === 'x' || e.key === 'X') {
+                // Toggle exclusion based on which overlay is active
+                if (state.showReprojection && Object.keys(state.intrinsics).length > 0) {
+                    // Toggle intrinsics exclusion for current calibration frame
+                    const calibIdx = state.reprojectionFrameIndex;
+
+                    // Check if currently excluded
+                    let isExcluded = false;
+                    for (const camName of Object.keys(state.intrinsics)) {
+                        if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
+                            isExcluded = true;
+                            break;
+                        }
+                    }
+
+                    // Toggle for all cameras
+                    for (const camName of Object.keys(state.intrinsics)) {
+                        if (isExcluded) {
+                            state.exclusions.intrinsics[camName].delete(calibIdx);
+                        } else {
+                            state.exclusions.intrinsics[camName].add(calibIdx);
+                        }
+                    }
+
+                    const firstCam = Object.keys(state.intrinsics)[0];
+                    const videoFrame = state.intrinsics[firstCam]?.frameIndices?.[calibIdx];
+                    log(`${isExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, isExcluded ? 'info' : 'warn');
+                    updateIntrinsicsExclusionUI();
+                    document.getElementById('recomputeIntrinsicsBtn').disabled = false;
+                    e.preventDefault();
+                } else if (state.showExtrinsicsReproj && state.extrinsicsReprojData) {
+                    // Toggle extrinsics exclusion for current frame
+                    const videoFrame = state.extrinsicsReprojData[state.extrinsicsReprojFrameIndex]?.frame;
+                    if (videoFrame !== undefined) {
+                        toggleExtrinsicsExclusion(videoFrame);
+                        e.preventDefault();
+                    }
+                }
+            }
+        });
+
+        // Event listeners for exclusion controls
+        document.getElementById('clearIntrinsicsExclusionsBtn').addEventListener('click', clearIntrinsicsExclusions);
+        document.getElementById('clearExtrinsicsExclusionsBtn').addEventListener('click', clearExtrinsicsExclusions);
+
+        // ============================================
         // Extrinsic Calibration
         // ============================================
 
@@ -2761,6 +3801,11 @@
 
             // Find covisible frames for each camera pair
             for (const detection of state.detections) {
+                // Skip excluded frames
+                if (isExtrinsicsFrameExcluded(detection.frame)) {
+                    continue;
+                }
+
                 // Get views with valid detections
                 const validViews = [];
                 for (const viewName of viewNames) {
@@ -3161,11 +4206,17 @@
                 tableBody.appendChild(row);
             }
 
-            log(`Extrinsic calibration complete`, 'success');
+            // Log exclusion info
+            const excludedCount = state.exclusions.extrinsics.size;
+            if (excludedCount > 0) {
+                log(`Extrinsic calibration complete (${excludedCount} frames excluded)`, 'success');
+            } else {
+                log(`Extrinsic calibration complete`, 'success');
+            }
 
             updateProgress('extrinsicsProgress', 85, 'Computing reprojection...');
 
-            // Compute cross-view reprojection errors
+            // Compute cross-view reprojection errors (includes all frames for assessment)
             log('Computing cross-view reprojection errors...', 'info');
             state.extrinsicsReprojData = computeCrossViewReprojectionErrors();
             if (state.extrinsicsReprojData.length > 0) {
@@ -3176,10 +4227,19 @@
                 // Draw extrinsics reprojection overlay if checkbox is checked
                 if (document.getElementById('extrinsicsOverlayCheck').checked) {
                     state.showExtrinsicsReproj = true;
-                    state.extrinsicsReprojFrameIndex = 0;
-                    const videoFrame = state.extrinsicsReprojData[0].frame;
-                    await seekToFrame(videoFrame);
+                    // Try to preserve current frame if it has extrinsics data
+                    const currentIdx = state.extrinsicsReprojData.findIndex(d => d.frame === state.currentFrame);
+                    if (currentIdx !== -1) {
+                        state.extrinsicsReprojFrameIndex = currentIdx;
+                    } else {
+                        state.extrinsicsReprojFrameIndex = 0;
+                    }
+                    // Redraw current frame with overlay (don't navigate away)
+                    await seekToFrame(state.currentFrame);
                 }
+
+                // Build the exclusion gallery
+                await buildExtrinsicsExclusionGallery();
             } else {
                 log('No cross-view reprojection data available', 'warn');
             }
@@ -3199,8 +4259,16 @@
             document.getElementById('stage5').classList.remove('collapsed');
         }
 
-        // Extrinsics event listener
+        // Re-compute extrinsics with exclusions
+        async function recomputeExtrinsicsWithExclusions() {
+            log('Re-computing extrinsics with exclusions...', 'info');
+            await computeAllExtrinsics();
+            document.getElementById('recomputeExtrinsicsBtn').disabled = true;
+        }
+
+        // Extrinsics event listeners
         document.getElementById('computeExtrinsicsBtn').addEventListener('click', computeAllExtrinsics);
+        document.getElementById('recomputeExtrinsicsBtn').addEventListener('click', recomputeExtrinsicsWithExclusions);
 
         // ============================================
         // Cross-View Reprojection Visualization
@@ -3591,6 +4659,9 @@
                     const dotY = y;
                     const radius = 4;
 
+                    // Check if this frame is excluded
+                    const isExcluded = isExtrinsicsFrameExcluded(errData.frame);
+
                     state.extrinsicsSwarmDots.push({
                         x: dotX,
                         y: dotY,
@@ -3601,16 +4672,20 @@
                         pointId: errData.pointId,
                         frame: errData.frame,
                         error: errData.error,
-                        color: color
+                        color: color,
+                        excluded: isExcluded
                     });
 
+                    // Draw dot with reduced opacity if excluded
+                    ctx.globalAlpha = isExcluded ? 0.3 : 1.0;
                     ctx.beginPath();
                     ctx.arc(dotX, dotY, radius, 0, 2 * Math.PI);
                     ctx.fillStyle = color;
                     ctx.fill();
-                    ctx.strokeStyle = '#fff';
+                    ctx.strokeStyle = isExcluded ? '#666' : '#fff';
                     ctx.lineWidth = 1;
                     ctx.stroke();
+                    ctx.globalAlpha = 1.0;
                 });
 
                 // Camera label
