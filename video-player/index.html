@@ -1740,8 +1740,17 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // Calculate zoom factor
-            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            // Normalize deltaY for different input devices
+            // Mouse wheels: ~100-120 per tick, fewer events
+            // Trackpads: smaller values but many more events, plus momentum
+            let delta = e.deltaY;
+            if (e.deltaMode === 1) delta *= 40; // line mode (rare, but normalize)
+
+            // Clamp to prevent huge jumps from trackpad momentum
+            delta = Math.max(-100, Math.min(100, delta));
+
+            // Use exponential scaling: ~10% zoom per 100px of scroll
+            const zoomFactor = Math.exp(-delta * 0.001);
             const newScale = Math.max(0.1, Math.min(50, scale * zoomFactor));
 
             // Adjust offset to zoom towards cursor position
