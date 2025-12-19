@@ -18,6 +18,7 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 ## Usage
 
 1. Click **Load Video File** to select a local video, or **Load from URL** to stream a remote video
+   - You can also auto-load a video via URL parameter: `?url=https://example.com/video.mp4`
 2. Use keyboard shortcuts to navigate frames
 3. Scroll to zoom in/out on the video
 4. Click and drag to pan around zoomed video
@@ -30,9 +31,9 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 | Key          | Action       |
 | ------------ | ------------ |
 | ← / →        | ±1 frame     |
-| ↑ / ↓        | ±10 frames   |
 | Ctrl+← / →   | ±30 frames   |
-| Ctrl+↑ / ↓   | ±100 frames  |
+| ↑ / ↓        | Zoom in/out  |
+| Ctrl+↑ / ↓   | Zoom in/out (faster) |
 | Space        | Play/Pause   |
 | Mouse Wheel  | Zoom         |
 | Click + Drag | Pan          |
