@@ -90,6 +90,25 @@
             pointer-events: none;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
+        .overlay-controls {
+            display: flex;
+            gap: 20px;
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .overlay-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #ccc;
+        }
+        .overlay-controls input[type="checkbox"] {
+            cursor: pointer;
+        }
         .metrics {
             background: #2a2a2a;
             padding: 15px 20px;
@@ -335,6 +354,11 @@
                 <div class="seekbar-progress" id="seekbarProgress"></div>
                 <div class="seekbar-thumb" id="seekbarThumb"></div>
             </div>
+        </div>
+
+        <div class="overlay-controls" id="overlayControls" style="display: none;">
+            <label><input type="checkbox" id="showFrameIndex"> Frame Index</label>
+            <label><input type="checkbox" id="showTimingStats"> Timing Stats</label>
         </div>
 
         <div class="cache-viz-container" id="cacheVizContainer" style="display: none;">
@@ -831,12 +855,35 @@
                 // Read sample data for the range - batch consecutive samples into single reads
                 const sampleDataArray = await this.readSampleDataRange(startFrame, endFrame);
 
+                // Build timestamp-to-frame-index map for correct frame ordering
+                // VideoDecoder outputs frames in presentation order, not decode order
+                // This is critical for videos with B-frames (H.264/HEVC)
+                const timestampToIndex = new Map();
+                for (let i = startFrame; i <= endFrame; i++) {
+                    const ts = Math.round(this.samples[i].timestamp);
+                    timestampToIndex.set(ts, i);
+                }
+
                 return new Promise((resolve, reject) => {
                     this.decoder = new VideoDecoder({
                         output: (frame) => {
-                            const frameIndex = startFrame + decodedCount;
+                            // Map frame timestamp to correct frame index
+                            const frameTs = Math.round(frame.timestamp);
+                            let frameIndex = timestampToIndex.get(frameTs);
 
-                            if (frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
+                            // Fallback: find closest timestamp if exact match fails
+                            if (frameIndex === undefined) {
+                                let closestDiff = Infinity;
+                                for (const [ts, idx] of timestampToIndex.entries()) {
+                                    const diff = Math.abs(ts - frameTs);
+                                    if (diff < closestDiff) {
+                                        closestDiff = diff;
+                                        frameIndex = idx;
+                                    }
+                                }
+                            }
+
+                            if (frameIndex !== undefined && frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
                                 createImageBitmap(frame).then(bitmap => {
                                     this.addToCache(frameIndex, bitmap);
                                     frame.close();
@@ -991,6 +1038,87 @@
 
         // Performance metrics
         let lastSeekTime = 0;
+        let lastFromCache = false;
+
+        // Overlay system - array of callbacks for drawing on top of video frames
+        const overlays = [];
+
+        // Frame index overlay - shows current frame / total frames
+        function frameIndexOverlay({ ctx, canvas, frameIndex, totalFrames }) {
+            const text = `${frameIndex} / ${totalFrames}`;
+            const padding = 8;
+            const fontSize = 14;
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, 10, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, 10 + padding + fontSize - 2);
+        }
+
+        // Timing stats overlay - shows seek time and cache status
+        function timingStatsOverlay({ ctx, canvas, seekTime, fromCache }) {
+            const cacheStatus = fromCache ? 'cache' : 'decode';
+            const text = `${seekTime.toFixed(1)}ms (${cacheStatus})`;
+            const padding = 8;
+            const fontSize = 14;
+            const yOffset = 40;
+
+            ctx.font = `${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, yOffset, boxWidth, boxHeight);
+
+            ctx.fillStyle = fromCache ? '#4ade80' : '#fbbf24';
+            ctx.fillText(text, 10 + padding, yOffset + padding + fontSize - 2);
+        }
+
+        // Render all active overlays
+        function renderOverlays(info) {
+            for (const overlay of overlays) {
+                ctx.save();
+                overlay(info);
+                ctx.restore();
+            }
+        }
+
+        // Helper to render frame with overlays
+        function renderFrameWithOverlays() {
+            if (!currentBitmap || !videoDecoder) return;
+            renderFrame(currentBitmap);
+            renderOverlays({
+                ctx,
+                canvas,
+                frameIndex: currentFrame,
+                totalFrames,
+                seekTime: lastSeekTime,
+                fromCache: lastFromCache,
+                fps,
+                bitmap: currentBitmap,
+                timestamp: videoDecoder.getFrameTimestamp(currentFrame),
+            });
+        }
+
+        // Update active overlays based on checkbox state
+        function updateOverlays() {
+            overlays.length = 0;
+            if (document.getElementById('showFrameIndex').checked) {
+                overlays.push(frameIndexOverlay);
+            }
+            if (document.getElementById('showTimingStats').checked) {
+                overlays.push(timingStatsOverlay);
+            }
+            // Re-render current frame with updated overlays
+            renderFrameWithOverlays();
+        }
 
         // UI Elements
         const loadBtn = document.getElementById('loadBtn');
@@ -1155,6 +1283,7 @@
                 // Show UI
                 canvasContainer.style.display = 'block';
                 seekbarContainer.style.display = 'block';
+                document.getElementById('overlayControls').style.display = 'flex';
                 cacheVizContainer.style.display = 'block';
                 metricsDiv.style.display = 'block';
                 playBtn.disabled = false;
@@ -1276,7 +1405,22 @@
             if (result && result.bitmap) {
                 currentFrame = frameIndex;
                 currentBitmap = result.bitmap;
+                lastFromCache = result.fromCache;
                 renderFrame(currentBitmap);
+
+                // Render overlays on top of frame
+                renderOverlays({
+                    ctx,
+                    canvas,
+                    frameIndex,
+                    totalFrames,
+                    seekTime: lastSeekTime,
+                    fromCache: result.fromCache,
+                    fps,
+                    bitmap: result.bitmap,
+                    timestamp: videoDecoder.getFrameTimestamp(frameIndex),
+                });
+
                 updateMetrics();
                 updateSeekbar();
                 renderCacheVisualization();
@@ -1369,9 +1513,10 @@
         }
 
         seekbar.addEventListener('mousedown', (e) => {
+            e.preventDefault();
             isScrubbing = true;
+            document.body.style.userSelect = 'none'; // Prevent text selection while dragging
             handleSeekbarInteraction(e);
-            e.preventDefault(); // Prevent text selection while scrubbing
         });
 
         document.addEventListener('mousemove', (e) => {
@@ -1387,9 +1532,7 @@
             scale *= delta;
             scale = Math.max(0.1, Math.min(10, scale));
 
-            if (currentBitmap) {
-                renderFrame(currentBitmap);
-            }
+            renderFrameWithOverlays();
         });
 
         // Pan with mouse drag
@@ -1403,14 +1546,14 @@
             if (isDragging) {
                 offsetX = e.clientX - dragStartX;
                 offsetY = e.clientY - dragStartY;
-
-                if (currentBitmap) {
-                    renderFrame(currentBitmap);
-                }
+                renderFrameWithOverlays();
             }
         });
 
         document.addEventListener('mouseup', () => {
+            if (isScrubbing) {
+                document.body.style.userSelect = ''; // Restore text selection
+            }
             isDragging = false;
             isScrubbing = false;
         });
@@ -1420,9 +1563,7 @@
             scale = 1;
             offsetX = 0;
             offsetY = 0;
-            if (currentBitmap) {
-                renderFrame(currentBitmap);
-            }
+            renderFrameWithOverlays();
         });
 
         // Playback
@@ -1483,6 +1624,10 @@
                 log(`Lookahead updated to ${newSize}`, 'info');
             }
         });
+
+        // Overlay toggle handlers
+        document.getElementById('showFrameIndex').addEventListener('change', updateOverlays);
+        document.getElementById('showTimingStats').addEventListener('change', updateOverlays);
 
         // Re-render cache viz on window resize
         window.addEventListener('resize', () => {
