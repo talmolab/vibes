@@ -644,21 +644,23 @@ button.active:hover { background: #22c55e; }
     border-radius: 6px;
     overflow: hidden;
     cursor: pointer;
-    border: 2px solid transparent;
+    border: 2px solid rgba(74, 222, 128, 0.3);
     transition: all 0.15s;
 }
 .frame-thumbnail:hover {
-    border-color: #667eea;
+    border-color: rgba(74, 222, 128, 0.7);
 }
 .frame-thumbnail.current {
-    border-color: #4ade80;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.4);
 }
 .frame-thumbnail.excluded {
     opacity: 0.4;
-    border-color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.5);
 }
 .frame-thumbnail.excluded:hover {
     opacity: 0.7;
+    border-color: rgba(239, 68, 68, 0.9);
 }
 .frame-thumbnail img {
     width: 100%;
@@ -686,17 +688,6 @@ button.active:hover { background: #22c55e; }
     padding: 2px 4px;
     border-radius: 3px;
 }
-.frame-thumbnail-excluded-badge {
-    position: absolute;
-    top: 4px;
-    left: 4px;
-    background: rgba(239, 68, 68, 0.9);
-    color: white;
-    font-size: 10px;
-    padding: 2px 5px;
-    border-radius: 3px;
-    font-weight: bold;
-}
 .frame-thumbnail-cross-warning {
     position: absolute;
     bottom: 22px;
@@ -708,37 +699,6 @@ button.active:hover { background: #22c55e; }
     border-radius: 3px;
     font-weight: bold;
     white-space: nowrap;
-}
-.frame-thumbnail-btn {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    background: rgba(0,0,0,0.6);
-    border: none;
-    color: white;
-    width: 22px;
-    height: 22px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    transition: opacity 0.15s;
-}
-.frame-thumbnail:hover .frame-thumbnail-btn {
-    opacity: 1;
-}
-.frame-thumbnail-btn:hover {
-    background: rgba(239, 68, 68, 0.8);
-}
-.frame-thumbnail.excluded .frame-thumbnail-btn {
-    opacity: 1;
-    background: rgba(74, 222, 128, 0.8);
-}
-.frame-thumbnail.excluded .frame-thumbnail-btn:hover {
-    background: rgba(74, 222, 128, 1);
 }
 
 /* Exclusion toggle in table */

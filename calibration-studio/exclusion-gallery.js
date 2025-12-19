@@ -214,23 +214,12 @@ async function buildIntrinsicsExclusionGallery() {
         item.innerHTML = `
             ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame + 1}">` : ''}
             <div class="frame-thumbnail-label">F${videoFrame + 1}${error ? ` • ${error.toFixed(2)}px` : ''}</div>
-            ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
             ${crossWarning}
-            <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
         `;
 
-        // Click to navigate to frame
-        item.addEventListener('click', async (e) => {
-            if (e.target.classList.contains('frame-thumbnail-btn')) return;
-            state.reprojectionFrameIndex = calibIdx;
-            await seekToFrame(videoFrame);
-        });
-
-        // Button to toggle exclusion
-        const btn = item.querySelector('.frame-thumbnail-btn');
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            // Check current exclusion state (not captured closure value)
+        // Click to toggle exclusion
+        item.addEventListener('click', () => {
+            // Check current exclusion state
             let currentlyExcluded = false;
             for (const camName of Object.keys(state.intrinsics)) {
                 if (isIntrinsicsFrameExcluded(camName, calibIdx)) {
@@ -300,27 +289,8 @@ function updateIntrinsicsExclusionUI() {
 
         if (isExcluded) {
             item.classList.add('excluded');
-            const badge = item.querySelector('.frame-thumbnail-excluded-badge');
-            if (!badge) {
-                const newBadge = document.createElement('div');
-                newBadge.className = 'frame-thumbnail-excluded-badge';
-                newBadge.textContent = '✕';
-                item.appendChild(newBadge);
-            }
-            const btn = item.querySelector('.frame-thumbnail-btn');
-            if (btn) {
-                btn.textContent = '✓';
-                btn.title = 'Include frame';
-            }
         } else {
             item.classList.remove('excluded');
-            const badge = item.querySelector('.frame-thumbnail-excluded-badge');
-            if (badge) badge.remove();
-            const btn = item.querySelector('.frame-thumbnail-btn');
-            if (btn) {
-                btn.textContent = '✕';
-                btn.title = 'Exclude frame';
-            }
         }
 
         // Update cross-exclusion warning
@@ -484,22 +454,11 @@ async function buildExtrinsicsExclusionGallery() {
         item.innerHTML = `
             ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame + 1}">` : ''}
             <div class="frame-thumbnail-label">F${videoFrame + 1} • ${meanError.toFixed(2)}px</div>
-            ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
             ${crossWarning}
-            <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
         `;
 
-        // Click to navigate
-        item.addEventListener('click', async (e) => {
-            if (e.target.classList.contains('frame-thumbnail-btn')) return;
-            state.extrinsicsReprojFrameIndex = idx;
-            await seekToFrame(videoFrame);
-        });
-
-        // Button to toggle exclusion
-        const btn = item.querySelector('.frame-thumbnail-btn');
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
+        // Click to toggle exclusion
+        item.addEventListener('click', () => {
             toggleExtrinsicsExclusion(videoFrame);
         });
 
@@ -540,27 +499,8 @@ function updateExtrinsicsExclusionUI() {
 
         if (isExcluded) {
             item.classList.add('excluded');
-            let badge = item.querySelector('.frame-thumbnail-excluded-badge');
-            if (!badge) {
-                badge = document.createElement('div');
-                badge.className = 'frame-thumbnail-excluded-badge';
-                badge.textContent = '✕';
-                item.appendChild(badge);
-            }
-            const btn = item.querySelector('.frame-thumbnail-btn');
-            if (btn) {
-                btn.textContent = '✓';
-                btn.title = 'Include frame';
-            }
         } else {
             item.classList.remove('excluded');
-            const badge = item.querySelector('.frame-thumbnail-excluded-badge');
-            if (badge) badge.remove();
-            const btn = item.querySelector('.frame-thumbnail-btn');
-            if (btn) {
-                btn.textContent = '✕';
-                btn.title = 'Exclude frame';
-            }
         }
 
         // Update cross-exclusion warning
