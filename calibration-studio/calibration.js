@@ -700,3 +700,179 @@ function projectPoint(point3D, camera, intrinsics, extrinsics) {
 
     return { x: u, y: v };
 }
+
+// ============================================
+// Quaternion Utilities (for SBA)
+// ============================================
+
+/**
+ * Convert 3x3 rotation matrix to quaternion [w, x, y, z]
+ */
+function rotationMatrixToQuaternion(R) {
+    const trace = R[0][0] + R[1][1] + R[2][2];
+    let w, x, y, z;
+
+    if (trace > 0) {
+        const s = 0.5 / Math.sqrt(trace + 1.0);
+        w = 0.25 / s;
+        x = (R[2][1] - R[1][2]) * s;
+        y = (R[0][2] - R[2][0]) * s;
+        z = (R[1][0] - R[0][1]) * s;
+    } else if (R[0][0] > R[1][1] && R[0][0] > R[2][2]) {
+        const s = 2.0 * Math.sqrt(1.0 + R[0][0] - R[1][1] - R[2][2]);
+        w = (R[2][1] - R[1][2]) / s;
+        x = 0.25 * s;
+        y = (R[0][1] + R[1][0]) / s;
+        z = (R[0][2] + R[2][0]) / s;
+    } else if (R[1][1] > R[2][2]) {
+        const s = 2.0 * Math.sqrt(1.0 + R[1][1] - R[0][0] - R[2][2]);
+        w = (R[0][2] - R[2][0]) / s;
+        x = (R[0][1] + R[1][0]) / s;
+        y = 0.25 * s;
+        z = (R[1][2] + R[2][1]) / s;
+    } else {
+        const s = 2.0 * Math.sqrt(1.0 + R[2][2] - R[0][0] - R[1][1]);
+        w = (R[1][0] - R[0][1]) / s;
+        x = (R[0][2] + R[2][0]) / s;
+        y = (R[1][2] + R[2][1]) / s;
+        z = 0.25 * s;
+    }
+
+    // Normalize
+    const norm = Math.sqrt(w*w + x*x + y*y + z*z);
+    return [w/norm, x/norm, y/norm, z/norm];
+}
+
+/**
+ * Convert quaternion [w, x, y, z] to 3x3 rotation matrix
+ */
+function quaternionToRotationMatrix(q) {
+    const [w, x, y, z] = q;
+    return [
+        [1 - 2*y*y - 2*z*z,     2*x*y - 2*z*w,     2*x*z + 2*y*w],
+        [    2*x*y + 2*z*w, 1 - 2*x*x - 2*z*z,     2*y*z - 2*x*w],
+        [    2*x*z - 2*y*w,     2*y*z + 2*x*w, 1 - 2*x*x - 2*y*y]
+    ];
+}
+
+// ============================================
+// SBA Data Preparation
+// ============================================
+
+/**
+ * Prepare SBA input from calibration state
+ * @param {Object} state - Global state with intrinsics, extrinsics, detections
+ * @param {Array} viewNames - Array of view names
+ * @param {Object} config - Board configuration {boardX, boardY, squareLength, markerLength, dictName}
+ * @param {Function} generateSbaJsonOutput - Function to generate SBA JSON data
+ * @returns {Object|null} SBA input data or null if missing data
+ */
+function prepareSbaInput(state, viewNames, config, generateSbaJsonOutput) {
+    const exportData = generateSbaJsonOutput(state, viewNames, config);
+    if (!exportData) return null;
+
+    // Build cameras array in WASM format
+    const cameras = viewNames.map(name => {
+        const intr = state.intrinsics[name];
+        const extr = state.extrinsics[name];
+
+        // Convert rotation matrix to quaternion [w, x, y, z]
+        const quat = rotationMatrixToQuaternion(extr.R);
+
+        return {
+            rotation: quat,
+            translation: [extr.tvec[0], extr.tvec[1], extr.tvec[2]],
+            focal: [intr.fx, intr.fy],
+            principal: [intr.cx, intr.cy],
+            distortion: [intr.k1, intr.k2, intr.p1, intr.p2, intr.k3]
+        };
+    });
+
+    // Build points array from triangulated points
+    const points = [];
+    const pointToFrame = [];
+    const pointIdMap = new Map();
+
+    for (const tp of exportData.triangulated_points) {
+        const pointIdx = points.length;
+        points.push([tp.point_3d[0], tp.point_3d[1], tp.point_3d[2]]);
+        pointToFrame.push(tp.frame);
+        pointIdMap.set(`${tp.frame}-${tp.corner_id}`, pointIdx);
+    }
+
+    // Build observations array
+    const observations = [];
+    const cameraIndexMap = new Map(viewNames.map((n, i) => [n, i]));
+
+    for (const obs of exportData.observations) {
+        for (const [camName, camObs] of Object.entries(obs.views)) {
+            const camIdx = cameraIndexMap.get(camName);
+
+            for (let i = 0; i < camObs.corner_ids.length; i++) {
+                const cornerId = camObs.corner_ids[i];
+                const key = `${obs.frame}-${cornerId}`;
+                const pointIdx = pointIdMap.get(key);
+
+                if (pointIdx !== undefined) {
+                    observations.push({
+                        camera_idx: camIdx,
+                        point_idx: pointIdx,
+                        x: camObs.corners_2d[i][0],
+                        y: camObs.corners_2d[i][1]
+                    });
+                }
+            }
+        }
+    }
+
+    return {
+        cameras,
+        points,
+        observations,
+        point_to_frame: pointToFrame,
+        metadata: {
+            camera_names: viewNames,
+            num_cameras: cameras.length,
+            num_points: points.length,
+            num_observations: observations.length
+        }
+    };
+}
+
+/**
+ * Apply SBA results back to calibration state
+ * @param {Object} sbaResult - Result from SBA solver
+ * @param {Object} state - Global state to update
+ * @param {Array} cameraNames - Array of camera names
+ */
+function applySbaResults(sbaResult, state, cameraNames) {
+    for (let i = 0; i < cameraNames.length; i++) {
+        const name = cameraNames[i];
+        const cam = sbaResult.cameras[i];
+
+        // Update intrinsics
+        state.intrinsics[name].fx = cam.focal[0];
+        state.intrinsics[name].fy = cam.focal[1];
+        state.intrinsics[name].cx = cam.principal[0];
+        state.intrinsics[name].cy = cam.principal[1];
+        state.intrinsics[name].k1 = cam.distortion[0];
+        state.intrinsics[name].k2 = cam.distortion[1];
+        state.intrinsics[name].p1 = cam.distortion[2];
+        state.intrinsics[name].p2 = cam.distortion[3];
+        state.intrinsics[name].k3 = cam.distortion[4];
+
+        // Update camera matrix
+        state.intrinsics[name].cameraMatrix = [
+            [cam.focal[0], 0, cam.principal[0]],
+            [0, cam.focal[1], cam.principal[1]],
+            [0, 0, 1]
+        ];
+        state.intrinsics[name].distCoeffs = [...cam.distortion];
+
+        // Update extrinsics
+        const R = quaternionToRotationMatrix(cam.rotation);
+        state.extrinsics[name].R = R;
+        state.extrinsics[name].tvec = [...cam.translation];
+        state.extrinsics[name].rvec = matrixToRodrigues(R);
+    }
+}
