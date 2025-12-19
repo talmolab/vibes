@@ -8,7 +8,7 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 
 - **Frame-accurate seeking** - Navigate videos frame-by-frame with no frame drops using WebCodecs decoder
 - **On-demand decoding** - Chunked file reading with intelligent sliding cache for instant playback of large videos
-- **Zoom and pan** - Interactive zoom with mouse wheel (zooms toward cursor) and pan with click-drag, with bounds to prevent losing the video
+- **Zoom and pan** - Interactive zoom with mouse wheel or pinch gesture (zooms toward cursor), pan with click-drag or touch, with bounds to prevent losing the video
 - **Keyboard shortcuts** - Rapid navigation with arrow keys and spacebar playback control
 - **URL and local file support** - Load videos from local files (File System Access API) or remote URLs with streaming support
 - **Overlay system** - Optional frame index and timing stats overlays with toggle controls
@@ -26,17 +26,19 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 6. Adjust **Cache Size** and **Lookahead** parameters to tune performance
 7. Click on the frame cache visualization bar to jump to specific frames
 
-## Keyboard Shortcuts
+## Controls
 
-| Key          | Action       |
-| ------------ | ------------ |
-| ← / →        | ±1 frame     |
-| Ctrl+← / →   | ±30 frames   |
-| ↑ / ↓        | Zoom in/out  |
-| Ctrl+↑ / ↓   | Zoom in/out (faster) |
-| Space        | Play/Pause   |
-| Mouse Wheel  | Zoom         |
-| Click + Drag | Pan          |
+| Input              | Action       |
+| ------------------ | ------------ |
+| ← / →              | ±1 frame     |
+| Ctrl+← / →         | ±30 frames   |
+| ↑ / ↓              | Zoom in/out  |
+| Ctrl+↑ / ↓         | Zoom in/out (faster) |
+| Space              | Play/Pause   |
+| Mouse Wheel        | Zoom         |
+| Click + Drag       | Pan          |
+| Pinch (touch)      | Zoom         |
+| One finger (touch) | Pan          |
 
 ## Performance
 
