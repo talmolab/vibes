@@ -509,7 +509,9 @@ class VideoController {
         };
 
         seekbar.addEventListener('mousedown', (e) => {
+            e.preventDefault(); // Prevent text selection
             isScrubbing = true;
+            document.body.style.userSelect = 'none'; // Prevent text selection while dragging
             const frame = getFrameFromSeekbar(e);
             updateVisual(frame);
             this.scrubToFrame(frame);
@@ -524,8 +526,11 @@ class VideoController {
         });
 
         document.addEventListener('mouseup', () => {
-            if (isScrubbing && scrubTargetFrame !== null) {
-                this.seekToFrame(scrubTargetFrame);
+            if (isScrubbing) {
+                document.body.style.userSelect = ''; // Restore text selection
+                if (scrubTargetFrame !== null) {
+                    this.seekToFrame(scrubTargetFrame);
+                }
             }
             isScrubbing = false;
             scrubTargetFrame = null;
