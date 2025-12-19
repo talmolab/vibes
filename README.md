@@ -1,6 +1,8 @@
 # vibes.tlab.sh
 
-Self-contained HTML tools and applets for the web. A [Talmo Lab](https://talmolab.org) project. [[GitHub](https://github.com/talmolab/vibes)]
+[![GitHub](https://img.shields.io/badge/GitHub-talmolab%2Fvibes-blue?logo=github)](https://github.com/talmolab/vibes)
+
+Self-contained HTML tools and applets for the web.
 
 ## Vibes
 
@@ -19,6 +21,8 @@ Self-contained HTML tools and applets for the web. A [Talmo Lab](https://talmola
 Each "vibe" is a self-contained HTML application with inline CSS and JavaScript. No build steps, no frameworks - just HTML that works.
 
 Inspired by [simonw/tools](https://github.com/simonw/tools) and the [vibe coding](https://simonwillison.net/2025/Dec/10/html-tools/) philosophy.
+
+A [Talmo Lab](https://talmolab.org) project.
 
 ## Contributing
 
