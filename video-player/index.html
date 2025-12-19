@@ -48,14 +48,13 @@
             overflow: hidden;
             margin: 20px 0;
             cursor: grab;
-            max-height: 70vh;
+            height: 70vh;
         }
         .canvas-container:active { cursor: grabbing; }
         canvas {
             display: block;
             width: 100%;
-            height: auto;
-            max-height: 70vh;
+            height: 100%;
             image-rendering: crisp-edges;
         }
         .seekbar-container {
@@ -1072,6 +1071,52 @@
         let dragStartY = 0;
         let currentBitmap = null;
 
+        // Constrain offset to keep at least 10% of image visible on each axis
+        function constrainOffset() {
+            if (!currentBitmap) return;
+
+            const container = canvasContainer;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Calculate the scaled video dimensions (same logic as renderFrame)
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+            let baseScale, drawX, drawY;
+            if (videoAspect > containerAspect) {
+                baseScale = containerWidth / currentBitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - currentBitmap.height * baseScale) / 2;
+            } else {
+                baseScale = containerHeight / currentBitmap.height;
+                drawX = (containerWidth - currentBitmap.width * baseScale) / 2;
+                drawY = 0;
+            }
+
+            const scaledWidth = currentBitmap.width * baseScale * scale;
+            const scaledHeight = currentBitmap.height * baseScale * scale;
+
+            // Require at least 25% visible on each axis
+            const minVisible = 0.25;
+            const minVisibleX = scaledWidth * minVisible;
+            const minVisibleY = scaledHeight * minVisible;
+
+            // Calculate bounds accounting for the centering offset (drawX, drawY)
+            // The image is drawn at (offsetX + drawX, offsetY + drawY)
+            // Right edge of image must be at least minVisibleX from left of container
+            const minOffsetX = minVisibleX - scaledWidth - drawX;
+            // Left edge of image must be at least minVisibleX from right of container
+            const maxOffsetX = containerWidth - minVisibleX - drawX;
+
+            // Bottom edge of image must be at least minVisibleY from top of container
+            const minOffsetY = minVisibleY - scaledHeight - drawY;
+            // Top edge of image must be at least minVisibleY from bottom of container
+            const maxOffsetY = containerHeight - minVisibleY - drawY;
+
+            offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, offsetX));
+            offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, offsetY));
+        }
+
         // Performance metrics
         let lastSeekTime = 0;
         let lastFromCache = false;
@@ -1475,16 +1520,40 @@
         function renderFrame(bitmap) {
             if (!bitmap) return;
 
-            // Set canvas size on first render or if size changed
-            if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
-                canvas.width = bitmap.width;
-                canvas.height = bitmap.height;
+            // Size canvas to fill container at device pixel ratio
+            const container = canvasContainer;
+            const dpr = window.devicePixelRatio || 1;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            if (canvas.width !== containerWidth * dpr || canvas.height !== containerHeight * dpr) {
+                canvas.width = containerWidth * dpr;
+                canvas.height = containerHeight * dpr;
+            }
+
+            // Calculate scale to fit video in container (maintaining aspect ratio)
+            const videoAspect = bitmap.width / bitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+            let baseScale, drawX, drawY;
+
+            if (videoAspect > containerAspect) {
+                // Video is wider - fit to width
+                baseScale = containerWidth / bitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - bitmap.height * baseScale) / 2;
+            } else {
+                // Video is taller - fit to height
+                baseScale = containerHeight / bitmap.height;
+                drawX = (containerWidth - bitmap.width * baseScale) / 2;
+                drawY = 0;
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.save();
+            ctx.scale(dpr, dpr); // Scale for high DPI
             ctx.translate(offsetX, offsetY);
-            ctx.scale(scale, scale);
+            ctx.translate(drawX, drawY);
+            ctx.scale(baseScale * scale, baseScale * scale);
             ctx.drawImage(bitmap, 0, 0);
             ctx.restore();
         }
@@ -1563,13 +1632,26 @@
             }
         });
 
-        // Zoom with mouse wheel
+        // Zoom with mouse wheel (zoom towards cursor)
         canvasContainer.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            scale *= delta;
-            scale = Math.max(0.1, Math.min(10, scale));
 
+            // Get cursor position relative to container
+            const rect = canvasContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Calculate zoom factor
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor));
+
+            // Adjust offset to zoom towards cursor position
+            // The point under cursor should stay fixed after zoom
+            offsetX = mouseX - (mouseX - offsetX) * (newScale / scale);
+            offsetY = mouseY - (mouseY - offsetY) * (newScale / scale);
+
+            scale = newScale;
+            constrainOffset();
             renderFrameWithOverlays();
         });
 
@@ -1584,6 +1666,7 @@
             if (isDragging) {
                 offsetX = e.clientX - dragStartX;
                 offsetY = e.clientY - dragStartY;
+                constrainOffset();
                 renderFrameWithOverlays();
             }
         });
