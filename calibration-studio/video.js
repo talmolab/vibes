@@ -342,3 +342,357 @@ class OnDemandVideoDecoder {
         this.cache.clear();
     }
 }
+
+/**
+ * Video playback controller with zoom/pan and frame seeking
+ * Uses callback pattern to decouple from overlay and UI functions
+ */
+class VideoController {
+    /**
+     * @param {Object} state - Application state (views, currentFrame, totalFrames, etc.)
+     * @param {Object} callbacks - Callback functions for UI and overlay updates
+     * @param {Function} callbacks.updateSeekbar - Update seekbar UI
+     * @param {Function} callbacks.drawOverlays - Draw all overlays for current frame
+     * @param {Function} callbacks.updateGalleryHighlights - Update gallery current frame highlights
+     * @param {Function} callbacks.log - Logging function
+     */
+    constructor(state, callbacks) {
+        this.state = state;
+        this.callbacks = callbacks;
+        this.zoomState = {}; // viewName -> {scale, panX, panY}
+        this.isSeeking = false;
+        this.scrubTargetFrame = null;
+    }
+
+    // ============================================
+    // Frame Seeking
+    // ============================================
+
+    async seekToFrame(frameIndex) {
+        if (this.state.views.length === 0) return;
+
+        frameIndex = Math.max(0, Math.min(frameIndex, this.state.totalFrames - 1));
+        this.state.currentFrame = frameIndex;
+
+        const startTime = performance.now();
+
+        // Seek all views in parallel
+        const results = await Promise.all(
+            this.state.views.map(view => view.decoder.getFrame(frameIndex))
+        );
+
+        const seekTime = performance.now() - startTime;
+
+        // Render all frames
+        for (let i = 0; i < this.state.views.length; i++) {
+            const result = results[i];
+            const view = this.state.views[i];
+            if (result && result.bitmap) {
+                view.ctx.clearRect(0, 0, view.canvas.width, view.canvas.height);
+                view.ctx.drawImage(result.bitmap, 0, 0);
+            }
+        }
+
+        // Update UI via callbacks
+        if (this.callbacks.updateSeekbar) {
+            this.callbacks.updateSeekbar();
+        }
+
+        // Draw overlays via callback
+        if (this.callbacks.drawOverlays) {
+            this.callbacks.drawOverlays(frameIndex);
+        }
+
+        // Update gallery highlights
+        if (this.callbacks.updateGalleryHighlights) {
+            this.callbacks.updateGalleryHighlights();
+        }
+
+        if (!this.state.isPlaying && this.callbacks.log) {
+            this.callbacks.log(`Frame ${frameIndex}: ${seekTime.toFixed(0)}ms`, 'info');
+        }
+    }
+
+    async scrubToFrame(frame) {
+        if (this.isSeeking) {
+            this.scrubTargetFrame = frame;
+            return;
+        }
+        this.isSeeking = true;
+        await this.seekToFrame(frame);
+        this.isSeeking = false;
+
+        // If target changed while seeking, seek to new target
+        if (this.scrubTargetFrame !== null && this.scrubTargetFrame !== frame) {
+            const nextFrame = this.scrubTargetFrame;
+            this.scrubTargetFrame = null;
+            this.scrubToFrame(nextFrame);
+        }
+    }
+
+    // ============================================
+    // Playback Controls
+    // ============================================
+
+    togglePlayback() {
+        if (this.state.isPlaying) {
+            this.stopPlayback();
+        } else {
+            this.startPlayback();
+        }
+    }
+
+    startPlayback() {
+        if (this.state.views.length === 0) return;
+        this.state.isPlaying = true;
+
+        if (this.callbacks.onPlaybackStateChange) {
+            this.callbacks.onPlaybackStateChange(true);
+        }
+        if (this.callbacks.log) {
+            this.callbacks.log('Playback started', 'info');
+        }
+
+        const interval = 1000 / this.state.fps;
+        this.state.playInterval = setInterval(async () => {
+            let nextFrame = this.state.currentFrame + 1;
+            if (nextFrame >= this.state.totalFrames) nextFrame = 0;
+            await this.seekToFrame(nextFrame);
+        }, interval);
+    }
+
+    stopPlayback() {
+        this.state.isPlaying = false;
+
+        if (this.callbacks.onPlaybackStateChange) {
+            this.callbacks.onPlaybackStateChange(false);
+        }
+
+        if (this.state.playInterval) {
+            clearInterval(this.state.playInterval);
+            this.state.playInterval = null;
+        }
+
+        if (this.callbacks.log) {
+            this.callbacks.log('Playback stopped', 'info');
+        }
+    }
+
+    // ============================================
+    // Seekbar Setup
+    // ============================================
+
+    /**
+     * Setup seekbar scrubbing handlers
+     * @param {HTMLElement} seekbar - The seekbar element
+     * @param {Function} updateVisual - Callback to update seekbar visual (progress, thumb, frame display)
+     */
+    setupSeekbar(seekbar, updateVisual) {
+        let isScrubbing = false;
+        let scrubTargetFrame = null;
+
+        const getFrameFromSeekbar = (e) => {
+            const rect = seekbar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = x / rect.width;
+            return Math.floor(percent * this.state.totalFrames);
+        };
+
+        seekbar.addEventListener('mousedown', (e) => {
+            isScrubbing = true;
+            const frame = getFrameFromSeekbar(e);
+            updateVisual(frame);
+            this.scrubToFrame(frame);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isScrubbing) return;
+            const frame = getFrameFromSeekbar(e);
+            updateVisual(frame);
+            scrubTargetFrame = frame;
+            this.scrubToFrame(frame);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isScrubbing && scrubTargetFrame !== null) {
+                this.seekToFrame(scrubTargetFrame);
+            }
+            isScrubbing = false;
+            scrubTargetFrame = null;
+        });
+    }
+
+    // ============================================
+    // Keyboard Handlers
+    // ============================================
+
+    /**
+     * Setup keyboard navigation handlers
+     * Call this once after VideoController is created
+     */
+    setupKeyboardHandlers() {
+        document.addEventListener('keydown', (e) => {
+            if (this.state.views.length === 0) return;
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+            // Frame navigation
+            let delta = 0;
+            if (e.key === 'ArrowLeft') delta = -1;
+            else if (e.key === 'ArrowRight') delta = 1;
+            else if (e.key === 'ArrowUp') delta = 10;
+            else if (e.key === 'ArrowDown') delta = -10;
+            else if (e.key === ' ') {
+                this.togglePlayback();
+                e.preventDefault();
+                return;
+            }
+            else if (e.key === 'Home') {
+                this.seekToFrame(0);
+                e.preventDefault();
+                return;
+            }
+            else if (e.key === 'End') {
+                this.seekToFrame(this.state.totalFrames - 1);
+                e.preventDefault();
+                return;
+            }
+
+            if (delta !== 0) {
+                this.seekToFrame(this.state.currentFrame + delta);
+                e.preventDefault();
+            }
+
+            // Global zoom with +/- keys
+            if (e.key === '+' || e.key === '=') {
+                this.zoomAllVideos(1.2);
+                e.preventDefault();
+            } else if (e.key === '-' || e.key === '_') {
+                this.zoomAllVideos(1 / 1.2);
+                e.preventDefault();
+            } else if (e.key === '0') {
+                this.resetAllZoom();
+                e.preventDefault();
+            }
+        });
+    }
+
+    // ============================================
+    // Zoom & Pan
+    // ============================================
+
+    initZoom(viewName) {
+        if (!this.zoomState[viewName]) {
+            this.zoomState[viewName] = { scale: 1, panX: 0, panY: 0 };
+        }
+    }
+
+    applyZoom(viewName) {
+        const view = this.state.views.find(v => v.name === viewName);
+        if (!view || !view.canvas) return;
+
+        const zs = this.zoomState[viewName];
+        if (!zs) return;
+
+        const cell = view.canvas.closest('.video-cell');
+        if (zs.scale > 1) {
+            cell.classList.add('zoomed');
+        } else {
+            cell.classList.remove('zoomed');
+        }
+
+        view.canvas.style.transform = `scale(${zs.scale}) translate(${zs.panX}px, ${zs.panY}px)`;
+    }
+
+    zoomVideo(viewName, factor, centerX = 0.5, centerY = 0.5) {
+        this.initZoom(viewName);
+        const zs = this.zoomState[viewName];
+
+        const oldScale = zs.scale;
+        zs.scale = Math.max(1, Math.min(10, zs.scale * factor));
+
+        // If zooming out to 1x, reset pan
+        if (zs.scale === 1) {
+            zs.panX = 0;
+            zs.panY = 0;
+        }
+
+        this.applyZoom(viewName);
+    }
+
+    zoomAllVideos(factor) {
+        this.state.views.forEach(view => {
+            this.zoomVideo(view.name, factor);
+        });
+    }
+
+    resetAllZoom() {
+        this.state.views.forEach(view => {
+            this.zoomState[view.name] = { scale: 1, panX: 0, panY: 0 };
+            this.applyZoom(view.name);
+        });
+    }
+
+    setupZoomHandlers(viewName, canvas) {
+        const cell = canvas.closest('.video-cell');
+        this.initZoom(viewName);
+
+        // Scroll wheel zoom
+        cell.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+            this.zoomVideo(viewName, factor);
+        }, { passive: false });
+
+        // Pan with mouse drag when zoomed
+        let isPanning = false;
+        let panStartX, panStartY;
+        let panStartPosX, panStartPosY;
+
+        cell.addEventListener('mousedown', (e) => {
+            const zs = this.zoomState[viewName];
+            if (zs && zs.scale > 1) {
+                isPanning = true;
+                cell.classList.add('panning');
+                panStartX = e.clientX;
+                panStartY = e.clientY;
+                panStartPosX = zs.panX;
+                panStartPosY = zs.panY;
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+            const zs = this.zoomState[viewName];
+            if (!zs) return;
+
+            const dx = (e.clientX - panStartX) / zs.scale;
+            const dy = (e.clientY - panStartY) / zs.scale;
+
+            // Limit pan to keep image visible based on actual canvas dimensions
+            const view = this.state.views.find(v => v.name === viewName);
+            const canvasW = view ? view.canvas.width : 640;
+            const canvasH = view ? view.canvas.height : 480;
+            const maxPanX = canvasW * (1 - 1 / zs.scale) / 2;
+            const maxPanY = canvasH * (1 - 1 / zs.scale) / 2;
+            zs.panX = Math.max(-maxPanX, Math.min(maxPanX, panStartPosX + dx));
+            zs.panY = Math.max(-maxPanY, Math.min(maxPanY, panStartPosY + dy));
+
+            this.applyZoom(viewName);
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isPanning) {
+                isPanning = false;
+                cell.classList.remove('panning');
+            }
+        });
+
+        // Double-click to reset zoom
+        cell.addEventListener('dblclick', (e) => {
+            this.zoomState[viewName] = { scale: 1, panX: 0, panY: 0 };
+            this.applyZoom(viewName);
+            e.preventDefault();
+        });
+    }
+}

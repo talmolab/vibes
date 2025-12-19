@@ -342,6 +342,247 @@ function computeIntrinsics(detections, imageSize, config, minCorners) {
     }
 }
 
+/**
+ * Compute intrinsic calibration for a camera with exclusion support
+ * @param {Array} viewDetections - Array of {frame, charucoCorners, charucoIds, numCharucoCorners} for one view
+ * @param {Object} imageSize - {width, height}
+ * @param {Object} config - Board configuration
+ * @param {number} minCorners - Minimum corners required per frame
+ * @param {Set} exclusions - Set of calibration frame indices to exclude
+ * @returns {Object} Calibration result with camera matrix, distortion coefficients, per-frame errors, etc.
+ */
+function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorners, exclusions = new Set()) {
+    // First pass: Collect all valid detections (for frame indexing consistency)
+    const allValidFrames = [];
+    for (const detection of viewDetections) {
+        if (!detection.charucoCorners || detection.numCharucoCorners < minCorners) continue;
+
+        allValidFrames.push({
+            frame: detection.frame,
+            objPts: getObjectPointsForCharucoCorners(detection.charucoIds, config),
+            imgPts: detection.charucoCorners
+        });
+    }
+
+    // Second pass: Filter out excluded frames
+    const allObjectPoints = [];
+    const allImagePoints = [];
+    const frameIndices = [];
+    const originalCalibIndices = [];
+
+    for (let calibIdx = 0; calibIdx < allValidFrames.length; calibIdx++) {
+        if (exclusions.has(calibIdx)) continue;
+
+        const validFrame = allValidFrames[calibIdx];
+        allObjectPoints.push(validFrame.objPts);
+        allImagePoints.push(validFrame.imgPts);
+        frameIndices.push(validFrame.frame);
+        originalCalibIndices.push(calibIdx);
+    }
+
+    const usedFrames = allObjectPoints.length;
+    if (usedFrames < 3) return null;
+
+    // Convert to OpenCV format
+    const objectPointsMat = new cv.MatVector();
+    const imagePointsMat = new cv.MatVector();
+
+    for (let i = 0; i < allObjectPoints.length; i++) {
+        const objPts = allObjectPoints[i];
+        const imgPts = allImagePoints[i];
+
+        const objMat = new cv.Mat(objPts.length, 1, cv.CV_32FC3);
+        for (let j = 0; j < objPts.length; j++) {
+            objMat.floatPtr(j, 0)[0] = objPts[j].x;
+            objMat.floatPtr(j, 0)[1] = objPts[j].y;
+            objMat.floatPtr(j, 0)[2] = objPts[j].z;
+        }
+        objectPointsMat.push_back(objMat);
+
+        const imgMat = new cv.Mat(imgPts.length, 1, cv.CV_32FC2);
+        for (let j = 0; j < imgPts.length; j++) {
+            imgMat.floatPtr(j, 0)[0] = imgPts[j].x;
+            imgMat.floatPtr(j, 0)[1] = imgPts[j].y;
+        }
+        imagePointsMat.push_back(imgMat);
+    }
+
+    // Initialize camera matrix
+    const cx = imageSize.width / 2;
+    const cy = imageSize.height / 2;
+    const focalEstimate = imageSize.width / (2 * Math.tan(30 * Math.PI / 180));
+
+    const cameraMatrix = cv.matFromArray(3, 3, cv.CV_64F, [
+        focalEstimate, 0, cx,
+        0, focalEstimate, cy,
+        0, 0, 1
+    ]);
+
+    const distCoeffs = cv.Mat.zeros(5, 1, cv.CV_64F);
+    const rvecs = new cv.MatVector();
+    const tvecs = new cv.MatVector();
+    const imageSizeMat = new cv.Size(imageSize.width, imageSize.height);
+
+    try {
+        const flags = cv.CALIB_USE_INTRINSIC_GUESS;
+        const stdDeviationsIntrinsics = new cv.Mat();
+        const stdDeviationsExtrinsics = new cv.Mat();
+        const perViewErrors = new cv.Mat();
+
+        const rmsError = cv.calibrateCameraExtended(
+            objectPointsMat, imagePointsMat, imageSizeMat,
+            cameraMatrix, distCoeffs, rvecs, tvecs,
+            stdDeviationsIntrinsics, stdDeviationsExtrinsics, perViewErrors, flags
+        );
+
+        const perImageErrors = [];
+        for (let i = 0; i < perViewErrors.rows; i++) {
+            perImageErrors.push(perViewErrors.doubleAt(i, 0));
+        }
+
+        stdDeviationsIntrinsics.delete();
+        stdDeviationsExtrinsics.delete();
+        perViewErrors.delete();
+
+        // Extract results
+        const fx = cameraMatrix.doubleAt(0, 0);
+        const fy = cameraMatrix.doubleAt(1, 1);
+        const cx_out = cameraMatrix.doubleAt(0, 2);
+        const cy_out = cameraMatrix.doubleAt(1, 2);
+
+        const k1 = distCoeffs.doubleAt(0, 0);
+        const k2 = distCoeffs.doubleAt(1, 0);
+        const p1 = distCoeffs.doubleAt(2, 0);
+        const p2 = distCoeffs.doubleAt(3, 0);
+        const k3 = distCoeffs.doubleAt(4, 0);
+
+        const result = {
+            imageSize: imageSize,
+            cameraMatrix: [[fx, 0, cx_out], [0, fy, cy_out], [0, 0, 1]],
+            distCoeffs: [k1, k2, p1, p2, k3],
+            fx, fy, cx: cx_out, cy: cy_out,
+            k1, k2, p1, p2, k3,
+            rmsError: rmsError,
+            framesUsed: usedFrames,
+            rvecs: [],
+            tvecs: [],
+            objectPoints: allObjectPoints,
+            imagePoints: allImagePoints,
+            frameIndices: frameIndices,
+            perImageErrors: perImageErrors,
+            allValidFrames: allValidFrames,
+            originalCalibIndices: originalCalibIndices,
+        };
+
+        // Extract per-frame poses
+        for (let i = 0; i < rvecs.size(); i++) {
+            const rvec = rvecs.get(i);
+            const tvec = tvecs.get(i);
+            result.rvecs.push([rvec.doubleAt(0, 0), rvec.doubleAt(1, 0), rvec.doubleAt(2, 0)]);
+            result.tvecs.push([tvec.doubleAt(0, 0), tvec.doubleAt(1, 0), tvec.doubleAt(2, 0)]);
+            rvec.delete();
+            tvec.delete();
+        }
+
+        // Compute reprojection errors for ALL frames (including excluded)
+        const allPerImageErrors = [];
+        const allRvecs = [];
+        const allTvecs = [];
+
+        const camMatForReproj = cv.matFromArray(3, 3, cv.CV_64F, [fx, 0, cx_out, 0, fy, cy_out, 0, 0, 1]);
+        const distCoeffsForReproj = cv.matFromArray(5, 1, cv.CV_64F, [k1, k2, p1, p2, k3]);
+
+        for (let calibIdx = 0; calibIdx < allValidFrames.length; calibIdx++) {
+            const frame = allValidFrames[calibIdx];
+            const objPts = frame.objPts;
+            const imgPts = frame.imgPts;
+
+            const objMat = new cv.Mat(objPts.length, 1, cv.CV_32FC3);
+            for (let j = 0; j < objPts.length; j++) {
+                objMat.floatPtr(j, 0)[0] = objPts[j].x;
+                objMat.floatPtr(j, 0)[1] = objPts[j].y;
+                objMat.floatPtr(j, 0)[2] = objPts[j].z;
+            }
+
+            const rvecMat = new cv.Mat();
+            const tvecMat = new cv.Mat();
+
+            try {
+                const imgMat = new cv.Mat(imgPts.length, 1, cv.CV_32FC2);
+                for (let j = 0; j < imgPts.length; j++) {
+                    imgMat.floatPtr(j, 0)[0] = imgPts[j].x;
+                    imgMat.floatPtr(j, 0)[1] = imgPts[j].y;
+                }
+
+                cv.solvePnP(objMat, imgMat, camMatForReproj, distCoeffsForReproj, rvecMat, tvecMat);
+
+                allRvecs.push([rvecMat.doubleAt(0, 0), rvecMat.doubleAt(1, 0), rvecMat.doubleAt(2, 0)]);
+                allTvecs.push([tvecMat.doubleAt(0, 0), tvecMat.doubleAt(1, 0), tvecMat.doubleAt(2, 0)]);
+
+                const projectedPts = new cv.Mat();
+                const jacobian = new cv.Mat();
+                cv.projectPoints(objMat, rvecMat, tvecMat, camMatForReproj, distCoeffsForReproj, projectedPts, jacobian);
+
+                let sumSqError = 0;
+                for (let j = 0; j < imgPts.length; j++) {
+                    const dx = projectedPts.floatAt(j, 0) - imgPts[j].x;
+                    const dy = projectedPts.floatAt(j, 1) - imgPts[j].y;
+                    sumSqError += dx * dx + dy * dy;
+                }
+                allPerImageErrors.push(Math.sqrt(sumSqError / imgPts.length));
+
+                projectedPts.delete();
+                jacobian.delete();
+                imgMat.delete();
+            } catch (e) {
+                allPerImageErrors.push(NaN);
+                allRvecs.push(null);
+                allTvecs.push(null);
+            }
+
+            objMat.delete();
+            rvecMat.delete();
+            tvecMat.delete();
+        }
+
+        camMatForReproj.delete();
+        distCoeffsForReproj.delete();
+
+        result.allPerImageErrors = allPerImageErrors;
+        result.allRvecs = allRvecs;
+        result.allTvecs = allTvecs;
+        result.allFrameIndices = allValidFrames.map(f => f.frame);
+
+        // Cleanup
+        for (let i = 0; i < objectPointsMat.size(); i++) {
+            objectPointsMat.get(i).delete();
+            imagePointsMat.get(i).delete();
+        }
+        objectPointsMat.delete();
+        imagePointsMat.delete();
+        cameraMatrix.delete();
+        distCoeffs.delete();
+        rvecs.delete();
+        tvecs.delete();
+
+        return result;
+
+    } catch (err) {
+        // Cleanup on error
+        for (let i = 0; i < objectPointsMat.size(); i++) {
+            objectPointsMat.get(i).delete();
+            imagePointsMat.get(i).delete();
+        }
+        objectPointsMat.delete();
+        imagePointsMat.delete();
+        cameraMatrix.delete();
+        distCoeffs.delete();
+        rvecs.delete();
+        tvecs.delete();
+        throw err;
+    }
+}
+
 // ============================================
 // Matrix Utilities
 // ============================================
@@ -838,6 +1079,266 @@ function prepareSbaInput(state, viewNames, config, generateSbaJsonOutput) {
         }
     };
 }
+
+// ============================================
+// Cross-View Reprojection
+// ============================================
+
+/**
+ * Get matched points between two views for a specific frame
+ * @param {Array} detections - Array of detection results
+ * @param {string} view1Name - Name of first view
+ * @param {string} view2Name - Name of second view
+ * @param {number} frameIndex - Frame index
+ * @param {Array} commonIds - Array of common corner IDs
+ * @returns {Object|null} Object with points1 and points2 arrays, or null
+ */
+function getMatchedPointsForFrame(detections, view1Name, view2Name, frameIndex, commonIds) {
+    const detection = detections.find(d => d.frame === frameIndex);
+    if (!detection) return null;
+
+    const result1 = detection.views[view1Name];
+    const result2 = detection.views[view2Name];
+
+    if (!result1 || !result2) return null;
+
+    const points1 = [];
+    const points2 = [];
+
+    for (const id of commonIds) {
+        const idx1 = result1.charucoIds.indexOf(id);
+        const idx2 = result2.charucoIds.indexOf(id);
+
+        if (idx1 >= 0 && idx2 >= 0) {
+            points1.push(result1.charucoCorners[idx1]);
+            points2.push(result2.charucoCorners[idx2]);
+        }
+    }
+
+    return { points1, points2 };
+}
+
+/**
+ * Compute cross-view reprojection errors by triangulating points and reprojecting
+ * @param {Array} detections - Array of detection results
+ * @param {Array} viewNames - Array of view names
+ * @param {Object} intrinsics - Intrinsic parameters per camera
+ * @param {Object} extrinsics - Extrinsic parameters per camera
+ * @returns {Array} Array of frame errors with point reprojection data
+ */
+function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, extrinsics) {
+    // For each frame with detections in multiple cameras
+    const frameErrors = [];
+
+    for (const detection of detections) {
+        // Get cameras with valid detections
+        const validCameras = [];
+        for (const viewName of viewNames) {
+            const viewResult = detection.views[viewName];
+            if (viewResult && !viewResult.error && viewResult.charucoCorners && viewResult.numCharucoCorners >= 4) {
+                validCameras.push(viewName);
+            }
+        }
+
+        if (validCameras.length < 2) continue;
+
+        // Find common corner IDs across all valid cameras
+        let commonIds = new Set(detection.views[validCameras[0]].charucoIds);
+        for (let i = 1; i < validCameras.length; i++) {
+            const ids = new Set(detection.views[validCameras[i]].charucoIds);
+            commonIds = new Set([...commonIds].filter(id => ids.has(id)));
+        }
+
+        if (commonIds.size < 4) continue;
+
+        const pointErrors = [];
+
+        for (const pointId of commonIds) {
+            // Gather observations from all cameras
+            const observations = [];
+            for (const camera of validCameras) {
+                const viewResult = detection.views[camera];
+                const idx = viewResult.charucoIds.indexOf(pointId);
+                if (idx >= 0) {
+                    observations.push({
+                        camera: camera,
+                        point: viewResult.charucoCorners[idx]
+                    });
+                }
+            }
+
+            if (observations.length < 2) continue;
+
+            // Triangulate 3D point
+            const point3D = triangulatePoint(observations, intrinsics, extrinsics);
+            if (!point3D) continue;
+
+            // Compute reprojection error for each camera
+            const perCameraErrors = {};
+            let totalError = 0;
+            let numCameras = 0;
+
+            for (const obs of observations) {
+                const projected = projectPoint(point3D, obs.camera, intrinsics, extrinsics);
+                if (projected) {
+                    const dx = projected.x - obs.point.x;
+                    const dy = projected.y - obs.point.y;
+                    const error = Math.sqrt(dx * dx + dy * dy);
+                    perCameraErrors[obs.camera] = {
+                        error: error,
+                        detected: obs.point,
+                        projected: projected
+                    };
+                    totalError += error;
+                    numCameras++;
+                }
+            }
+
+            if (numCameras > 0) {
+                pointErrors.push({
+                    pointId: pointId,
+                    point3D: point3D,
+                    cameras: validCameras,
+                    meanError: totalError / numCameras,
+                    perCameraErrors: perCameraErrors
+                });
+            }
+        }
+
+        if (pointErrors.length > 0) {
+            frameErrors.push({
+                frame: detection.frame,
+                pointErrors: pointErrors,
+                cameras: validCameras
+            });
+        }
+    }
+
+    return frameErrors;
+}
+
+// ============================================
+// Absolute Extrinsics Computation
+// ============================================
+
+/**
+ * Compute pairwise relative poses between cameras
+ * @param {Object} graph - Covisibility graph from buildCovisibilityGraph
+ * @param {Object} parent - Parent map from findPoseChain
+ * @param {Array} detections - Detection results
+ * @param {Object} config - Board configuration
+ * @param {Object} intrinsics - Intrinsic parameters per camera
+ * @param {string} refViewName - Reference camera name
+ * @param {Array} viewNames - Array of view names
+ * @returns {Object} relativePoses object keyed by "source->target"
+ */
+function computePairwiseRelativePoses(graph, parent, detections, config, intrinsics, refViewName, viewNames) {
+    const relativePoses = {};
+
+    for (const viewName of viewNames) {
+        if (viewName !== refViewName && parent[viewName]) {
+            const pose = computeRelativePose(parent[viewName], viewName, graph, detections, config, intrinsics);
+            if (pose) {
+                relativePoses[`${parent[viewName]}->${viewName}`] = pose;
+            }
+        }
+    }
+
+    return relativePoses;
+}
+
+/**
+ * Chain relative poses to compute absolute extrinsics for all cameras
+ * @param {Object} relativePoses - Object keyed by "source->target" with R, rvec, tvec, rmsError
+ * @param {Object} parent - Parent map from findPoseChain
+ * @param {string} refViewName - Reference camera name
+ * @param {Array} viewNames - Array of view names
+ * @returns {Object} extrinsics object keyed by camera name with R, rvec, tvec
+ */
+function chainRelativePoses(relativePoses, parent, refViewName, viewNames) {
+    const extrinsics = {};
+
+    // Reference camera is at origin
+    extrinsics[refViewName] = {
+        viewName: refViewName,
+        R: [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        rvec: [0, 0, 0],
+        tvec: [0, 0, 0],
+        rmsError: 0,
+    };
+
+    // Compute absolute poses for other cameras
+    for (const viewName of viewNames) {
+        if (viewName === refViewName) continue;
+
+        // Build path from reference to this camera
+        const path = [];
+        let current = viewName;
+        while (current !== refViewName) {
+            path.unshift(current);
+            current = parent[current];
+        }
+
+        // Chain the transformations
+        let R_abs = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+        let t_abs = [0, 0, 0];
+        let totalError = 0;
+
+        current = refViewName;
+        for (const next of path) {
+            const poseKey = `${current}->${next}`;
+            const pose = relativePoses[poseKey];
+
+            if (pose) {
+                // T_abs = T_rel * T_abs
+                // R_new = R_rel * R_abs
+                // t_new = R_rel * t_abs + t_rel
+                t_abs = addVectors(rotateVector(pose.R, t_abs), pose.tvec);
+                R_abs = composeRotation(R_abs, pose.R);
+                totalError += pose.rmsError;
+            }
+            current = next;
+        }
+
+        const rvec = matrixToRodrigues(R_abs);
+
+        extrinsics[viewName] = {
+            viewName: viewName,
+            R: R_abs,
+            rvec: rvec,
+            tvec: t_abs,
+            rmsError: totalError / path.length,
+        };
+    }
+
+    return extrinsics;
+}
+
+/**
+ * Compute absolute extrinsics for all cameras relative to a reference
+ * Combines relative pose computation and pose chaining
+ * @param {Object} graph - Covisibility graph from buildCovisibilityGraph
+ * @param {Object} parent - Parent map from findPoseChain
+ * @param {Array} detections - Detection results
+ * @param {Object} config - Board configuration
+ * @param {Object} intrinsics - Intrinsic parameters per camera
+ * @param {string} refViewName - Reference camera name
+ * @param {Array} viewNames - Array of view names
+ * @returns {Object} Object with extrinsics and relativePoses
+ */
+function computeAbsoluteExtrinsics(graph, parent, detections, config, intrinsics, refViewName, viewNames) {
+    // Compute pairwise relative poses
+    const relativePoses = computePairwiseRelativePoses(graph, parent, detections, config, intrinsics, refViewName, viewNames);
+
+    // Chain to get absolute poses
+    const extrinsics = chainRelativePoses(relativePoses, parent, refViewName, viewNames);
+
+    return { extrinsics, relativePoses };
+}
+
+// ============================================
+// SBA Results
+// ============================================
 
 /**
  * Apply SBA results back to calibration state
