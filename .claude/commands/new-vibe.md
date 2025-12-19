@@ -16,7 +16,10 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
    - Create directory: `<vibe-name>/`
    - Create `<vibe-name>/index.html` following the template in CLAUDE.md
    - Keep it under 300 lines (if possible)
-   - Create a `<vibe-name>/README.md` describing the vibe and including an `## Initial prompt` section with the prompt used to create the vibe
+   - Create a `<vibe-name>/README.md` with:
+     - Link to deployment: `https://v.tlab.sh/<vibe-name>/`
+     - Description of the vibe
+     - `## Initial prompt` section with the prompt used to create the vibe
 
 4. **Update README.md**:
    - Add entry under `## Vibes` section:
@@ -140,7 +143,7 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
 
 - [ ] Branch created from `main`
 - [ ] Directory created at `<vibe-name>/`
-- [ ] `<vibe-name>/README.md` created with description and initial prompt
+- [ ] `<vibe-name>/README.md` created with deployment link, description, and initial prompt
 - [ ] `index.html` created with all inline CSS/JS
 - [ ] Mobile responsive (test at 375px width)
 - [ ] 16px minimum font for inputs

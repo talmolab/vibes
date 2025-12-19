@@ -1,5 +1,7 @@
 # Hello World
 
+**Live:** https://v.tlab.sh/hello-world/
+
 A simple greeting vibe to test the vibes setup.
 
 ## Features

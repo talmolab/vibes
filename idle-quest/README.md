@@ -1,5 +1,7 @@
 # Idle Quest
 
+**Live:** https://v.tlab.sh/idle-quest/
+
 A browser-based incremental RPG with hero progression, zone exploration, and prestige mechanics.
 
 ## Features
