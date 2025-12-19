@@ -40,19 +40,23 @@ Browser-based multi-camera calibration tool using ChArUco boards.
 
 ```
 calibration-studio/
-├── index.html        # Main UI and application logic
-├── video.js          # OnDemandVideoDecoder (WebCodecs + mp4box.js)
-├── calibration.js    # Detection, calibration, and math utilities
-├── lib/              # WASM bundle adjustment solver
+├── index.html            # UI scaffolding and orchestration (~1776 lines)
+├── styles.css            # All styles
+├── video.js              # OnDemandVideoDecoder + VideoController
+├── calibration.js        # Detection, intrinsics, extrinsics, triangulation
+├── overlays.js           # Visualization overlays and swarm plots
+├── export.js             # TOML/JSON export functions
+├── exclusion-gallery.js  # Frame exclusion UI components
+├── lib/                  # WASM bundle adjustment solver
 │   ├── sba_solver_wasm.js      # WASM ES module wrapper
 │   ├── sba_solver_wasm_bg.wasm # WASM binary (~730KB)
 │   └── sba-wrapper.js          # Clean JS API for SBA
-└── sample_session/   # Test calibration videos
-    ├── board.toml    # Board configuration
-    ├── back.mp4      # Back camera view
-    ├── mid.mp4       # Mid camera view
-    ├── side.mp4      # Side camera view
-    └── top.mp4       # Top camera view
+└── sample_session/       # Test calibration videos
+    ├── board.toml        # Board configuration
+    ├── back.mp4          # Back camera view
+    ├── mid.mp4           # Mid camera view
+    ├── side.mp4          # Side camera view
+    └── top.mp4           # Top camera view
 ```
 
 ## Dependencies (CDN)
