@@ -74,22 +74,28 @@ function detectCharuco(imageData, config) {
     const startTime = performance.now();
 
     // Convert to OpenCV Mat
+    const convertStart = performance.now();
     const src = cv.matFromImageData(imageData);
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    const convertTime = performance.now() - convertStart;
 
     // Create detector
+    const setupStart = performance.now();
     const { board, dictionary } = createCharucoBoard(config);
     const detectorParams = new cv.aruco_DetectorParameters();
     const refineParams = new cv.aruco_RefineParameters(10.0, 3.0, true);
     const detector = new cv.aruco_ArucoDetector(dictionary, detectorParams, refineParams);
+    const setupTime = performance.now() - setupStart;
 
     // Detect ArUco markers first
+    const markerStart = performance.now();
     const markerCorners = new cv.MatVector();
     const markerIds = new cv.Mat();
     const rejectedCandidates = new cv.MatVector();
 
     detector.detectMarkers(gray, markerCorners, markerIds, rejectedCandidates);
+    const markerTime = performance.now() - markerStart;
 
     const numMarkers = markerIds.rows;
     let result = {
@@ -107,7 +113,9 @@ function detectCharuco(imageData, config) {
     }
 
     // If we have markers, try to detect ChArUco corners
+    let charucoTime = 0;
     if (numMarkers > 0) {
+        const charucoStart = performance.now();
         const charucoCorners = new cv.Mat();
         const charucoIds = new cv.Mat();
 
@@ -115,6 +123,7 @@ function detectCharuco(imageData, config) {
         const charucoDetector = new cv.aruco_CharucoDetector(board, charucoParams, detectorParams, refineParams);
 
         charucoDetector.detectBoard(gray, charucoCorners, charucoIds, markerCorners, markerIds);
+        charucoTime = performance.now() - charucoStart;
 
         result.numCharucoCorners = charucoIds.rows;
 
@@ -137,6 +146,18 @@ function detectCharuco(imageData, config) {
     }
 
     result.detectTime = performance.now() - startTime;
+
+    // Add timing breakdown to result
+    result.timings = {
+        convert: convertTime,
+        setup: setupTime,
+        markers: markerTime,
+        charuco: charucoTime,
+        total: result.detectTime
+    };
+
+    // Log timing breakdown
+    calibLog(`detectCharuco: ${result.detectTime.toFixed(1)}ms total | convert=${convertTime.toFixed(1)}ms, setup=${setupTime.toFixed(1)}ms, markers=${markerTime.toFixed(1)}ms, charuco=${charucoTime.toFixed(1)}ms | ${numMarkers} markers, ${result.numCharucoCorners} corners`);
 
     // Cleanup
     src.delete();
@@ -352,7 +373,11 @@ function computeIntrinsics(detections, imageSize, config, minCorners) {
  * @returns {Object} Calibration result with camera matrix, distortion coefficients, per-frame errors, etc.
  */
 function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorners, exclusions = new Set()) {
+    const startTime = performance.now();
+    calibLog(`computeIntrinsicsForCamera: Starting with ${viewDetections.length} detections, imageSize=${imageSize.width}x${imageSize.height}, minCorners=${minCorners}, exclusions=${exclusions.size}`);
+
     // First pass: Collect all valid detections (for frame indexing consistency)
+    const filterStart = performance.now();
     const allValidFrames = [];
     for (const detection of viewDetections) {
         if (!detection.charucoCorners || detection.numCharucoCorners < minCorners) continue;
@@ -381,9 +406,16 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
     }
 
     const usedFrames = allObjectPoints.length;
-    if (usedFrames < 3) return null;
+    const filterTime = performance.now() - filterStart;
+    calibLog(`computeIntrinsicsForCamera: Filtered ${allValidFrames.length} valid frames -> ${usedFrames} frames after exclusions (${filterTime.toFixed(1)}ms)`);
+
+    if (usedFrames < 3) {
+        calibLog(`computeIntrinsicsForCamera: Insufficient frames (${usedFrames} < 3), returning null`, 'warn');
+        return null;
+    }
 
     // Convert to OpenCV format
+    const cvConvertStart = performance.now();
     const objectPointsMat = new cv.MatVector();
     const imagePointsMat = new cv.MatVector();
 
@@ -422,8 +454,11 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
     const rvecs = new cv.MatVector();
     const tvecs = new cv.MatVector();
     const imageSizeMat = new cv.Size(imageSize.width, imageSize.height);
+    const cvConvertTime = performance.now() - cvConvertStart;
+    calibLog(`computeIntrinsicsForCamera: OpenCV data conversion took ${cvConvertTime.toFixed(1)}ms`);
 
     try {
+        const calibStart = performance.now();
         const flags = cv.CALIB_USE_INTRINSIC_GUESS;
         const stdDeviationsIntrinsics = new cv.Mat();
         const stdDeviationsExtrinsics = new cv.Mat();
@@ -434,6 +469,8 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
             cameraMatrix, distCoeffs, rvecs, tvecs,
             stdDeviationsIntrinsics, stdDeviationsExtrinsics, perViewErrors, flags
         );
+        const calibTime = performance.now() - calibStart;
+        calibLog(`computeIntrinsicsForCamera: cv.calibrateCameraExtended took ${calibTime.toFixed(1)}ms, RMS=${rmsError.toFixed(4)}px`);
 
         const perImageErrors = [];
         for (let i = 0; i < perViewErrors.rows; i++) {
@@ -485,6 +522,7 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
         }
 
         // Compute reprojection errors for ALL frames (including excluded)
+        const reprojStart = performance.now();
         const allPerImageErrors = [];
         const allRvecs = [];
         const allTvecs = [];
@@ -547,6 +585,8 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
 
         camMatForReproj.delete();
         distCoeffsForReproj.delete();
+        const reprojTime = performance.now() - reprojStart;
+        calibLog(`computeIntrinsicsForCamera: Reprojection errors computed for ${allValidFrames.length} frames in ${reprojTime.toFixed(1)}ms`);
 
         result.allPerImageErrors = allPerImageErrors;
         result.allRvecs = allRvecs;
@@ -564,6 +604,10 @@ function computeIntrinsicsForCamera(viewDetections, imageSize, config, minCorner
         distCoeffs.delete();
         rvecs.delete();
         tvecs.delete();
+
+        const totalTime = performance.now() - startTime;
+        const avgError = allPerImageErrors.filter(e => !isNaN(e)).reduce((a, b) => a + b, 0) / allPerImageErrors.filter(e => !isNaN(e)).length;
+        calibLog(`computeIntrinsicsForCamera: Complete in ${totalTime.toFixed(1)}ms | fx=${fx.toFixed(1)}, fy=${fy.toFixed(1)}, RMS=${rmsError.toFixed(4)}px, avgReproj=${avgError.toFixed(4)}px`);
 
         return result;
 
@@ -641,6 +685,9 @@ function matrixToRodrigues(R) {
  * Build covisibility graph showing which camera pairs see the board together
  */
 function buildCovisibilityGraph(detections, viewNames, minCovisible) {
+    const startTime = performance.now();
+    calibLog(`buildCovisibilityGraph: Building graph for ${viewNames.length} cameras from ${detections.length} detections, minCovisible=${minCovisible}`);
+
     const graph = {};
 
     for (const viewName of viewNames) {
@@ -679,6 +726,19 @@ function buildCovisibilityGraph(detections, viewNames, minCovisible) {
         }
     }
 
+    const totalTime = performance.now() - startTime;
+
+    // Count total covisible pairs
+    let totalPairs = 0;
+    for (const v1 of viewNames) {
+        for (const v2 of viewNames) {
+            if (v1 < v2) {
+                totalPairs += graph[v1][v2].length;
+            }
+        }
+    }
+    calibLog(`buildCovisibilityGraph: Complete in ${totalTime.toFixed(1)}ms | ${totalPairs} covisible frame pairs found`);
+
     return graph;
 }
 
@@ -710,6 +770,7 @@ function findPoseChain(graph, refViewName, viewNames) {
  * Compute board pose for a view on a frame using solvePnP
  */
 function computeBoardPose(detection, viewName, config, intrinsics) {
+    const startTime = performance.now();
     const viewResult = detection.views[viewName];
     if (!viewResult || viewResult.error || !viewResult.charucoCorners || viewResult.numCharucoCorners < 6) {
         return null;
@@ -732,9 +793,12 @@ function computeBoardPose(detection, viewName, config, intrinsics) {
     const tvec = new cv.Mat();
 
     try {
+        const pnpStart = performance.now();
         const success = cv.solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
+        const pnpTime = performance.now() - pnpStart;
 
         if (!success) {
+            calibLog(`computeBoardPose: solvePnP failed for ${viewName} on frame ${detection.frame}`, 'warn');
             objectPoints.delete(); imagePoints.delete(); cameraMatrix.delete();
             distCoeffs.delete(); rvec.delete(); tvec.delete();
             return null;
@@ -756,6 +820,9 @@ function computeBoardPose(detection, viewName, config, intrinsics) {
         R.delete(); objectPoints.delete(); imagePoints.delete();
         cameraMatrix.delete(); distCoeffs.delete(); rvec.delete(); tvec.delete();
 
+        const totalTime = performance.now() - startTime;
+        calibLog(`computeBoardPose: ${viewName} frame=${detection.frame} | solvePnP=${pnpTime.toFixed(1)}ms, total=${totalTime.toFixed(1)}ms | T=[${result.tvec.map(v => v.toFixed(1)).join(', ')}]`);
+
         return result;
     } catch (err) {
         objectPoints.delete(); imagePoints.delete(); cameraMatrix.delete();
@@ -768,9 +835,14 @@ function computeBoardPose(detection, viewName, config, intrinsics) {
  * Compute relative pose between two cameras
  */
 function computeRelativePose(refViewName, targetViewName, graph, detections, config, intrinsics) {
+    const startTime = performance.now();
     const covisibleFrames = graph[refViewName][targetViewName];
-    if (covisibleFrames.length === 0) return null;
+    if (covisibleFrames.length === 0) {
+        calibLog(`computeRelativePose: No covisible frames for ${refViewName} -> ${targetViewName}`, 'warn');
+        return null;
+    }
 
+    calibLog(`computeRelativePose: Computing ${refViewName} -> ${targetViewName} from ${covisibleFrames.length} covisible frames`);
     const relativePoses = [];
 
     for (const covis of covisibleFrames) {
@@ -824,6 +896,9 @@ function computeRelativePose(refViewName, targetViewName, graph, detections, con
         tvecs.reduce((s, v) => s + (v[0] - avgTvec[0])**2 + (v[1] - avgTvec[1])**2 + (v[2] - avgTvec[2])**2, 0) / tvecs.length
     );
 
+    const totalTime = performance.now() - startTime;
+    calibLog(`computeRelativePose: ${refViewName} -> ${targetViewName} complete in ${totalTime.toFixed(1)}ms | ${relativePoses.length} poses averaged, T=[${avgTvec.map(v => v.toFixed(1)).join(', ')}], std=${tStd.toFixed(2)}`);
+
     return { R, rvec: avgRvec, tvec: avgTvec, rmsError: tStd, framesUsed: relativePoses.length };
 }
 
@@ -840,10 +915,14 @@ let wasmTriangulation = null;
  */
 async function initTriangulationWasm() {
     if (wasmTriangulation) return wasmTriangulation;
+    const startTime = performance.now();
+    calibLog('initTriangulationWasm: Loading WASM module from CDN...');
     wasmTriangulation = await import(
         'https://cdn.jsdelivr.net/npm/@talmolab/sba-solver-wasm@0.2.0/wrapper.js'
     );
     await wasmTriangulation.initSBA();
+    const loadTime = performance.now() - startTime;
+    calibLog(`initTriangulationWasm: WASM module loaded and initialized in ${loadTime.toFixed(1)}ms`, 'success');
     return wasmTriangulation;
 }
 
@@ -960,8 +1039,18 @@ function quaternionToRotationMatrix(q) {
  * @returns {Object|null} SBA input data or null if missing data
  */
 function prepareSbaInput(state, viewNames, config, generateSbaJsonOutput) {
+    const startTime = performance.now();
+    calibLog(`prepareSbaInput: Preparing SBA input for ${viewNames.length} cameras`);
+
+    const exportStart = performance.now();
     const exportData = generateSbaJsonOutput(state, viewNames, config);
-    if (!exportData) return null;
+    const exportTime = performance.now() - exportStart;
+    calibLog(`prepareSbaInput: Generated export data in ${exportTime.toFixed(1)}ms`);
+
+    if (!exportData) {
+        calibLog('prepareSbaInput: Failed to generate export data', 'error');
+        return null;
+    }
 
     // Build cameras array in WASM format
     const cameras = viewNames.map(name => {
@@ -1016,6 +1105,9 @@ function prepareSbaInput(state, viewNames, config, generateSbaJsonOutput) {
             }
         }
     }
+
+    const totalTime = performance.now() - startTime;
+    calibLog(`prepareSbaInput: Complete in ${totalTime.toFixed(1)}ms | ${cameras.length} cameras, ${points.length} points, ${observations.length} observations`, 'success');
 
     return {
         cameras,
@@ -1079,12 +1171,20 @@ function getMatchedPointsForFrame(detections, view1Name, view2Name, frameIndex, 
  * @returns {Promise<Array>} Array of frame errors with point reprojection data
  */
 async function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, extrinsics) {
+    const startTime = performance.now();
+    calibLog(`computeCrossViewReprojectionErrors: Starting for ${detections.length} detections, ${viewNames.length} cameras`);
+
     // Initialize WASM and build cameras array once
+    const initStart = performance.now();
     await initTriangulationWasm();
     const wasmCameras = buildWasmCameras(viewNames, intrinsics, extrinsics);
     const cameraIndexMap = new Map(viewNames.map((name, idx) => [name, idx]));
+    const initTime = performance.now() - initStart;
+    calibLog(`computeCrossViewReprojectionErrors: Camera setup complete in ${initTime.toFixed(1)}ms`);
 
     const frameErrors = [];
+    let totalTriangulations = 0;
+    let totalPoints = 0;
 
     for (const detection of detections) {
         // Get cameras with valid detections
@@ -1186,8 +1286,18 @@ async function computeCrossViewReprojectionErrors(detections, viewNames, intrins
                 pointErrors: pointErrors,
                 cameras: validCameras
             });
+            totalPoints += pointErrors.length;
         }
+        totalTriangulations++;
     }
+
+    const totalTime = performance.now() - startTime;
+    const avgPointsPerFrame = frameErrors.length > 0 ? (totalPoints / frameErrors.length).toFixed(1) : 0;
+    const meanError = frameErrors.length > 0
+        ? (frameErrors.reduce((sum, f) => sum + f.pointErrors.reduce((s, p) => s + p.meanError, 0) / f.pointErrors.length, 0) / frameErrors.length).toFixed(3)
+        : 'N/A';
+
+    calibLog(`computeCrossViewReprojectionErrors: Complete in ${totalTime.toFixed(1)}ms | ${frameErrors.length} frames, ${totalPoints} points triangulated, avg ${avgPointsPerFrame} pts/frame, mean reproj=${meanError}px`, 'success');
 
     return frameErrors;
 }
@@ -1302,11 +1412,23 @@ function chainRelativePoses(relativePoses, parent, refViewName, viewNames) {
  * @returns {Object} Object with extrinsics and relativePoses
  */
 function computeAbsoluteExtrinsics(graph, parent, detections, config, intrinsics, refViewName, viewNames) {
+    const startTime = performance.now();
+    calibLog(`computeAbsoluteExtrinsics: Computing for ${viewNames.length} cameras, reference=${refViewName}`);
+
     // Compute pairwise relative poses
+    const relStart = performance.now();
     const relativePoses = computePairwiseRelativePoses(graph, parent, detections, config, intrinsics, refViewName, viewNames);
+    const relTime = performance.now() - relStart;
+    calibLog(`computeAbsoluteExtrinsics: Pairwise relative poses computed in ${relTime.toFixed(1)}ms (${Object.keys(relativePoses).length} pairs)`);
 
     // Chain to get absolute poses
+    const chainStart = performance.now();
     const extrinsics = chainRelativePoses(relativePoses, parent, refViewName, viewNames);
+    const chainTime = performance.now() - chainStart;
+    calibLog(`computeAbsoluteExtrinsics: Pose chaining complete in ${chainTime.toFixed(1)}ms`);
+
+    const totalTime = performance.now() - startTime;
+    calibLog(`computeAbsoluteExtrinsics: Complete in ${totalTime.toFixed(1)}ms | ${Object.keys(extrinsics).length} camera poses computed`, 'success');
 
     return { extrinsics, relativePoses };
 }
@@ -1322,6 +1444,9 @@ function computeAbsoluteExtrinsics(graph, parent, detections, config, intrinsics
  * @param {Array} cameraNames - Array of camera names
  */
 function applySbaResults(sbaResult, state, cameraNames) {
+    const startTime = performance.now();
+    calibLog(`applySbaResults: Applying results for ${cameraNames.length} cameras`);
+
     for (let i = 0; i < cameraNames.length; i++) {
         const name = cameraNames[i];
         const cam = sbaResult.cameras[i];
@@ -1350,5 +1475,10 @@ function applySbaResults(sbaResult, state, cameraNames) {
         state.extrinsics[name].R = R;
         state.extrinsics[name].tvec = [...cam.translation];
         state.extrinsics[name].rvec = matrixToRodrigues(R);
+
+        calibLog(`applySbaResults: ${name} | fx=${cam.focal[0].toFixed(1)}, fy=${cam.focal[1].toFixed(1)}, T=[${cam.translation.map(v => v.toFixed(1)).join(', ')}]`);
     }
+
+    const totalTime = performance.now() - startTime;
+    calibLog(`applySbaResults: Complete in ${totalTime.toFixed(1)}ms`, 'success');
 }
