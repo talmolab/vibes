@@ -59,6 +59,25 @@ When loading videos from a URL:
 
 Uses the WebCodecs API for hardware-accelerated video decoding with chunked file reading to avoid loading entire videos into memory. Implements a sliding LRU cache with intelligent prefetching based on access patterns. Supports both local files (via File System Access API with fallback to file input) and remote URLs (with range request streaming when available).
 
+### B-Frame Handling
+
+Videos encoded with B-frames (bidirectional predicted frames) require special handling because:
+
+1. **Decode order ≠ presentation order**: mp4box.js returns samples sorted by DTS (decode time), but frames must be displayed in CTS (composition/presentation time) order
+2. **Inter-frame dependencies**: B-frames depend on both past AND future reference frames (I-frames and P-frames)
+
+The decoder addresses this by:
+
+1. **Sorting samples by CTS** on load so `samples[N]` = presentation frame N
+2. **Preserving `decodeIndex`** to track original decode order for each sample
+3. **Feeding decoder in decode order** by sorting selected samples by `decodeIndex` before decoding
+4. **Including ALL decode indices** in the range to ensure no reference frames are skipped (fixes blocky artifact bug)
+5. **Mapping output by timestamp** to route decoded frames back to correct presentation indices
+
+### Decode Index Gap Fix
+
+When decoding a range of presentation frames, the code must include ALL samples whose decode indices fall within the required range - not just samples whose presentation indices are in the target range. Without this, reference frames (P-frames) that B-frames depend on may be skipped, causing blocky gray artifacts from incomplete inter-frame prediction.
+
 ## Initial prompt
 
 The initial prompt for this vibe was not recorded. This README was reconstructed based on the implementation.
