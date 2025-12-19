@@ -1,6 +1,6 @@
 # Frame-Accurate Video Player
 
-**Live:** https://v.tlab.sh/video-player/
+**Live:** https://vibes.tlab.sh/video-player/
 
 Browser-based video player with frame-accurate seeking, zoom/pan, and efficient caching using WebCodecs API.
 

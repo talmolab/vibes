@@ -1,4 +1,4 @@
-# v.tlab.sh
+# vibes.tlab.sh
 
 Self-contained HTML vibes (tools/applets) for the web.
 
@@ -36,9 +36,9 @@ Each "vibe" is a self-contained HTML application with inline CSS and JavaScript.
 ```
 /
 ├── hello-world/
-│   └── index.html    → v.tlab.sh/hello-world/
+│   └── index.html    → vibes.tlab.sh/hello-world/
 ├── another-vibe/
-│   └── index.html    → v.tlab.sh/another-vibe/
+│   └── index.html    → vibes.tlab.sh/another-vibe/
 └── ...
 ```
 
@@ -98,7 +98,7 @@ Proxy: DNS only (gray cloud)
 ### GitHub Pages
 
 - Settings > Pages > Source: GitHub Actions
-- Custom domain: `v.tlab.sh`
+- Custom domain: `vibes.tlab.sh`
 
 ### Claude Integration
 

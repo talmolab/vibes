@@ -1,6 +1,6 @@
 # h5ls
 
-**Live:** https://v.tlab.sh/h5ls/
+**Live:** https://vibes.tlab.sh/h5ls/
 
 Browser-based HDF5 file explorer that lists datasets, shapes, dtypes, and attributes without downloading the entire file.
 

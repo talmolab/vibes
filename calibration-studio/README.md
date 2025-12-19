@@ -1,6 +1,6 @@
 # Calibration Studio
 
-**Live:** https://v.tlab.sh/calibration-studio/
+**Live:** https://vibes.tlab.sh/calibration-studio/
 
 Browser-based multi-camera calibration tool using ChArUco boards.
 

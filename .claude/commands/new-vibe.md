@@ -1,6 +1,6 @@
 # Create a New Vibe
 
-Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
+Create a new self-contained HTML vibe (tool/applet) for vibes.tlab.sh.
 
 ## Workflow
 
@@ -17,7 +17,7 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
    - Create `<vibe-name>/index.html` following the template in CLAUDE.md
    - Keep it under 300 lines (if possible)
    - Create a `<vibe-name>/README.md` with:
-     - Link to deployment: `https://v.tlab.sh/<vibe-name>/`
+     - Link to deployment: `https://vibes.tlab.sh/<vibe-name>/`
      - Description of the vibe
      - `## Initial prompt` section with the prompt used to create the vibe
 
@@ -33,7 +33,7 @@ Create a new self-contained HTML vibe (tool/applet) for v.tlab.sh.
 
 6. **Open PR**:
    - Push branch and create PR to `main`
-   - Include deployment link: `https://v.tlab.sh/<vibe-name>/`
+   - Include deployment link: `https://vibes.tlab.sh/<vibe-name>/`
    - PRs are squash merged
 
 ## Template
