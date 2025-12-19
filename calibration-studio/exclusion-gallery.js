@@ -212,8 +212,8 @@ async function buildIntrinsicsExclusionGallery() {
         item.dataset.videoFrame = videoFrame;
 
         item.innerHTML = `
-            ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame}">` : ''}
-            <div class="frame-thumbnail-label">F${videoFrame}${error ? ` • ${error.toFixed(2)}px` : ''}</div>
+            ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame + 1}">` : ''}
+            <div class="frame-thumbnail-label">F${videoFrame + 1}${error ? ` • ${error.toFixed(2)}px` : ''}</div>
             ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
             ${crossWarning}
             <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
@@ -246,7 +246,7 @@ async function buildIntrinsicsExclusionGallery() {
                     state.exclusions.intrinsics[camName].add(calibIdx);
                 }
             }
-            log(`${currentlyExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, currentlyExcluded ? 'info' : 'warn');
+            log(`${currentlyExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame + 1})`, currentlyExcluded ? 'info' : 'warn');
             updateIntrinsicsExclusionUI();
         });
 
@@ -482,8 +482,8 @@ async function buildExtrinsicsExclusionGallery() {
         item.dataset.videoFrame = videoFrame;
 
         item.innerHTML = `
-            ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame}">` : ''}
-            <div class="frame-thumbnail-label">F${videoFrame} • ${meanError.toFixed(2)}px</div>
+            ${thumbnail ? `<img src="${thumbnail}" alt="Frame ${videoFrame + 1}">` : ''}
+            <div class="frame-thumbnail-label">F${videoFrame + 1} • ${meanError.toFixed(2)}px</div>
             ${isExcluded ? '<div class="frame-thumbnail-excluded-badge">✕</div>' : ''}
             ${crossWarning}
             <button class="frame-thumbnail-btn" title="${isExcluded ? 'Include frame' : 'Exclude frame'}">${isExcluded ? '✓' : '✕'}</button>
@@ -696,7 +696,7 @@ function setupExclusionKeyboardShortcut() {
 
                 const firstCam = Object.keys(state.intrinsics)[0];
                 const videoFrame = state.intrinsics[firstCam]?.frameIndices?.[calibIdx];
-                log(`${isExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, isExcluded ? 'info' : 'warn');
+                log(`${isExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame + 1})`, isExcluded ? 'info' : 'warn');
                 updateIntrinsicsExclusionUI();
                 e.preventDefault();
             } else if (state.showExtrinsicsReproj && state.extrinsicsReprojData) {

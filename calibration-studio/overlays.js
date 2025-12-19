@@ -762,7 +762,7 @@ function setupExtrinsicsSwarmHover(state, videoController) {
             tooltip.style.display = 'block';
             tooltip.style.left = `${e.clientX - canvas.parentElement.getBoundingClientRect().left + 10}px`;
             tooltip.style.top = `${e.clientY - canvas.parentElement.getBoundingClientRect().top - 30}px`;
-            tooltip.innerHTML = `<strong>${closest.camera}</strong><br>Frame ${closest.frame}, Point ${closest.pointId}<br>Error: ${closest.error.toFixed(4)} px`;
+            tooltip.innerHTML = `<strong>${closest.camera}</strong><br>Frame ${closest.frame + 1}, Point ${closest.pointId}<br>Error: ${closest.error.toFixed(4)} px`;
             canvas.style.cursor = 'pointer';
 
             if (!hoveredDot || hoveredDot.frameIndex !== closest.frameIndex || hoveredDot.pointIndex !== closest.pointIndex) {

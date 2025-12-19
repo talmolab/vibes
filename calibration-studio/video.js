@@ -505,7 +505,9 @@ class VideoController {
             const rect = seekbar.getBoundingClientRect();
             const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const percent = x / rect.width;
-            return Math.floor(percent * this.state.totalFrames);
+            // Map 0-100% to frame indices 0 to (totalFrames-1)
+            const maxFrame = Math.max(0, this.state.totalFrames - 1);
+            return Math.round(percent * maxFrame);
         };
 
         seekbar.addEventListener('mousedown', (e) => {

@@ -846,8 +846,18 @@
                     if (boardConfig.board_y) document.getElementById('boardY').value = boardConfig.board_y;
                     if (boardConfig.square_length) document.getElementById('squareLength').value = boardConfig.square_length;
                     if (boardConfig.marker_length) document.getElementById('markerLength').value = boardConfig.marker_length;
-                    if (boardConfig.marker_bits) document.getElementById('markerBits').value = boardConfig.marker_bits;
-                    if (boardConfig.dict_size) document.getElementById('dictSize').value = boardConfig.dict_size;
+                    // Set dictionary based on marker_bits and dict_size
+                    if (boardConfig.marker_bits && boardConfig.dict_size) {
+                        const dictSelect = document.getElementById('arucoDict');
+                        const dictValue = `DICT_${boardConfig.marker_bits}X${boardConfig.marker_bits}_${boardConfig.dict_size}`;
+                        // Find matching option
+                        for (const opt of dictSelect.options) {
+                            if (opt.value === dictValue) {
+                                dictSelect.value = dictValue;
+                                break;
+                            }
+                        }
+                    }
                     log('Applied board configuration from board.toml', 'success');
                 }
 
@@ -1002,10 +1012,13 @@
         // Frame Navigation (seekToFrame moved to VideoController in video.js)
         // ============================================
         function updateSeekbar() {
-            const progress = state.totalFrames > 0 ? (state.currentFrame / state.totalFrames) * 100 : 0;
+            // Map frame index to 0-100% where frame 0 = 0% and frame (n-1) = 100%
+            const maxFrame = Math.max(1, state.totalFrames - 1);
+            const progress = state.totalFrames > 0 ? (state.currentFrame / maxFrame) * 100 : 0;
             document.getElementById('seekbarProgress').style.width = progress + '%';
             document.getElementById('seekbarThumb').style.left = progress + '%';
-            document.getElementById('currentFrame').textContent = state.currentFrame;
+            // Display 1-based frame number
+            document.getElementById('currentFrame').textContent = state.currentFrame + 1;
 
             const time = state.currentFrame / state.fps;
             const mins = Math.floor(time / 60);
@@ -1031,10 +1044,13 @@
 
         // Seekbar scrubbing (logic moved to VideoController)
         function updateSeekbarVisual(frame) {
-            const progress = state.totalFrames > 0 ? (frame / state.totalFrames) * 100 : 0;
+            // Map frame index to 0-100% where frame 0 = 0% and frame (n-1) = 100%
+            const maxFrame = Math.max(1, state.totalFrames - 1);
+            const progress = state.totalFrames > 0 ? (frame / maxFrame) * 100 : 0;
             document.getElementById('seekbarProgress').style.width = progress + '%';
             document.getElementById('seekbarThumb').style.left = progress + '%';
-            document.getElementById('currentFrame').textContent = frame;
+            // Display 1-based frame number
+            document.getElementById('currentFrame').textContent = frame + 1;
         }
         videoController.setupSeekbar(document.getElementById('seekbar'), updateSeekbarVisual);
 
