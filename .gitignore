@@ -220,3 +220,6 @@ _site/
 
 # Playwright
 .playwright-mcp/
+
+# Allow calibration-studio lib (WASM modules)
+!calibration-studio/lib/
