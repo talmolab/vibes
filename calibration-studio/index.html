@@ -783,6 +783,222 @@
         }
 
         // ============================================
+        // Custom Folder Loading (File System Access API)
+        // ============================================
+        async function loadCustomFolder() {
+            // Check for File System Access API support
+            if (!('showDirectoryPicker' in window)) {
+                showError('File System Access API not supported. Use Chrome, Edge, or another Chromium-based browser.');
+                return;
+            }
+
+            try {
+                hideError();
+                log('Opening folder picker...', 'info');
+
+                const dirHandle = await window.showDirectoryPicker({
+                    mode: 'read'
+                });
+
+                log(`Selected folder: ${dirHandle.name}`, 'info');
+                setStageStatus('stage1', 'Scanning folder...', 'active');
+
+                // Scan for video files and optional config
+                const videoFiles = [];
+                let boardConfig = null;
+
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        const name = entry.name.toLowerCase();
+                        if (name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.m4v') || name.endsWith('.webm')) {
+                            videoFiles.push({
+                                name: entry.name.replace(/\.[^/.]+$/, ''), // Remove extension for view name
+                                handle: entry
+                            });
+                        } else if (name === 'board.toml') {
+                            // Try to load board configuration
+                            try {
+                                const file = await entry.getFile();
+                                const text = await file.text();
+                                boardConfig = parseBoardToml(text);
+                                log(`Found board.toml: ${JSON.stringify(boardConfig)}`, 'info');
+                            } catch (e) {
+                                log(`Failed to parse board.toml: ${e.message}`, 'warn');
+                            }
+                        }
+                    }
+                }
+
+                if (videoFiles.length === 0) {
+                    showError('No video files found in folder. Expected .mp4, .mov, .m4v, or .webm files.');
+                    setStageStatus('stage1', 'No videos found', 'error');
+                    return;
+                }
+
+                // Sort video files alphabetically by name
+                videoFiles.sort((a, b) => a.name.localeCompare(b.name));
+
+                log(`Found ${videoFiles.length} video files: ${videoFiles.map(v => v.name).join(', ')}`, 'info');
+
+                // Apply board config if found
+                if (boardConfig) {
+                    if (boardConfig.board_x) document.getElementById('boardX').value = boardConfig.board_x;
+                    if (boardConfig.board_y) document.getElementById('boardY').value = boardConfig.board_y;
+                    if (boardConfig.square_length) document.getElementById('squareLength').value = boardConfig.square_length;
+                    if (boardConfig.marker_length) document.getElementById('markerLength').value = boardConfig.marker_length;
+                    if (boardConfig.marker_bits) document.getElementById('markerBits').value = boardConfig.marker_bits;
+                    if (boardConfig.dict_size) document.getElementById('dictSize').value = boardConfig.dict_size;
+                    log('Applied board configuration from board.toml', 'success');
+                }
+
+                // Load videos using the same pattern as loadTestData
+                await loadVideosFromFiles(videoFiles);
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    log('Folder selection cancelled', 'info');
+                    return;
+                }
+                log(`Error loading folder: ${err.message}`, 'error');
+                showError(`Failed to load folder: ${err.message}`);
+                setStageStatus('stage1', 'Failed', 'error');
+            }
+        }
+
+        // Parse simple TOML format for board config
+        function parseBoardToml(text) {
+            const config = {};
+            const lines = text.split('\n');
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) continue;
+                const match = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
+                if (match) {
+                    const key = match[1];
+                    let value = match[2].trim();
+                    // Parse number
+                    if (/^-?\d+\.?\d*$/.test(value)) {
+                        value = parseFloat(value);
+                    } else if (value.startsWith('"') && value.endsWith('"')) {
+                        value = value.slice(1, -1);
+                    }
+                    config[key] = value;
+                }
+            }
+            return config;
+        }
+
+        // Load videos from File handles (shared logic for custom folder loading)
+        async function loadVideosFromFiles(videoFiles) {
+            // Update view list UI
+            const viewList = document.getElementById('viewList');
+            viewList.innerHTML = videoFiles.map(v => `
+                <div class="view-item">
+                    <span class="view-status loading"></span>
+                    <span class="view-name">${v.name}</span>
+                    <span class="view-path">(local file)</span>
+                </div>
+            `).join('');
+
+            const videoGrid = document.getElementById('videoGrid');
+            videoGrid.innerHTML = '';
+            videoGrid.style.display = 'grid';
+
+            // Show video panel
+            document.getElementById('videoPanel').classList.remove('hidden');
+            document.getElementById('mainLayout').classList.remove('no-videos');
+
+            state.views = [];
+
+            for (let i = 0; i < videoFiles.length; i++) {
+                const viewData = videoFiles[i];
+                try {
+                    // Get File object from handle
+                    const file = await viewData.handle.getFile();
+
+                    const decoder = new OnDemandVideoDecoder({ cacheSize: 30, lookahead: 5 });
+                    const info = await decoder.init(file);
+
+                    // Create video cell
+                    const cell = document.createElement('div');
+                    cell.className = 'video-cell';
+                    cell.innerHTML = `
+                        <canvas id="canvas-${viewData.name}"></canvas>
+                        <div class="video-label">${viewData.name}</div>
+                        <div class="video-metrics" id="metrics-${viewData.name}">
+                            ${info.width}x${info.height} @ ${info.fps.toFixed(1)} fps | ${info.totalFrames} frames
+                        </div>
+                    `;
+                    videoGrid.appendChild(cell);
+
+                    const canvas = cell.querySelector('canvas');
+                    canvas.width = info.width;
+                    canvas.height = info.height;
+
+                    state.views.push({
+                        name: viewData.name,
+                        decoder: decoder,
+                        canvas: canvas,
+                        ctx: canvas.getContext('2d'),
+                        info: info,
+                    });
+
+                    // Setup zoom handlers for this video
+                    videoController.setupZoomHandlers(viewData.name, canvas);
+
+                    // Update status indicator
+                    viewList.children[i].querySelector('.view-status').classList.remove('loading');
+                    viewList.children[i].querySelector('.view-status').classList.add('loaded');
+
+                    log(`Loaded ${viewData.name}: ${info.width}x${info.height}, ${info.totalFrames} frames`, 'success');
+
+                } catch (err) {
+                    viewList.children[i].querySelector('.view-status').classList.remove('loading');
+                    viewList.children[i].querySelector('.view-status').classList.add('error');
+                    log(`Failed to load ${viewData.name}: ${err.message}`, 'error');
+                }
+            }
+
+            if (state.views.length > 0) {
+                // Use minimum frame count across all views
+                state.totalFrames = Math.min(...state.views.map(v => v.info.totalFrames));
+                state.fps = state.views[0].info.fps;
+                state.currentFrame = 0;
+
+                document.getElementById('totalFrames').textContent = state.totalFrames;
+                document.getElementById('seekbarContainer').style.display = 'block';
+                document.getElementById('videoControls').style.display = 'flex';
+
+                // Show first frame
+                await videoController.seekToFrame(0);
+
+                setStageStatus('stage1', `${state.views.length} views loaded`, 'complete');
+                setStageStatus('stage2', 'Ready', '');
+
+                // Expand stage 2 and enable detection if OpenCV ready
+                document.getElementById('stage2').classList.remove('collapsed');
+                if (state.opencvReady) {
+                    document.getElementById('detectCurrentBtn').disabled = false;
+                    document.getElementById('runDetectionBtn').disabled = false;
+                }
+
+                // Show overlay controls section
+                document.getElementById('overlayControls').style.display = 'block';
+
+                // Update reference camera dropdown
+                const refCamSelect = document.getElementById('referenceCamera');
+                refCamSelect.innerHTML = state.views.map((v, i) =>
+                    `<option value="${i}">${v.name}</option>`
+                ).join('');
+
+                log(`All views loaded. Total synchronized frames: ${state.totalFrames}`, 'success');
+            } else {
+                setStageStatus('stage1', 'Failed', 'error');
+                showError('Failed to load any video views');
+            }
+        }
+
+        // ============================================
         // Frame Navigation (seekToFrame moved to VideoController in video.js)
         // ============================================
         function updateSeekbar() {
@@ -805,6 +1021,7 @@
         // Event Listeners
         // ============================================
         document.getElementById('loadTestDataBtn').addEventListener('click', loadTestData);
+        document.getElementById('loadFolderBtn').addEventListener('click', loadCustomFolder);
 
         document.getElementById('playBtn').addEventListener('click', () => videoController.togglePlayback());
         document.getElementById('prevFrameBtn').addEventListener('click', () => videoController.seekToFrame(state.currentFrame - 1));

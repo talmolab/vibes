@@ -35,22 +35,31 @@ class OnDemandVideoDecoder {
         this.CHUNK_SIZE = 1024 * 1024;
     }
 
-    async init(url) {
-        this.url = url;
-        videoLog(`Checking video: ${url}`, 'info');
+    async init(source) {
+        // Handle both URL strings and File/Blob objects
+        if (typeof source === 'string') {
+            this.url = source;
+            videoLog(`Checking video: ${source}`, 'info');
 
-        const headResponse = await fetch(url, { method: 'HEAD' });
-        if (!headResponse.ok) {
-            throw new Error(`Failed to fetch URL: ${headResponse.status}`);
-        }
-        this.fileSize = parseInt(headResponse.headers.get('Content-Length')) || 0;
-        this.supportsRangeRequests = headResponse.headers.get('Accept-Ranges') === 'bytes';
+            const headResponse = await fetch(source, { method: 'HEAD' });
+            if (!headResponse.ok) {
+                throw new Error(`Failed to fetch URL: ${headResponse.status}`);
+            }
+            this.fileSize = parseInt(headResponse.headers.get('Content-Length')) || 0;
+            this.supportsRangeRequests = headResponse.headers.get('Accept-Ranges') === 'bytes';
 
-        if (!this.supportsRangeRequests || !this.fileSize) {
-            videoLog('Downloading entire file (no range support)...', 'warn');
-            const response = await fetch(url);
-            this.fileBlob = await response.blob();
-            this.fileSize = this.fileBlob.size;
+            if (!this.supportsRangeRequests || !this.fileSize) {
+                videoLog('Downloading entire file (no range support)...', 'warn');
+                const response = await fetch(source);
+                this.file = await response.blob();
+                this.fileSize = this.file.size;
+                this.url = null;
+            }
+        } else {
+            // File or Blob object (from file picker or directory picker)
+            this.file = source;
+            this.fileSize = source.size;
+            videoLog(`Loading video file: ${source.name || 'blob'} (${(source.size / 1024 / 1024).toFixed(1)} MB)`, 'info');
         }
 
         this.mp4boxFile = MP4Box.createFile();
@@ -112,13 +121,14 @@ class OnDemandVideoDecoder {
 
     async readChunk(offset, size) {
         const end = Math.min(offset + size, this.fileSize);
-        if (this.fileBlob) {
-            return await this.fileBlob.slice(offset, end).arrayBuffer();
-        } else {
+        if (this.url && this.supportsRangeRequests) {
             const response = await fetch(this.url, {
                 headers: { 'Range': `bytes=${offset}-${end - 1}` }
             });
             return await response.arrayBuffer();
+        } else {
+            // Use blob/file slicing for local files or downloaded blobs
+            return await this.file.slice(offset, end).arrayBuffer();
         }
     }
 
