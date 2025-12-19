@@ -1,4 +1,4 @@
-# Claude Instructions for v.tlab.sh
+# Claude Instructions for vibes.tlab.sh
 
 Build self-contained HTML vibes (tools/applets) following these patterns.
 
@@ -171,7 +171,7 @@ Claude can then:
 3. Create PR:
    - Branch from `main`
    - Open PR with description
-   - **Include deployment link**: `https://v.tlab.sh/<vibe-name>/`
+   - **Include deployment link**: `https://vibes.tlab.sh/<vibe-name>/`
    - Squash merge when approved
 
 ## Investigations and Scratch Work

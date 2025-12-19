@@ -1,6 +1,6 @@
 # Webcam Pose Tracking
 
-**Live:** https://v.tlab.sh/webcam-pose-tracking/
+**Live:** https://vibes.tlab.sh/webcam-pose-tracking/
 
 Real-time body pose estimation using MediaPipe's vision tasks directly in your browser.
 
