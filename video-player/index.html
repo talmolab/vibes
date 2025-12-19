@@ -1815,12 +1815,19 @@
                 const center = getTouchCenter(e.touches, rect);
                 pinchCenterX = center.x;
                 pinchCenterY = center.y;
+                // Clear single-finger pan state to prevent snap when lifting one finger
+                touchStartX = null;
+                touchStartY = null;
+                touchStartOffsetX = null;
+                touchStartOffsetY = null;
             }
         }, { passive: false });
 
         canvasContainer.addEventListener('touchmove', (e) => {
             if (e.touches.length === 2 && initialPinchDistance !== null) {
                 e.preventDefault();
+                const rect = canvasContainer.getBoundingClientRect();
+                const currentCenter = getTouchCenter(e.touches, rect);
                 const currentDistance = getTouchDistance(e.touches);
                 const pinchRatio = currentDistance / initialPinchDistance;
                 const newScale = Math.max(0.1, Math.min(50, initialPinchScale * pinchRatio));
@@ -1828,6 +1835,12 @@
                 // Zoom towards pinch center
                 offsetX = pinchCenterX - (pinchCenterX - offsetX) * (newScale / scale);
                 offsetY = pinchCenterY - (pinchCenterY - offsetY) * (newScale / scale);
+
+                // Pan with pinch center movement
+                offsetX += currentCenter.x - pinchCenterX;
+                offsetY += currentCenter.y - pinchCenterY;
+                pinchCenterX = currentCenter.x;
+                pinchCenterY = currentCenter.y;
 
                 scale = newScale;
                 constrainOffset();
