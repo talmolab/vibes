@@ -220,68 +220,37 @@
             fetchBtn.disabled = true;
 
             try {
-                // Use opengraph.io API (free tier allows some requests)
+                // Use microlink.io API (free tier, good CORS support)
                 const cacheBuster = Date.now();
+                const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&_=${cacheBuster}`;
 
-                // Try opengraph.io first (provides parsed metadata directly)
-                let meta = null;
-                try {
-                    const ogResponse = await fetch(
-                        `https://opengraph.io/api/1.1/site/${encodeURIComponent(url)}?cache_ok=false&_=${cacheBuster}`,
-                        { cache: 'no-store' }
-                    );
-                    if (ogResponse.ok) {
-                        const data = await ogResponse.json();
-                        if (data.hybridGraph) {
-                            const og = data.hybridGraph;
-                            meta = {
-                                title: og.title || '',
-                                description: og.description || '',
-                                image: og.image || null,
-                                siteName: og.site_name || new URL(url).hostname,
-                                favicon: og.favicon || `${new URL(url).origin}/favicon.ico`,
-                                url: og.url || url,
-                                type: og.type || 'website',
-                                twitterCard: 'summary_large_image',
-                                themeColor: null,
-                                author: og.author || null,
-                            };
-                        }
-                    }
-                } catch (e) {
-                    // Fall through to proxy method
+                const response = await fetch(apiUrl, { cache: 'no-store' });
+
+                if (!response.ok) {
+                    throw new Error(`API returned ${response.status}`);
                 }
 
-                // Fallback: try CORS proxies
-                if (!meta) {
-                    const proxies = [
-                        `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}&_=${cacheBuster}`,
-                        `https://corsproxy.io/?${encodeURIComponent(url)}&_=${cacheBuster}`,
-                    ];
+                const result = await response.json();
 
-                    let response = null;
-                    let lastError = null;
-
-                    for (const proxyUrl of proxies) {
-                        try {
-                            response = await fetch(proxyUrl, {
-                                cache: 'no-store',
-                                headers: { 'Cache-Control': 'no-cache' }
-                            });
-                            if (response.ok) break;
-                        } catch (e) {
-                            lastError = e;
-                            response = null;
-                        }
-                    }
-
-                    if (!response || !response.ok) {
-                        throw lastError || new Error(`Failed to fetch: ${response?.status || 'unknown'}`);
-                    }
-
-                    const html = await response.text();
-                    meta = parseMetadata(html, url);
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to fetch metadata');
                 }
+
+                const data = result.data;
+                const base = new URL(url);
+
+                const meta = {
+                    title: data.title || '',
+                    description: data.description || '',
+                    image: data.image?.url || null,
+                    siteName: data.publisher || base.hostname,
+                    favicon: data.logo?.url || `${base.origin}/favicon.ico`,
+                    url: data.url || url,
+                    type: 'website',
+                    twitterCard: 'summary_large_image',
+                    themeColor: null,
+                    author: data.author || null,
+                };
 
                 renderPreviews(meta);
 
@@ -292,44 +261,6 @@
                 loadingDiv.style.display = 'none';
                 fetchBtn.disabled = false;
             }
-        }
-
-        function parseMetadata(html, originalUrl) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            const base = new URL(originalUrl);
-
-            const getMeta = (selectors) => {
-                for (const sel of selectors) {
-                    const el = doc.querySelector(sel);
-                    if (el) return el.getAttribute('content') || el.getAttribute('href');
-                }
-                return null;
-            };
-
-            const resolveUrl = (url) => {
-                if (!url) return null;
-                try {
-                    return new URL(url, base).href;
-                } catch {
-                    return url;
-                }
-            };
-
-            return {
-                title: getMeta(['meta[property="og:title"]', 'meta[name="twitter:title"]'])
-                    || doc.querySelector('title')?.textContent || '',
-                description: getMeta(['meta[property="og:description"]', 'meta[name="twitter:description"]', 'meta[name="description"]']) || '',
-                image: resolveUrl(getMeta(['meta[property="og:image"]', 'meta[name="twitter:image"]', 'meta[name="twitter:image:src"]'])),
-                siteName: getMeta(['meta[property="og:site_name"]']) || base.hostname,
-                favicon: resolveUrl(getMeta(['link[rel="icon"]', 'link[rel="shortcut icon"]']))
-                    || `${base.origin}/favicon.ico`,
-                url: getMeta(['meta[property="og:url"]']) || originalUrl,
-                type: getMeta(['meta[property="og:type"]']) || 'website',
-                twitterCard: getMeta(['meta[name="twitter:card"]']) || 'summary',
-                themeColor: getMeta(['meta[name="theme-color"]']),
-                author: getMeta(['meta[name="author"]', 'meta[property="article:author"]']),
-            };
         }
 
         function renderPreviews(meta) {
