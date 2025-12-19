@@ -8,6 +8,7 @@ Browser-based multi-camera calibration tool using ChArUco boards.
 - **ChArUco detection** - Real-time board detection with configurable parameters using OpenCV.js
 - **Intrinsic calibration** - Per-camera calibration with reprojection error visualization
 - **Extrinsic calibration** - Multi-camera pose estimation via covisibility graph
+- **Bundle adjustment** - Joint refinement of intrinsics, extrinsics, and 3D points using Rust/WASM solver
 - **Cross-view triangulation** - 3D point reconstruction using DLT (svd-js)
 - **Export** - TOML format compatible with sleap-anipose, JSON for bundle adjustment
 
@@ -17,8 +18,10 @@ Browser-based multi-camera calibration tool using ChArUco boards.
 2. Configure board parameters (dimensions, square/marker size, dictionary)
 3. Run **Batch Detection** to detect ChArUco corners across frames
 4. **Compute Intrinsics** to calibrate each camera
-5. **Compute Extrinsics** to determine camera poses relative to a reference
-6. **Export** results as TOML or JSON
+5. **Compute Extrinsics (Initial)** to determine camera poses relative to a reference
+6. **Refine (Bundle Adjustment)** to jointly optimize all parameters (~27% error reduction typical)
+7. Optionally exclude outlier frames and click **Re-compute All** to recalibrate
+8. **Export** results as TOML or JSON
 
 ## Keyboard Shortcuts
 
@@ -40,6 +43,10 @@ calibration-studio/
 ├── index.html        # Main UI and application logic
 ├── video.js          # OnDemandVideoDecoder (WebCodecs + mp4box.js)
 ├── calibration.js    # Detection, calibration, and math utilities
+├── lib/              # WASM bundle adjustment solver
+│   ├── sba_solver_wasm.js      # WASM ES module wrapper
+│   ├── sba_solver_wasm_bg.wasm # WASM binary (~730KB)
+│   └── sba-wrapper.js          # Clean JS API for SBA
 └── sample_session/   # Test calibration videos
     ├── board.toml    # Board configuration
     ├── back.mp4      # Back camera view
