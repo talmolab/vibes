@@ -145,9 +145,8 @@ Create a new self-contained HTML vibe (tool/applet) for vibes.tlab.sh.
 - [ ] Directory created at `<vibe-name>/`
 - [ ] `<vibe-name>/README.md` created with deployment link, description, and initial prompt
 - [ ] `index.html` created with all inline CSS/JS
-- [ ] Mobile responsive (test at 375px width)
+- [ ] Mobile responsive (test at 375px width) if possible
 - [ ] 16px minimum font for inputs
-- [ ] Copy button with feedback
 - [ ] README.md updated with link
 - [ ] No external dependencies (or CDN only)
 - [ ] Under 300 lines
