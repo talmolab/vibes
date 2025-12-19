@@ -45,14 +45,18 @@
             position: relative;
             background: #000;
             border-radius: 8px;
-            overflow: hidden;
+            overflow: auto;
             margin: 20px 0;
             cursor: grab;
+            height: 400px;
+            min-height: 150px;
+            max-height: 90vh;
+            resize: vertical;
         }
         .canvas-container:active { cursor: grabbing; }
         canvas {
             display: block;
-            width: 100%;
+            max-width: 100%;
             height: auto;
             image-rendering: crisp-edges;
         }
