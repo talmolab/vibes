@@ -11,6 +11,7 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 - **Zoom and pan** - Interactive zoom with mouse wheel and pan with click-drag
 - **Keyboard shortcuts** - Rapid navigation with arrow keys and spacebar playback control
 - **URL and local file support** - Load videos from local files (File System Access API) or remote URLs with streaming support
+- **Overlay system** - Optional frame index and timing stats overlays with toggle controls
 - **Cache visualization** - Real-time view of cached frames and keyframe locations
 - **Diagnostic logging** - Detailed performance metrics and debug information
 
@@ -42,6 +43,13 @@ Browser-based video player with frame-accurate seeking, zoom/pan, and efficient 
 - **Intelligent prefetching** - Automatically prefetches frames in the current navigation direction
 - **Configurable cache** - Adjust cache size (10-500 frames) and lookahead (1-100 frames) based on your needs
 - **Keyframe-aware decoding** - Minimizes unnecessary decoding by respecting keyframe boundaries
+
+## URL Loading Requirements
+
+When loading videos from a URL:
+
+- **CORS** - The server must include `Access-Control-Allow-Origin` headers. GitHub Pages, S3, GCS, and most CDNs support this.
+- **Range requests** - For efficient streaming, the server should support HTTP range requests (`Accept-Ranges: bytes`). Without range request support, the entire file must be downloaded before playback begins. GitHub Pages supports range requests.
 
 ## Dependencies (CDN)
 

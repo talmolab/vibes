@@ -184,6 +184,7 @@
             border-radius: 8px;
             margin: 10px 0;
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             align-items: center;
         }
@@ -203,6 +204,12 @@
         .url-input-container button {
             padding: 10px 16px;
             margin: 0;
+        }
+        .url-hint {
+            width: 100%;
+            color: #888;
+            font-size: 12px;
+            margin-top: 4px;
         }
         .error-msg {
             background: #4a2020;
@@ -341,6 +348,7 @@
             <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)" value="https://vibes.tlab.sh/video-player/mice.mp4">
             <button id="urlLoadBtn">Load</button>
             <button id="urlCancelBtn">Cancel</button>
+            <small class="url-hint">URL must support CORS. Range requests enable streaming without downloading the full file.</small>
         </div>
 
         <div class="error-msg" id="errorMsg"></div>
