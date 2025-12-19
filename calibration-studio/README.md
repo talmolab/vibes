@@ -8,7 +8,7 @@ Browser-based multi-camera calibration tool using ChArUco boards.
 - **ChArUco detection** - Real-time board detection with configurable parameters using OpenCV.js
 - **Intrinsic calibration** - Per-camera calibration with reprojection error visualization
 - **Extrinsic calibration** - Multi-camera pose estimation via covisibility graph
-- **Bundle adjustment** - Joint refinement of intrinsics, extrinsics, and 3D points using Rust/WASM solver
+- **Bundle adjustment** - Joint refinement of intrinsics, extrinsics, and 3D points using Rust/WASM solver with configurable parameters (iterations, robust loss, outlier filtering, convergence tolerances)
 - **Cross-view triangulation** - 3D point reconstruction using DLT (svd-js)
 - **Export** - TOML format compatible with sleap-anipose, JSON for bundle adjustment
 
