@@ -828,118 +828,69 @@ function computeRelativePose(refViewName, targetViewName, graph, detections, con
 }
 
 // ============================================
-// Triangulation
+// Triangulation (WASM-accelerated)
 // ============================================
 
+// WASM module reference (loaded dynamically)
+let wasmTriangulation = null;
+
 /**
- * Triangulate a 3D point from multiple 2D observations using DLT
- * Uses svd-js library for SVD computation
+ * Initialize WASM triangulation module
+ * @returns {Promise<Object>} The WASM wrapper module
  */
-function triangulatePoint(observations, intrinsics, extrinsics) {
-    if (observations.length < 2) return null;
-
-    const rows = [];
-
-    for (const obs of observations) {
-        const intr = intrinsics[obs.camera];
-        const extr = extrinsics[obs.camera];
-        if (!intr || !extr) continue;
-
-        const K = intr.cameraMatrix;
-        const R = extr.R;
-        const t = extr.tvec;
-
-        // Projection matrix P = K * [R | t]
-        const P = [
-            [K[0][0] * R[0][0] + K[0][1] * R[1][0] + K[0][2] * R[2][0],
-             K[0][0] * R[0][1] + K[0][1] * R[1][1] + K[0][2] * R[2][1],
-             K[0][0] * R[0][2] + K[0][1] * R[1][2] + K[0][2] * R[2][2],
-             K[0][0] * t[0] + K[0][1] * t[1] + K[0][2] * t[2]],
-            [K[1][0] * R[0][0] + K[1][1] * R[1][0] + K[1][2] * R[2][0],
-             K[1][0] * R[0][1] + K[1][1] * R[1][1] + K[1][2] * R[2][1],
-             K[1][0] * R[0][2] + K[1][1] * R[1][2] + K[1][2] * R[2][2],
-             K[1][0] * t[0] + K[1][1] * t[1] + K[1][2] * t[2]],
-            [K[2][0] * R[0][0] + K[2][1] * R[1][0] + K[2][2] * R[2][0],
-             K[2][0] * R[0][1] + K[2][1] * R[1][1] + K[2][2] * R[2][1],
-             K[2][0] * R[0][2] + K[2][1] * R[1][2] + K[2][2] * R[2][2],
-             K[2][0] * t[0] + K[2][1] * t[1] + K[2][2] * t[2]]
-        ];
-
-        const x = obs.point.x;
-        const y = obs.point.y;
-
-        rows.push([x * P[2][0] - P[0][0], x * P[2][1] - P[0][1], x * P[2][2] - P[0][2], x * P[2][3] - P[0][3]]);
-        rows.push([y * P[2][0] - P[1][0], y * P[2][1] - P[1][1], y * P[2][2] - P[1][2], y * P[2][3] - P[1][3]]);
-    }
-
-    if (rows.length < 4) return null;
-
-    try {
-        const { u, v, q } = SVDJS.SVD(rows);
-
-        let minIdx = 0;
-        let minVal = q[0];
-        for (let i = 1; i < q.length; i++) {
-            if (q[i] < minVal) {
-                minVal = q[i];
-                minIdx = i;
-            }
-        }
-
-        const X = v[0][minIdx];
-        const Y = v[1][minIdx];
-        const Z = v[2][minIdx];
-        const W_h = v[3][minIdx];
-
-        if (Math.abs(W_h) < 1e-10) return null;
-
-        return { x: X / W_h, y: Y / W_h, z: Z / W_h };
-    } catch (e) {
-        return null;
-    }
+async function initTriangulationWasm() {
+    if (wasmTriangulation) return wasmTriangulation;
+    wasmTriangulation = await import(
+        'https://cdn.jsdelivr.net/npm/@talmolab/sba-solver-wasm@0.2.0/wrapper.js'
+    );
+    await wasmTriangulation.initSBA();
+    return wasmTriangulation;
 }
 
 /**
- * Project a 3D point to a camera
+ * Build WASM-format cameras array from intrinsics and extrinsics
+ * @param {Array} viewNames - Array of camera names in order
+ * @param {Object} intrinsics - Intrinsic parameters keyed by camera name
+ * @param {Object} extrinsics - Extrinsic parameters keyed by camera name
+ * @returns {Array} Array of CameraParams in WASM format
  */
-function projectPoint(point3D, camera, intrinsics, extrinsics) {
-    const intr = intrinsics[camera];
-    const extr = extrinsics[camera];
-    if (!intr || !extr) return null;
+function buildWasmCameras(viewNames, intrinsics, extrinsics) {
+    return viewNames.map(name => {
+        const intr = intrinsics[name];
+        const extr = extrinsics[name];
+        const quat = rotationMatrixToQuaternion(extr.R);
+        return {
+            rotation: quat,
+            translation: [extr.tvec[0], extr.tvec[1], extr.tvec[2]],
+            focal: [intr.fx, intr.fy],
+            principal: [intr.cx, intr.cy],
+            distortion: [intr.k1, intr.k2, intr.p1, intr.p2, intr.k3]
+        };
+    });
+}
 
-    const K = intr.cameraMatrix;
-    const R = extr.R;
-    const t = extr.tvec;
-    const d = intr.distCoeffs;
+/**
+ * Triangulate multiple 3D points using WASM-accelerated DLT
+ * @param {Array} pointObservations - Array of observation arrays, one per point
+ *        Each observation: { camera_idx, x, y }
+ * @param {Array} cameras - WASM-format cameras array
+ * @returns {Promise<Object>} Batch triangulation result with points array
+ */
+async function triangulatePointsWasm(pointObservations, cameras) {
+    const wasm = await initTriangulationWasm();
+    return await wasm.triangulatePoints(pointObservations, cameras);
+}
 
-    // Transform to camera coordinates
-    const X_cam = [
-        R[0][0] * point3D.x + R[0][1] * point3D.y + R[0][2] * point3D.z + t[0],
-        R[1][0] * point3D.x + R[1][1] * point3D.y + R[1][2] * point3D.z + t[1],
-        R[2][0] * point3D.x + R[2][1] * point3D.y + R[2][2] * point3D.z + t[2]
-    ];
-
-    if (X_cam[2] <= 0) return null;
-
-    // Normalized coordinates
-    const x_n = X_cam[0] / X_cam[2];
-    const y_n = X_cam[1] / X_cam[2];
-
-    // Apply distortion
-    const r2 = x_n * x_n + y_n * y_n;
-    const r4 = r2 * r2;
-    const r6 = r4 * r2;
-    const k1 = d[0], k2 = d[1], p1 = d[2], p2 = d[3], k3 = d[4];
-
-    const radial = 1 + k1 * r2 + k2 * r4 + k3 * r6;
-    const x_d = x_n * radial + 2 * p1 * x_n * y_n + p2 * (r2 + 2 * x_n * x_n);
-    const y_d = y_n * radial + p1 * (r2 + 2 * y_n * y_n) + 2 * p2 * x_n * y_n;
-
-    // Project to pixel coordinates
-    const u = K[0][0] * x_d + K[0][2];
-    const v = K[1][1] * y_d + K[1][2];
-
-    return { x: u, y: v };
+/**
+ * Project a 3D point using WASM wrapper's projectPoint (JS implementation)
+ * @param {Array} point3d - [x, y, z] point
+ * @param {Object} camera - WASM-format camera
+ * @returns {Array} [u, v] pixel coordinates
+ */
+function projectPointWasm(point3d, camera) {
+    // Use the wrapper's projectPoint (pure JS, no async needed)
+    if (!wasmTriangulation) return null;
+    return wasmTriangulation.projectPoint(point3d, camera);
 }
 
 // ============================================
@@ -1120,14 +1071,19 @@ function getMatchedPointsForFrame(detections, view1Name, view2Name, frameIndex, 
 
 /**
  * Compute cross-view reprojection errors by triangulating points and reprojecting
+ * Uses WASM-accelerated batch triangulation for better performance
  * @param {Array} detections - Array of detection results
  * @param {Array} viewNames - Array of view names
  * @param {Object} intrinsics - Intrinsic parameters per camera
  * @param {Object} extrinsics - Extrinsic parameters per camera
- * @returns {Array} Array of frame errors with point reprojection data
+ * @returns {Promise<Array>} Array of frame errors with point reprojection data
  */
-function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, extrinsics) {
-    // For each frame with detections in multiple cameras
+async function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, extrinsics) {
+    // Initialize WASM and build cameras array once
+    await initTriangulationWasm();
+    const wasmCameras = buildWasmCameras(viewNames, intrinsics, extrinsics);
+    const cameraIndexMap = new Map(viewNames.map((name, idx) => [name, idx]));
+
     const frameErrors = [];
 
     for (const detection of detections) {
@@ -1151,27 +1107,45 @@ function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, e
 
         if (commonIds.size < 4) continue;
 
-        const pointErrors = [];
+        // Build batch observations for WASM triangulation
+        const pointIds = [...commonIds];
+        const pointObservations = [];  // Array of observation arrays for batch triangulation
+        const originalObservations = [];  // Keep original format for reprojection
 
-        for (const pointId of commonIds) {
-            // Gather observations from all cameras
-            const observations = [];
+        for (const pointId of pointIds) {
+            const wasmObs = [];
+            const origObs = [];
             for (const camera of validCameras) {
                 const viewResult = detection.views[camera];
                 const idx = viewResult.charucoIds.indexOf(pointId);
                 if (idx >= 0) {
-                    observations.push({
-                        camera: camera,
-                        point: viewResult.charucoCorners[idx]
+                    const corner = viewResult.charucoCorners[idx];
+                    wasmObs.push({
+                        camera_idx: cameraIndexMap.get(camera),
+                        x: corner.x,
+                        y: corner.y
                     });
+                    origObs.push({ camera, point: corner });
                 }
             }
+            if (wasmObs.length >= 2) {
+                pointObservations.push(wasmObs);
+                originalObservations.push({ pointId, observations: origObs });
+            }
+        }
 
-            if (observations.length < 2) continue;
+        if (pointObservations.length === 0) continue;
 
-            // Triangulate 3D point
-            const point3D = triangulatePoint(observations, intrinsics, extrinsics);
-            if (!point3D) continue;
+        // Batch triangulate all points for this frame using WASM
+        const triangResult = await triangulatePointsWasm(pointObservations, wasmCameras);
+
+        // Process results and compute per-camera reprojection errors
+        const pointErrors = [];
+        for (let i = 0; i < triangResult.points.length; i++) {
+            const point3D = triangResult.points[i];
+            if (!point3D || triangResult.failed_indices.includes(i)) continue;
+
+            const { pointId, observations } = originalObservations[i];
 
             // Compute reprojection error for each camera
             const perCameraErrors = {};
@@ -1179,15 +1153,16 @@ function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, e
             let numCameras = 0;
 
             for (const obs of observations) {
-                const projected = projectPoint(point3D, obs.camera, intrinsics, extrinsics);
-                if (projected) {
-                    const dx = projected.x - obs.point.x;
-                    const dy = projected.y - obs.point.y;
+                const camIdx = cameraIndexMap.get(obs.camera);
+                const projected = projectPointWasm(point3D, wasmCameras[camIdx]);
+                if (projected && !isNaN(projected[0])) {
+                    const dx = projected[0] - obs.point.x;
+                    const dy = projected[1] - obs.point.y;
                     const error = Math.sqrt(dx * dx + dy * dy);
                     perCameraErrors[obs.camera] = {
                         error: error,
                         detected: obs.point,
-                        projected: projected
+                        projected: { x: projected[0], y: projected[1] }
                     };
                     totalError += error;
                     numCameras++;
@@ -1197,7 +1172,7 @@ function computeCrossViewReprojectionErrors(detections, viewNames, intrinsics, e
             if (numCameras > 0) {
                 pointErrors.push({
                     pointId: pointId,
-                    point3D: point3D,
+                    point3D: { x: point3D[0], y: point3D[1], z: point3D[2] },
                     cameras: validCameras,
                     meanError: totalError / numCameras,
                     perCameraErrors: perCameraErrors

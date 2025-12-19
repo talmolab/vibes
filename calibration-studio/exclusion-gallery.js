@@ -39,7 +39,6 @@ function toggleIntrinsicsExclusion(cameraName, calibFrameIndex) {
     }
 
     updateIntrinsicsExclusionUI();
-    document.getElementById('recomputeIntrinsicsBtn').disabled = false;
 }
 
 /**
@@ -55,7 +54,6 @@ function toggleExtrinsicsExclusion(videoFrame) {
     }
 
     updateExtrinsicsExclusionUI();
-    document.getElementById('recomputeExtrinsicsBtn').disabled = false;
 }
 
 /**
@@ -250,7 +248,6 @@ async function buildIntrinsicsExclusionGallery() {
             }
             log(`${currentlyExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, currentlyExcluded ? 'info' : 'warn');
             updateIntrinsicsExclusionUI();
-            document.getElementById('recomputeIntrinsicsBtn').disabled = false;
         });
 
         grid.appendChild(item);
@@ -651,7 +648,6 @@ function clearIntrinsicsExclusions() {
     }
     log('Cleared all intrinsics exclusions', 'info');
     updateIntrinsicsExclusionUI();
-    document.getElementById('recomputeIntrinsicsBtn').disabled = true;
 }
 
 /**
@@ -661,7 +657,6 @@ function clearExtrinsicsExclusions() {
     state.exclusions.extrinsics.clear();
     log('Cleared all extrinsics exclusions', 'info');
     updateExtrinsicsExclusionUI();
-    document.getElementById('recomputeExtrinsicsBtn').disabled = true;
 }
 
 // ============================================
@@ -703,7 +698,6 @@ function setupExclusionKeyboardShortcut() {
                 const videoFrame = state.intrinsics[firstCam]?.frameIndices?.[calibIdx];
                 log(`${isExcluded ? 'Included' : 'Excluded'} calibration frame ${calibIdx + 1} (video frame ${videoFrame})`, isExcluded ? 'info' : 'warn');
                 updateIntrinsicsExclusionUI();
-                document.getElementById('recomputeIntrinsicsBtn').disabled = false;
                 e.preventDefault();
             } else if (state.showExtrinsicsReproj && state.extrinsicsReprojData) {
                 // Toggle extrinsics exclusion for current frame

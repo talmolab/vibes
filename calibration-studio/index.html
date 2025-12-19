@@ -240,7 +240,6 @@
 
             <div class="controls">
                 <button id="computeIntrinsicsBtn" disabled>Compute Intrinsics</button>
-                <button id="recomputeIntrinsicsBtn" class="secondary" disabled>Re-compute Intrinsics</button>
                 <div id="intrinsicsProgress" class="progress-container">
                     <div class="progress-bar"></div>
                     <div class="progress-text">0%</div>
@@ -391,9 +390,8 @@
             </div>
 
             <div class="controls">
-                <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics (Initial)</button>
+                <button id="computeExtrinsicsBtn" disabled>Compute Extrinsics</button>
                 <button id="runBundleBtn" class="secondary" disabled>Refine (Bundle Adjustment)</button>
-                <button id="recomputeExtrinsicsBtn" class="secondary" disabled>Re-compute All</button>
                 <div id="extrinsicsProgress" class="progress-container">
                     <div class="progress-bar"></div>
                     <div class="progress-text">0%</div>
@@ -494,7 +492,6 @@
 
     <!-- mp4box.js for demuxing -->
     <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
-    <script src="https://unpkg.com/svd-js@1.1.1/build-umd/svd-js.min.js"></script>
     <script src="video.js"></script>
     <script src="calibration.js"></script>
     <script src="export.js"></script>
@@ -1234,21 +1231,8 @@
             }
         }
 
-        // Re-compute intrinsics with exclusions
-        async function recomputeIntrinsicsWithExclusions() {
-            log('Re-computing intrinsics with exclusions...', 'info');
-
-            // Note: The exclusions are already set in state.exclusions.intrinsics
-            // We just need to re-run the computation which will respect them
-
-            await computeAllIntrinsics();
-
-            document.getElementById('recomputeIntrinsicsBtn').disabled = true;
-        }
-
         // Intrinsics event listeners
         document.getElementById('computeIntrinsicsBtn').addEventListener('click', computeAllIntrinsics);
-        document.getElementById('recomputeIntrinsicsBtn').addEventListener('click', recomputeIntrinsicsWithExclusions);
 
         // ============================================
         // Reprojection Visualization
@@ -1423,7 +1407,7 @@
             // Compute cross-view reprojection errors (includes all frames for assessment)
             log('Computing cross-view reprojection errors...', 'info');
             // computeCrossViewReprojectionErrors - use from calibration.js (uses viewNames from above)
-            state.extrinsicsReprojData = computeCrossViewReprojectionErrors(state.detections, viewNames, state.intrinsics, state.extrinsics);
+            state.extrinsicsReprojData = await computeCrossViewReprojectionErrors(state.detections, viewNames, state.intrinsics, state.extrinsics);
             if (state.extrinsicsReprojData.length > 0) {
                 const totalPoints = state.extrinsicsReprojData.reduce((sum, f) => sum + f.pointErrors.length, 0);
                 log(`Cross-view reprojection: ${totalPoints} points triangulated across ${state.extrinsicsReprojData.length} frames`, 'success');
@@ -1465,18 +1449,8 @@
             document.getElementById('stage5').classList.remove('collapsed');
         }
 
-        // Re-compute extrinsics + SBA with exclusions
-        async function recomputeExtrinsicsWithExclusions() {
-            log('Re-computing extrinsics + bundle adjustment...', 'info');
-            await computeAllExtrinsics();
-            // Also run SBA refinement
-            await runSbaRefinement();
-            document.getElementById('recomputeExtrinsicsBtn').disabled = true;
-        }
-
         // Extrinsics event listeners
         document.getElementById('computeExtrinsicsBtn').addEventListener('click', computeAllExtrinsics);
-        document.getElementById('recomputeExtrinsicsBtn').addEventListener('click', recomputeExtrinsicsWithExclusions);
 
         // ============================================
         // Cross-View Reprojection Visualization
@@ -1643,8 +1617,10 @@
 
                 updateProgress('extrinsicsProgress', 10, 'Loading WASM module...');
 
-                // Dynamically import the SBA module
-                const { runBundleAdjustment, initSBA } = await import('./lib/sba-wrapper.js');
+                // Dynamically import the SBA module from CDN
+                const { runBundleAdjustment, initSBA } = await import(
+                    'https://cdn.jsdelivr.net/npm/@talmolab/sba-solver-wasm@0.2.0/wrapper.js'
+                );
 
                 updateProgress('extrinsicsProgress', 15, 'Initializing solver...');
                 await initSBA();
@@ -1696,7 +1672,7 @@
 
                 // Recompute cross-view reprojection errors with refined params (use calibration.js function)
                 const viewNamesForReproj = state.views.map(v => v.name);
-                state.extrinsicsReprojData = computeCrossViewReprojectionErrors(state.detections, viewNamesForReproj, state.intrinsics, state.extrinsics);
+                state.extrinsicsReprojData = await computeCrossViewReprojectionErrors(state.detections, viewNamesForReproj, state.intrinsics, state.extrinsics);
 
                 // Update UI tables and galleries
                 updateIntrinsicsTable();
