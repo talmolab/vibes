@@ -1526,6 +1526,10 @@
 
             try {
                 await loadVideo(url);
+                // Update address bar with URL parameter for easy sharing
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('url', url);
+                history.replaceState(null, '', newUrl);
             } catch (err) {
                 log(`Failed to load URL: ${err.message}`, 'error');
                 showError('Failed to load URL: ' + err.message);
