@@ -1787,6 +1787,63 @@
             isScrubbing = false;
         });
 
+        // Pinch-to-zoom for touch devices
+        let initialPinchDistance = null;
+        let initialPinchScale = null;
+        let pinchCenterX = null;
+        let pinchCenterY = null;
+
+        function getTouchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getTouchCenter(touches, rect) {
+            return {
+                x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+                y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+            };
+        }
+
+        canvasContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                initialPinchDistance = getTouchDistance(e.touches);
+                initialPinchScale = scale;
+                const rect = canvasContainer.getBoundingClientRect();
+                const center = getTouchCenter(e.touches, rect);
+                pinchCenterX = center.x;
+                pinchCenterY = center.y;
+            }
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialPinchDistance !== null) {
+                e.preventDefault();
+                const currentDistance = getTouchDistance(e.touches);
+                const pinchRatio = currentDistance / initialPinchDistance;
+                const newScale = Math.max(0.1, Math.min(50, initialPinchScale * pinchRatio));
+
+                // Zoom towards pinch center
+                offsetX = pinchCenterX - (pinchCenterX - offsetX) * (newScale / scale);
+                offsetY = pinchCenterY - (pinchCenterY - offsetY) * (newScale / scale);
+
+                scale = newScale;
+                constrainOffset();
+                renderFrameWithOverlays();
+            }
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance = null;
+                initialPinchScale = null;
+                pinchCenterX = null;
+                pinchCenterY = null;
+            }
+        });
+
         // Reset zoom
         resetZoomBtn.addEventListener('click', () => {
             scale = 1;
