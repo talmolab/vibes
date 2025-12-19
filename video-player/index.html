@@ -102,6 +102,11 @@
             border-radius: 8px;
             margin: 10px 0;
         }
+        .overlay-controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
         .overlay-controls label {
             display: flex;
             align-items: center;
@@ -109,18 +114,36 @@
             cursor: pointer;
             font-size: 14px;
             color: #ccc;
+            margin: 5px 0;
         }
         .overlay-controls input[type="checkbox"] {
             cursor: pointer;
         }
+        .info-row {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+        }
         .metrics {
+            flex: 2;
             background: #2a2a2a;
             padding: 15px 20px;
             border-radius: 8px;
             font-family: 'Courier New', monospace;
             font-size: 12px;
             color: #aaa;
-            margin: 20px 0;
+        }
+        .metrics h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #ccc;
+        }
+        .info-row .overlay-controls {
+            flex: 1;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
         }
         .metrics-row {
             display: flex;
@@ -368,11 +391,6 @@
             </div>
         </div>
 
-        <div class="overlay-controls" id="overlayControls" style="display: none;">
-            <label><input type="checkbox" id="showFrameIndex"> Frame Index</label>
-            <label><input type="checkbox" id="showTimingStats"> Timing Stats</label>
-        </div>
-
         <div class="cache-viz-container" id="cacheVizContainer" style="display: none;">
             <div class="cache-viz-header">
                 <h3>Frame Cache</h3>
@@ -389,18 +407,26 @@
             <canvas class="cache-viz-canvas" id="cacheVizCanvas"></canvas>
         </div>
 
-        <div class="metrics" id="metrics" style="display: none;">
-            <div class="metrics-row">
-                <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
-                <div class="metric"><span class="metric-label">Codec:</span> <span id="metricCodec">-</span></div>
-                <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+        <div class="info-row" id="infoRow" style="display: none;">
+            <div class="metrics" id="metrics">
+                <h3>Video Info</h3>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
+                    <div class="metric"><span class="metric-label">Codec:</span> <span id="metricCodec">-</span></div>
+                    <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+                </div>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
+                    <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                    <div class="metric"><span class="metric-label">Seek:</span> <span id="metricSeek">-</span></div>
+                    <div class="metric"><span class="metric-label">Cached:</span> <span id="metricCached">-</span></div>
+                    <div class="metric"><span class="metric-label">Keyframes:</span> <span id="metricKeyframes">-</span></div>
+                </div>
             </div>
-            <div class="metrics-row">
-                <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
-                <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
-                <div class="metric"><span class="metric-label">Seek:</span> <span id="metricSeek">-</span></div>
-                <div class="metric"><span class="metric-label">Cached:</span> <span id="metricCached">-</span></div>
-                <div class="metric"><span class="metric-label">Keyframes:</span> <span id="metricKeyframes">-</span></div>
+            <div class="overlay-controls" id="overlayControls">
+                <h3>Overlays</h3>
+                <label><input type="checkbox" id="showFrameIndex" checked> Frame Index</label>
+                <label><input type="checkbox" id="showTimingStats" checked> Timing Stats</label>
             </div>
         </div>
 
@@ -1295,11 +1321,13 @@
                 // Show UI
                 canvasContainer.style.display = 'block';
                 seekbarContainer.style.display = 'block';
-                document.getElementById('overlayControls').style.display = 'flex';
                 cacheVizContainer.style.display = 'block';
-                metricsDiv.style.display = 'block';
+                document.getElementById('infoRow').style.display = 'flex';
                 playBtn.disabled = false;
                 resetZoomBtn.disabled = false;
+
+                // Initialize overlays (checked by default)
+                updateOverlays();
 
                 // Reset state
                 currentFrame = 0;
