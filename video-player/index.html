@@ -22,19 +22,20 @@
         }
         .controls {
             background: #2a2a2a;
-            padding: 20px;
+            padding: 10px;
             border-radius: 8px;
             margin: 20px 0;
+            text-align: center;
         }
         button {
             background: #667eea;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 6px 16px;
             border-radius: 6px;
-            font-size: 16px;
+            font-size: 14px;
             cursor: pointer;
-            margin: 5px;
+            margin: 3px;
         }
         button:hover { background: #5568d3; }
         button:disabled {
@@ -44,16 +45,42 @@
         .canvas-container {
             position: relative;
             background: #000;
-            border-radius: 8px;
+            border-radius: 8px 8px 0 0;
             overflow: hidden;
-            margin: 20px 0;
+            margin: 20px 0 0 0;
             cursor: grab;
+            height: 70vh;
+            min-height: 150px;
+            max-height: 90vh;
         }
         .canvas-container:active { cursor: grabbing; }
+        .resize-handle {
+            height: 8px;
+            background: #2a2a2a;
+            border-radius: 0 0 8px 8px;
+            cursor: ns-resize;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .resize-handle:hover {
+            background: #3a3a3a;
+        }
+        .resize-handle::after {
+            content: '';
+            width: 40px;
+            height: 3px;
+            background: #555;
+            border-radius: 2px;
+        }
+        .resize-handle:hover::after {
+            background: #777;
+        }
         canvas {
             display: block;
             width: 100%;
-            height: auto;
+            height: 100%;
             image-rendering: crisp-edges;
         }
         .seekbar-container {
@@ -90,14 +117,86 @@
             pointer-events: none;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
+        .playback-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .playback-controls button {
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .playback-controls #prevFrameBtn,
+        .playback-controls #nextFrameBtn {
+            font-size: 10px;
+        }
+        .playback-controls #firstFrameBtn,
+        .playback-controls #lastFrameBtn {
+            font-size: 9px;
+        }
+        .control-separator {
+            width: 1px;
+            height: 18px;
+            background: #444;
+            margin: 0 6px;
+        }
+        .overlay-controls {
+            display: flex;
+            gap: 20px;
+            padding: 10px 20px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .overlay-controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+        .overlay-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #ccc;
+            margin: 5px 0;
+        }
+        .overlay-controls input[type="checkbox"] {
+            cursor: pointer;
+        }
+        .info-row {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+        }
         .metrics {
+            flex: 2;
             background: #2a2a2a;
             padding: 15px 20px;
             border-radius: 8px;
             font-family: 'Courier New', monospace;
             font-size: 12px;
             color: #aaa;
-            margin: 20px 0;
+        }
+        .metrics h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #ccc;
+        }
+        .info-row .overlay-controls {
+            flex: 1;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
         }
         .metrics-row {
             display: flex;
@@ -165,6 +264,7 @@
             border-radius: 8px;
             margin: 10px 0;
             display: flex;
+            flex-wrap: wrap;
             gap: 10px;
             align-items: center;
         }
@@ -184,6 +284,12 @@
         .url-input-container button {
             padding: 10px 16px;
             margin: 0;
+        }
+        .url-hint {
+            width: 100%;
+            color: #888;
+            font-size: 12px;
+            margin-top: 4px;
         }
         .error-msg {
             background: #4a2020;
@@ -301,8 +407,9 @@
         .log-msg.error { color: #ff6b6b; }
         @media (max-width: 600px) {
             body { padding: 10px; }
-            .controls, .settings, .metrics { padding: 10px 15px; }
-            button { padding: 10px 16px; font-size: 14px; }
+            .controls { padding: 8px 10px; }
+            .settings, .metrics { padding: 10px 15px; }
+            button { padding: 6px 12px; font-size: 13px; }
         }
     </style>
 </head>
@@ -315,13 +422,12 @@
             <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
             <button id="loadBtn">Load Video File</button>
             <button id="loadUrlBtn">Load from URL</button>
-            <button id="playBtn" disabled>Play</button>
-            <button id="resetZoomBtn" disabled>Reset Zoom</button>
         </div>
         <div class="url-input-container" id="urlInputContainer" style="display: none;">
             <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)">
             <button id="urlLoadBtn">Load</button>
             <button id="urlCancelBtn">Cancel</button>
+            <small class="url-hint">URL must support CORS. Range requests enable streaming without downloading the full file.</small>
         </div>
 
         <div class="error-msg" id="errorMsg"></div>
@@ -329,11 +435,23 @@
         <div class="canvas-container" id="canvasContainer" style="display: none;">
             <canvas id="canvas"></canvas>
         </div>
+        <div class="resize-handle" id="resizeHandle" style="display: none;"></div>
 
         <div class="seekbar-container" id="seekbarContainer" style="display: none;">
             <div class="seekbar" id="seekbar">
                 <div class="seekbar-progress" id="seekbarProgress"></div>
                 <div class="seekbar-thumb" id="seekbarThumb"></div>
+            </div>
+            <div class="playback-controls">
+                <button id="firstFrameBtn" title="First frame (Home)">|❮</button>
+                <button id="prevFrameBtn" title="Previous frame (←)">❮</button>
+                <button id="playBtn">▶</button>
+                <button id="nextFrameBtn" title="Next frame (→)">❯</button>
+                <button id="lastFrameBtn" title="Last frame (End)">❯|</button>
+                <span class="control-separator"></span>
+                <button id="zoomOutBtn" title="Zoom out (↓)">−</button>
+                <button id="zoomInBtn" title="Zoom in (↑)">+</button>
+                <button id="resetZoomBtn" title="Reset view">⟲</button>
             </div>
         </div>
 
@@ -342,7 +460,7 @@
                 <h3>Frame Cache</h3>
                 <div class="cache-viz-settings">
                     <label>Cache Size: <input type="number" id="bufferSize" value="60" min="10" max="500"></label>
-                    <label>Lookahead: <input type="number" id="lookaheadSize" value="10" min="1" max="100"></label>
+                    <label>Lookahead: <input type="number" id="lookaheadSize" value="30" min="1" max="100"></label>
                 </div>
                 <div class="cache-viz-legend">
                     <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #4ade80;"></div> Cached</div>
@@ -353,18 +471,26 @@
             <canvas class="cache-viz-canvas" id="cacheVizCanvas"></canvas>
         </div>
 
-        <div class="metrics" id="metrics" style="display: none;">
-            <div class="metrics-row">
-                <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
-                <div class="metric"><span class="metric-label">Codec:</span> <span id="metricCodec">-</span></div>
-                <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+        <div class="info-row" id="infoRow" style="display: none;">
+            <div class="metrics" id="metrics">
+                <h3>Video Info</h3>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
+                    <div class="metric"><span class="metric-label">Codec:</span> <span id="metricCodec">-</span></div>
+                    <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+                </div>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
+                    <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                    <div class="metric"><span class="metric-label">Seek:</span> <span id="metricSeek">-</span></div>
+                    <div class="metric"><span class="metric-label">Cached:</span> <span id="metricCached">-</span></div>
+                    <div class="metric"><span class="metric-label">Keyframes:</span> <span id="metricKeyframes">-</span></div>
+                </div>
             </div>
-            <div class="metrics-row">
-                <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
-                <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
-                <div class="metric"><span class="metric-label">Seek:</span> <span id="metricSeek">-</span></div>
-                <div class="metric"><span class="metric-label">Cached:</span> <span id="metricCached">-</span></div>
-                <div class="metric"><span class="metric-label">Keyframes:</span> <span id="metricKeyframes">-</span></div>
+            <div class="overlay-controls" id="overlayControls">
+                <h3>Overlays</h3>
+                <label><input type="checkbox" id="showFrameIndex" checked> Frame Index</label>
+                <label><input type="checkbox" id="showTimingStats" checked> Timing Stats</label>
             </div>
         </div>
 
@@ -380,10 +506,11 @@
             <h3>Keyboard Shortcuts</h3>
             <div class="hotkeys-grid">
                 <div class="hotkey"><span class="hotkey-key">← / →</span><span class="hotkey-desc">±1 frame</span></div>
-                <div class="hotkey"><span class="hotkey-key">↑ / ↓</span><span class="hotkey-desc">±10 frames</span></div>
                 <div class="hotkey"><span class="hotkey-key">Ctrl+← / →</span><span class="hotkey-desc">±30 frames</span></div>
-                <div class="hotkey"><span class="hotkey-key">Ctrl+↑ / ↓</span><span class="hotkey-desc">±100 frames</span></div>
+                <div class="hotkey"><span class="hotkey-key">Home / End</span><span class="hotkey-desc">First/Last frame</span></div>
                 <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                <div class="hotkey"><span class="hotkey-key">↑ / ↓</span><span class="hotkey-desc">Zoom in/out</span></div>
+                <div class="hotkey"><span class="hotkey-key">Ctrl+↑ / ↓</span><span class="hotkey-desc">Zoom (faster)</span></div>
                 <div class="hotkey"><span class="hotkey-key">Mouse Wheel</span><span class="hotkey-desc">Zoom</span></div>
                 <div class="hotkey"><span class="hotkey-key">Click + Drag</span><span class="hotkey-desc">Pan</span></div>
             </div>
@@ -446,7 +573,7 @@
         class OnDemandVideoDecoder {
             constructor(options = {}) {
                 this.cacheSize = options.cacheSize || 60;
-                this.lookahead = options.lookahead || 10;
+                this.lookahead = options.lookahead || 30;
                 this.cache = new Map();
                 this.samples = [];
                 this.keyframeIndices = [];
@@ -627,22 +754,32 @@
 
                 const timescale = this.videoTrack.timescale;
 
-                for (let i = 0; i < samplesInfo.length; i++) {
-                    const sample = samplesInfo[i];
-                    this.samples.push({
-                        // Store metadata only - we'll read data on-demand
-                        offset: sample.offset,
-                        size: sample.size,
-                        timestamp: sample.cts * 1e6 / timescale,
-                        duration: sample.duration * 1e6 / timescale,
-                        isKeyframe: sample.is_sync,
-                    });
-                    if (sample.is_sync) {
+                // Extract all samples with decode order index for file reading
+                const rawSamples = samplesInfo.map((sample, decodeIndex) => ({
+                    offset: sample.offset,
+                    size: sample.size,
+                    timestamp: sample.cts * 1e6 / timescale,
+                    duration: sample.duration * 1e6 / timescale,
+                    isKeyframe: sample.is_sync,
+                    cts: sample.cts,
+                    decodeIndex, // Original index for reading from file in decode order
+                }));
+
+                // Sort by CTS to get presentation order
+                // This is critical for videos with B-frames where decode order != presentation order
+                rawSamples.sort((a, b) => a.cts - b.cts);
+
+                // Now this.samples[N] = presentation frame N
+                this.samples = rawSamples;
+
+                // Build keyframe indices in presentation order
+                for (let i = 0; i < this.samples.length; i++) {
+                    if (this.samples[i].isKeyframe) {
                         this.keyframeIndices.push(i);
                     }
                 }
 
-                log(`Extracted ${this.samples.length} sample metadata entries`, 'info');
+                log(`Extracted ${this.samples.length} sample metadata entries (sorted by presentation order)`, 'info');
             }
 
             findKeyframeBefore(frameIndex) {
@@ -813,9 +950,6 @@
             }
 
             async _decodeRangeInternal(startFrame, endFrame, targetFrame) {
-                const expectedFrames = endFrame - startFrame + 1;
-                let decodedCount = 0;
-
                 const halfCache = Math.floor(this.cacheSize / 2);
                 const cacheWindowStart = Math.max(startFrame, targetFrame - halfCache);
                 const cacheWindowEnd = Math.min(endFrame, targetFrame + halfCache);
@@ -828,15 +962,62 @@
                     }
                 }
 
-                // Read sample data for the range - batch consecutive samples into single reads
-                const sampleDataArray = await this.readSampleDataRange(startFrame, endFrame);
+                // Get samples for the presentation range and find the decode index range
+                // VideoDecoder requires ALL frames in decode order for proper inter-frame prediction
+                let minDecodeIndex = Infinity;
+                let maxDecodeIndex = -Infinity;
+                for (let i = startFrame; i <= endFrame; i++) {
+                    const di = this.samples[i].decodeIndex;
+                    minDecodeIndex = Math.min(minDecodeIndex, di);
+                    maxDecodeIndex = Math.max(maxDecodeIndex, di);
+                }
+
+                // Collect ALL samples with decode indices in this range
+                // This ensures we don't skip reference frames that B-frames depend on
+                const samplesToFeed = [];
+                for (let i = 0; i < this.samples.length; i++) {
+                    const sample = this.samples[i];
+                    if (sample.decodeIndex >= minDecodeIndex && sample.decodeIndex <= maxDecodeIndex) {
+                        samplesToFeed.push({ presentationIndex: i, sample });
+                    }
+                }
+                samplesToFeed.sort((a, b) => a.sample.decodeIndex - b.sample.decodeIndex);
+
+                // Expected frames is now the full decode range (may be more than presentation range)
+                const expectedFrames = samplesToFeed.length;
+                let decodedCount = 0;
+
+                // Read sample data in decode order for efficient batching
+                const sampleDataMap = await this.readSampleDataByDecodeOrder(samplesToFeed);
+
+                // Build timestamp-to-presentation-index map for ALL frames we're decoding
+                // VideoDecoder outputs frames in presentation order (by timestamp)
+                const timestampToIndex = new Map();
+                for (const { presentationIndex, sample } of samplesToFeed) {
+                    const ts = Math.round(sample.timestamp);
+                    timestampToIndex.set(ts, presentationIndex);
+                }
 
                 return new Promise((resolve, reject) => {
                     this.decoder = new VideoDecoder({
                         output: (frame) => {
-                            const frameIndex = startFrame + decodedCount;
+                            // Map frame timestamp to presentation index
+                            const frameTs = Math.round(frame.timestamp);
+                            let frameIndex = timestampToIndex.get(frameTs);
 
-                            if (frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
+                            // Fallback: find closest timestamp if exact match fails
+                            if (frameIndex === undefined) {
+                                let closestDiff = Infinity;
+                                for (const [ts, idx] of timestampToIndex.entries()) {
+                                    const diff = Math.abs(ts - frameTs);
+                                    if (diff < closestDiff) {
+                                        closestDiff = diff;
+                                        frameIndex = idx;
+                                    }
+                                }
+                            }
+
+                            if (frameIndex !== undefined && frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
                                 createImageBitmap(frame).then(bitmap => {
                                     this.addToCache(frameIndex, bitmap);
                                     frame.close();
@@ -871,9 +1052,9 @@
 
                     this.decoder.configure(this.config);
 
-                    for (let i = startFrame; i <= endFrame; i++) {
-                        const sample = this.samples[i];
-                        const sampleData = sampleDataArray[i - startFrame];
+                    // Feed samples to decoder in decode order (DTS order)
+                    for (const { presentationIndex, sample } of samplesToFeed) {
+                        const sampleData = sampleDataMap.get(presentationIndex);
                         const chunk = new EncodedVideoChunk({
                             type: sample.isKeyframe ? 'key' : 'delta',
                             timestamp: sample.timestamp,
@@ -887,44 +1068,45 @@
                 });
             }
 
-            // Read sample data for a range, batching consecutive samples into single reads
-            async readSampleDataRange(startFrame, endFrame) {
-                const results = [];
+            // Read sample data for samples sorted by decode order, with batching
+            async readSampleDataByDecodeOrder(samplesToFeed) {
+                const results = new Map();
 
-                // Find contiguous regions and batch read them
-                let regionStart = startFrame;
-                while (regionStart <= endFrame) {
-                    const firstSample = this.samples[regionStart];
-                    let regionEnd = regionStart;
-                    let regionBytes = firstSample.size;
+                // samplesToFeed is already sorted by decodeIndex
+                // Group samples that are contiguous in the file for batch reading
+                let i = 0;
+                while (i < samplesToFeed.length) {
+                    const first = samplesToFeed[i];
+                    let regionEnd = i;
+                    let regionBytes = first.sample.size;
 
-                    // Extend region while samples are contiguous
-                    while (regionEnd < endFrame) {
-                        const currentSample = this.samples[regionEnd];
-                        const nextSample = this.samples[regionEnd + 1];
+                    // Extend region while samples are contiguous in file
+                    while (regionEnd < samplesToFeed.length - 1) {
+                        const current = samplesToFeed[regionEnd];
+                        const next = samplesToFeed[regionEnd + 1];
 
-                        // Check if next sample immediately follows current
-                        if (nextSample.offset === currentSample.offset + currentSample.size) {
+                        // Check if next sample immediately follows current in file
+                        if (next.sample.offset === current.sample.offset + current.sample.size) {
                             regionEnd++;
-                            regionBytes += nextSample.size;
+                            regionBytes += next.sample.size;
                         } else {
                             break;
                         }
                     }
 
                     // Read the entire contiguous region
-                    const buffer = await this.readChunk(firstSample.offset, regionBytes);
+                    const buffer = await this.readChunk(first.sample.offset, regionBytes);
                     const bufferView = new Uint8Array(buffer);
 
-                    // Extract individual samples from the buffer
+                    // Extract individual samples and map by presentation index
                     let bufferOffset = 0;
-                    for (let i = regionStart; i <= regionEnd; i++) {
-                        const sample = this.samples[i];
-                        results.push(bufferView.slice(bufferOffset, bufferOffset + sample.size));
+                    for (let j = i; j <= regionEnd; j++) {
+                        const { presentationIndex, sample } = samplesToFeed[j];
+                        results.set(presentationIndex, bufferView.slice(bufferOffset, bufferOffset + sample.size));
                         bufferOffset += sample.size;
                     }
 
-                    regionStart = regionEnd + 1;
+                    i = regionEnd + 1;
                 }
 
                 return results;
@@ -989,8 +1171,159 @@
         let dragStartY = 0;
         let currentBitmap = null;
 
+        // Constrain offset to keep at least 10% of image visible on each axis
+        function constrainOffset() {
+            if (!currentBitmap) return;
+
+            const container = canvasContainer;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Calculate the scaled video dimensions (same logic as renderFrame)
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+            let baseScale, drawX, drawY;
+            if (videoAspect > containerAspect) {
+                baseScale = containerWidth / currentBitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - currentBitmap.height * baseScale) / 2;
+            } else {
+                baseScale = containerHeight / currentBitmap.height;
+                drawX = (containerWidth - currentBitmap.width * baseScale) / 2;
+                drawY = 0;
+            }
+
+            const scaledWidth = currentBitmap.width * baseScale * scale;
+            const scaledHeight = currentBitmap.height * baseScale * scale;
+
+            // Require at least 25% visible on each axis
+            const minVisible = 0.25;
+            const minVisibleX = scaledWidth * minVisible;
+            const minVisibleY = scaledHeight * minVisible;
+
+            // Calculate bounds accounting for the centering offset (drawX, drawY)
+            // The image is drawn at (offsetX + drawX, offsetY + drawY)
+            // Right edge of image must be at least minVisibleX from left of container
+            const minOffsetX = minVisibleX - scaledWidth - drawX;
+            // Left edge of image must be at least minVisibleX from right of container
+            const maxOffsetX = containerWidth - minVisibleX - drawX;
+
+            // Bottom edge of image must be at least minVisibleY from top of container
+            const minOffsetY = minVisibleY - scaledHeight - drawY;
+            // Top edge of image must be at least minVisibleY from bottom of container
+            const maxOffsetY = containerHeight - minVisibleY - drawY;
+
+            offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, offsetX));
+            offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, offsetY));
+        }
+
         // Performance metrics
         let lastSeekTime = 0;
+        let lastFromCache = false;
+
+        // Overlay system - array of callbacks for drawing on top of video frames
+        const overlays = [];
+
+        // Frame index overlay - shows current frame / total frames
+        function frameIndexOverlay({ ctx, canvas, frameIndex, totalFrames }) {
+            const text = `${frameIndex} / ${totalFrames}`;
+            const padding = 8;
+            const fontSize = 14;
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, 10, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, 10 + padding + fontSize - 2);
+        }
+
+        // Timing stats overlay - shows seek time and cache status
+        function timingStatsOverlay({ ctx, canvas, seekTime, fromCache }) {
+            const cacheStatus = fromCache ? 'cache' : 'decode';
+            const text = `${seekTime.toFixed(1)}ms (${cacheStatus})`;
+            const padding = 8;
+            const fontSize = 14;
+            const yOffset = 40;
+
+            ctx.font = `${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, yOffset, boxWidth, boxHeight);
+
+            ctx.fillStyle = fromCache ? '#4ade80' : '#fbbf24';
+            ctx.fillText(text, 10 + padding, yOffset + padding + fontSize - 2);
+        }
+
+        // Zoom level overlay - shows zoom factor when not at 1.0x
+        function zoomLevelOverlay({ ctx, canvas, zoomScale }) {
+            if (zoomScale === undefined || Math.abs(zoomScale - 1.0) < 0.01) return; // Don't show at 1.0x
+
+            const text = `${zoomScale.toFixed(1)}x`;
+            const padding = 8;
+            const fontSize = 14;
+            const yOffset = 70; // Below timing stats overlay
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, yOffset, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, yOffset + padding + fontSize - 2);
+        }
+
+        // Render all active overlays
+        function renderOverlays(info) {
+            for (const overlay of overlays) {
+                ctx.save();
+                overlay(info);
+                ctx.restore();
+            }
+        }
+
+        // Helper to render frame with overlays
+        function renderFrameWithOverlays() {
+            if (!currentBitmap || !videoDecoder) return;
+            renderFrame(currentBitmap);
+            renderOverlays({
+                ctx,
+                canvas,
+                frameIndex: currentFrame,
+                totalFrames,
+                seekTime: lastSeekTime,
+                fromCache: lastFromCache,
+                fps,
+                bitmap: currentBitmap,
+                timestamp: videoDecoder.getFrameTimestamp(currentFrame),
+                zoomScale: scale,
+            });
+        }
+
+        // Update active overlays based on checkbox state
+        function updateOverlays() {
+            overlays.length = 0;
+            if (document.getElementById('showFrameIndex').checked) {
+                overlays.push(frameIndexOverlay);
+            }
+            if (document.getElementById('showTimingStats').checked) {
+                overlays.push(timingStatsOverlay);
+            }
+            // Zoom overlay is always active (self-manages visibility based on zoom level)
+            overlays.push(zoomLevelOverlay);
+            // Re-render current frame with updated overlays
+            renderFrameWithOverlays();
+        }
 
         // UI Elements
         const loadBtn = document.getElementById('loadBtn');
@@ -998,6 +1331,7 @@
         const playBtn = document.getElementById('playBtn');
         const resetZoomBtn = document.getElementById('resetZoomBtn');
         const canvasContainer = document.getElementById('canvasContainer');
+        const resizeHandle = document.getElementById('resizeHandle');
         const seekbar = document.getElementById('seekbar');
         const seekbarProgress = document.getElementById('seekbarProgress');
         const seekbarThumb = document.getElementById('seekbarThumb');
@@ -1009,6 +1343,50 @@
         const cacheVizContainer = document.getElementById('cacheVizContainer');
         const cacheVizCanvas = document.getElementById('cacheVizCanvas');
         const cacheVizCtx = cacheVizCanvas.getContext('2d');
+
+        // Track container size for resize handling
+        let lastContainerWidth = 0;
+        let lastContainerHeight = 0;
+
+        // Helper to get current video geometry (baseScale and centering offset)
+        function getVideoGeometry() {
+            if (!currentBitmap) return { baseScale: 1, drawX: 0, drawY: 0 };
+
+            const containerWidth = canvasContainer.clientWidth;
+            const containerHeight = canvasContainer.clientHeight;
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+
+            let baseScale, drawX, drawY;
+            if (videoAspect > containerAspect) {
+                baseScale = containerWidth / currentBitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - currentBitmap.height * baseScale) / 2;
+            } else {
+                baseScale = containerHeight / currentBitmap.height;
+                drawX = (containerWidth - currentBitmap.width * baseScale) / 2;
+                drawY = 0;
+            }
+            return { baseScale, drawX, drawY };
+        }
+
+        // Zoom towards a specific point (in container coordinates)
+        function zoomToPoint(pointX, pointY, newScale) {
+            const { baseScale, drawX, drawY } = getVideoGeometry();
+            const effectiveScale = baseScale * scale;
+
+            // Find video point under the target point
+            const videoX = (pointX - offsetX - drawX) / effectiveScale;
+            const videoY = (pointY - offsetY - drawY) / effectiveScale;
+
+            // Calculate new offset to keep that video point at the same container position
+            const newEffectiveScale = baseScale * newScale;
+            offsetX = pointX - drawX - videoX * newEffectiveScale;
+            offsetY = pointY - drawY - videoY * newEffectiveScale;
+
+            scale = newScale;
+            constrainOffset();
+        }
 
         // Check WebCodecs support
         if (!('VideoDecoder' in window)) {
@@ -1154,11 +1532,17 @@
 
                 // Show UI
                 canvasContainer.style.display = 'block';
+                resizeHandle.style.display = 'flex';
                 seekbarContainer.style.display = 'block';
                 cacheVizContainer.style.display = 'block';
-                metricsDiv.style.display = 'block';
-                playBtn.disabled = false;
-                resetZoomBtn.disabled = false;
+                document.getElementById('infoRow').style.display = 'flex';
+
+                // Initialize container size tracking
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
+
+                // Initialize overlays (checked by default)
+                updateOverlays();
 
                 // Reset state
                 currentFrame = 0;
@@ -1225,6 +1609,20 @@
         const urlLoadBtn = document.getElementById('urlLoadBtn');
         const urlCancelBtn = document.getElementById('urlCancelBtn');
 
+        // Pre-populate URL with demo video using current host
+        urlInput.value = `${window.location.origin}/video-player/mice.mp4`;
+
+        // Check for URL parameter and auto-load if present
+        const urlParams = new URLSearchParams(window.location.search);
+        const videoUrl = urlParams.get('url');
+        if (videoUrl) {
+            log(`Auto-loading from URL parameter: ${videoUrl}`, 'info');
+            loadVideo(videoUrl).catch(err => {
+                log(`Failed to load URL: ${err.message}`, 'error');
+                showError('Failed to load URL: ' + err.message);
+            });
+        }
+
         loadUrlBtn.addEventListener('click', () => {
             urlInputContainer.style.display = 'flex';
             urlInput.focus();
@@ -1244,6 +1642,10 @@
 
             try {
                 await loadVideo(url);
+                // Update address bar with URL parameter for easy sharing
+                const newUrl = new URL(window.location.href);
+                newUrl.searchParams.set('url', url);
+                history.replaceState(null, '', newUrl);
             } catch (err) {
                 log(`Failed to load URL: ${err.message}`, 'error');
                 showError('Failed to load URL: ' + err.message);
@@ -1276,7 +1678,22 @@
             if (result && result.bitmap) {
                 currentFrame = frameIndex;
                 currentBitmap = result.bitmap;
+                lastFromCache = result.fromCache;
                 renderFrame(currentBitmap);
+
+                // Render overlays on top of frame
+                renderOverlays({
+                    ctx,
+                    canvas,
+                    frameIndex,
+                    totalFrames,
+                    seekTime: lastSeekTime,
+                    fromCache: result.fromCache,
+                    fps,
+                    bitmap: result.bitmap,
+                    timestamp: videoDecoder.getFrameTimestamp(frameIndex),
+                });
+
                 updateMetrics();
                 updateSeekbar();
                 renderCacheVisualization();
@@ -1293,16 +1710,45 @@
         function renderFrame(bitmap) {
             if (!bitmap) return;
 
-            // Set canvas size on first render or if size changed
-            if (canvas.width !== bitmap.width || canvas.height !== bitmap.height) {
-                canvas.width = bitmap.width;
-                canvas.height = bitmap.height;
+            // Size canvas to fill container at device pixel ratio
+            const container = canvasContainer;
+            const dpr = window.devicePixelRatio || 1;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            if (canvas.width !== containerWidth * dpr || canvas.height !== containerHeight * dpr) {
+                canvas.width = containerWidth * dpr;
+                canvas.height = containerHeight * dpr;
+            }
+
+            // Calculate scale to fit video in container (maintaining aspect ratio)
+            const videoAspect = bitmap.width / bitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+            let baseScale, drawX, drawY;
+
+            if (videoAspect > containerAspect) {
+                // Video is wider - fit to width
+                baseScale = containerWidth / bitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - bitmap.height * baseScale) / 2;
+            } else {
+                // Video is taller - fit to height
+                baseScale = containerHeight / bitmap.height;
+                drawX = (containerWidth - bitmap.width * baseScale) / 2;
+                drawY = 0;
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.save();
+            ctx.scale(dpr, dpr); // Scale for high DPI
+
+            // Use nearest neighbor interpolation when zoomed in enough to see pixels
+            const effectiveScale = baseScale * scale;
+            ctx.imageSmoothingEnabled = effectiveScale < 2;
+
             ctx.translate(offsetX, offsetY);
-            ctx.scale(scale, scale);
+            ctx.translate(drawX, drawY);
+            ctx.scale(effectiveScale, effectiveScale);
             ctx.drawImage(bitmap, 0, 0);
             ctx.restore();
         }
@@ -1342,13 +1788,31 @@
                 delta = e.ctrlKey ? 30 : 1;
                 e.preventDefault();
             } else if (e.key === 'ArrowUp') {
-                delta = e.ctrlKey ? 100 : 10;
+                // Zoom in (centered on canvas)
+                const zoomFactor = e.ctrlKey ? 1.5 : 1.1;
+                const newScale = Math.min(50, scale * zoomFactor);
+                const centerX = canvasContainer.clientWidth / 2;
+                const centerY = canvasContainer.clientHeight / 2;
+                zoomToPoint(centerX, centerY, newScale);
+                renderFrameWithOverlays();
                 e.preventDefault();
             } else if (e.key === 'ArrowDown') {
-                delta = e.ctrlKey ? -100 : -10;
+                // Zoom out (centered on canvas)
+                const zoomFactor = e.ctrlKey ? 0.67 : 0.9;
+                const newScale = Math.max(0.1, scale * zoomFactor);
+                const centerX = canvasContainer.clientWidth / 2;
+                const centerY = canvasContainer.clientHeight / 2;
+                zoomToPoint(centerX, centerY, newScale);
+                renderFrameWithOverlays();
                 e.preventDefault();
             } else if (e.key === ' ') {
                 togglePlayback();
+                e.preventDefault();
+            } else if (e.key === 'Home') {
+                seekToFrame(0);
+                e.preventDefault();
+            } else if (e.key === 'End') {
+                seekToFrame(totalFrames - 1);
                 e.preventDefault();
             }
 
@@ -1369,9 +1833,10 @@
         }
 
         seekbar.addEventListener('mousedown', (e) => {
+            e.preventDefault();
             isScrubbing = true;
+            document.body.style.userSelect = 'none'; // Prevent text selection while dragging
             handleSeekbarInteraction(e);
-            e.preventDefault(); // Prevent text selection while scrubbing
         });
 
         document.addEventListener('mousemove', (e) => {
@@ -1380,16 +1845,31 @@
             }
         });
 
-        // Zoom with mouse wheel
+        // Zoom with mouse wheel (zoom towards cursor)
         canvasContainer.addEventListener('wheel', (e) => {
             e.preventDefault();
-            const delta = e.deltaY > 0 ? 0.9 : 1.1;
-            scale *= delta;
-            scale = Math.max(0.1, Math.min(10, scale));
 
-            if (currentBitmap) {
-                renderFrame(currentBitmap);
-            }
+            // Get cursor position relative to container
+            const rect = canvasContainer.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Normalize deltaY for different input devices
+            // Mouse wheels: ~100-120 per tick, fewer events
+            // Trackpads: smaller values but many more events, plus momentum
+            let delta = e.deltaY;
+            if (e.deltaMode === 1) delta *= 40; // line mode (rare, but normalize)
+
+            // Clamp to prevent huge jumps from trackpad momentum
+            delta = Math.max(-100, Math.min(100, delta));
+
+            // Use exponential scaling: ~10% zoom per 100px of scroll
+            const zoomFactor = Math.exp(-delta * 0.001);
+            const newScale = Math.max(0.1, Math.min(50, scale * zoomFactor));
+
+            // Zoom towards cursor position
+            zoomToPoint(mouseX, mouseY, newScale);
+            renderFrameWithOverlays();
         });
 
         // Pan with mouse drag
@@ -1403,26 +1883,309 @@
             if (isDragging) {
                 offsetX = e.clientX - dragStartX;
                 offsetY = e.clientY - dragStartY;
-
-                if (currentBitmap) {
-                    renderFrame(currentBitmap);
-                }
+                constrainOffset();
+                renderFrameWithOverlays();
             }
         });
 
         document.addEventListener('mouseup', () => {
+            if (isScrubbing) {
+                document.body.style.userSelect = ''; // Restore text selection
+            }
             isDragging = false;
             isScrubbing = false;
         });
+
+        // Pinch-to-zoom for touch devices
+        let initialPinchDistance = null;
+        let initialPinchScale = null;
+        let pinchCenterX = null;
+        let pinchCenterY = null;
+
+        function getTouchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getTouchCenter(touches, rect) {
+            return {
+                x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+                y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+            };
+        }
+
+        canvasContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                initialPinchDistance = getTouchDistance(e.touches);
+                initialPinchScale = scale;
+                const rect = canvasContainer.getBoundingClientRect();
+                const center = getTouchCenter(e.touches, rect);
+                pinchCenterX = center.x;
+                pinchCenterY = center.y;
+                // Clear single-finger pan state to prevent snap when lifting one finger
+                touchStartX = null;
+                touchStartY = null;
+                touchStartOffsetX = null;
+                touchStartOffsetY = null;
+            }
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialPinchDistance !== null) {
+                e.preventDefault();
+                const rect = canvasContainer.getBoundingClientRect();
+                const currentCenter = getTouchCenter(e.touches, rect);
+                const currentDistance = getTouchDistance(e.touches);
+                const pinchRatio = currentDistance / initialPinchDistance;
+                const newScale = Math.max(0.1, Math.min(50, initialPinchScale * pinchRatio));
+
+                // Zoom towards pinch center using correct formula
+                const { baseScale, drawX, drawY } = getVideoGeometry();
+                const effectiveScale = baseScale * scale;
+                const videoX = (pinchCenterX - offsetX - drawX) / effectiveScale;
+                const videoY = (pinchCenterY - offsetY - drawY) / effectiveScale;
+
+                const newEffectiveScale = baseScale * newScale;
+                offsetX = pinchCenterX - drawX - videoX * newEffectiveScale;
+                offsetY = pinchCenterY - drawY - videoY * newEffectiveScale;
+
+                // Pan with pinch center movement
+                offsetX += currentCenter.x - pinchCenterX;
+                offsetY += currentCenter.y - pinchCenterY;
+                pinchCenterX = currentCenter.x;
+                pinchCenterY = currentCenter.y;
+
+                scale = newScale;
+                constrainOffset();
+                renderFrameWithOverlays();
+            }
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDistance = null;
+                initialPinchScale = null;
+                pinchCenterX = null;
+                pinchCenterY = null;
+            }
+        });
+
+        // Single-finger pan for touch devices
+        let touchStartX = null;
+        let touchStartY = null;
+        let touchStartOffsetX = null;
+        let touchStartOffsetY = null;
+
+        canvasContainer.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchStartOffsetX = offsetX;
+                touchStartOffsetY = offsetY;
+            }
+        });
+
+        canvasContainer.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1 && touchStartX !== null) {
+                e.preventDefault();
+                offsetX = touchStartOffsetX + (e.touches[0].clientX - touchStartX);
+                offsetY = touchStartOffsetY + (e.touches[0].clientY - touchStartY);
+                constrainOffset();
+                renderFrameWithOverlays();
+            }
+        }, { passive: false });
+
+        canvasContainer.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) {
+                touchStartX = null;
+                touchStartY = null;
+                touchStartOffsetX = null;
+                touchStartOffsetY = null;
+            }
+        });
+
+        // Handle container resize - transform offset to keep view stable
+        function handleContainerResize(oldW, oldH, newW, newH) {
+            if (!currentBitmap || oldW === 0 || oldH === 0) return;
+
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+
+            // Calculate old geometry
+            const oldContainerAspect = oldW / oldH;
+            let oldBaseScale, oldDrawX, oldDrawY;
+            if (videoAspect > oldContainerAspect) {
+                oldBaseScale = oldW / currentBitmap.width;
+                oldDrawX = 0;
+                oldDrawY = (oldH - currentBitmap.height * oldBaseScale) / 2;
+            } else {
+                oldBaseScale = oldH / currentBitmap.height;
+                oldDrawX = (oldW - currentBitmap.width * oldBaseScale) / 2;
+                oldDrawY = 0;
+            }
+
+            // Calculate new geometry
+            const newContainerAspect = newW / newH;
+            let newBaseScale, newDrawX, newDrawY;
+            if (videoAspect > newContainerAspect) {
+                newBaseScale = newW / currentBitmap.width;
+                newDrawX = 0;
+                newDrawY = (newH - currentBitmap.height * newBaseScale) / 2;
+            } else {
+                newBaseScale = newH / currentBitmap.height;
+                newDrawX = (newW - currentBitmap.width * newBaseScale) / 2;
+                newDrawY = 0;
+            }
+
+            // Find what video point was at old container center
+            const oldCenterX = oldW / 2;
+            const oldCenterY = oldH / 2;
+            const oldEffectiveScale = oldBaseScale * scale;
+            const videoCenterX = (oldCenterX - offsetX - oldDrawX) / oldEffectiveScale;
+            const videoCenterY = (oldCenterY - offsetY - oldDrawY) / oldEffectiveScale;
+
+            // Calculate new offset to put that video point at new container center
+            const newCenterX = newW / 2;
+            const newCenterY = newH / 2;
+            const newEffectiveScale = newBaseScale * scale;
+            offsetX = newCenterX - newDrawX - videoCenterX * newEffectiveScale;
+            offsetY = newCenterY - newDrawY - videoCenterY * newEffectiveScale;
+
+            constrainOffset();
+        }
+
+        // Resize handle drag
+        let isResizing = false;
+        let resizeStartY = 0;
+        let resizeStartHeight = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizing = true;
+            resizeStartY = e.clientY;
+            resizeStartHeight = canvasContainer.clientHeight;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'ns-resize';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizing) {
+                const oldHeight = canvasContainer.clientHeight;
+                const oldWidth = canvasContainer.clientWidth;
+                const delta = e.clientY - resizeStartY;
+                const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
+                canvasContainer.style.height = newHeight + 'px';
+
+                // Transform offset to keep view stable
+                handleContainerResize(oldWidth, oldHeight, canvasContainer.clientWidth, canvasContainer.clientHeight);
+                renderFrameWithOverlays();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                // Update tracked size
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
+            }
+        });
+
+        // Touch support for resize handle
+        resizeHandle.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                isResizing = true;
+                resizeStartY = e.touches[0].clientY;
+                resizeStartHeight = canvasContainer.clientHeight;
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (isResizing && e.touches.length === 1) {
+                const oldHeight = canvasContainer.clientHeight;
+                const oldWidth = canvasContainer.clientWidth;
+                const delta = e.touches[0].clientY - resizeStartY;
+                const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
+                canvasContainer.style.height = newHeight + 'px';
+
+                handleContainerResize(oldWidth, oldHeight, canvasContainer.clientWidth, canvasContainer.clientHeight);
+                renderFrameWithOverlays();
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchend', () => {
+            if (isResizing) {
+                isResizing = false;
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
+            }
+        });
+
+        // Use ResizeObserver to handle window resize and other size changes
+        const containerResizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const newWidth = entry.contentRect.width;
+                const newHeight = entry.contentRect.height;
+
+                // Skip if we're the ones doing the resize (handled in mousemove)
+                if (isResizing) continue;
+
+                // Skip initial observation or if size hasn't changed
+                if (lastContainerWidth === 0 || (newWidth === lastContainerWidth && newHeight === lastContainerHeight)) {
+                    lastContainerWidth = newWidth;
+                    lastContainerHeight = newHeight;
+                    continue;
+                }
+
+                handleContainerResize(lastContainerWidth, lastContainerHeight, newWidth, newHeight);
+                lastContainerWidth = newWidth;
+                lastContainerHeight = newHeight;
+                renderFrameWithOverlays();
+                renderCacheVisualization();
+            }
+        });
+        containerResizeObserver.observe(canvasContainer);
 
         // Reset zoom
         resetZoomBtn.addEventListener('click', () => {
             scale = 1;
             offsetX = 0;
             offsetY = 0;
-            if (currentBitmap) {
-                renderFrame(currentBitmap);
-            }
+            renderFrameWithOverlays();
+        });
+
+        // Frame step buttons
+        document.getElementById('firstFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(0);
+        });
+        document.getElementById('prevFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(currentFrame - 1);
+        });
+        document.getElementById('nextFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(currentFrame + 1);
+        });
+        document.getElementById('lastFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(totalFrames - 1);
+        });
+
+        // Zoom buttons
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            const newScale = Math.min(50, scale * 1.25);
+            const centerX = canvasContainer.clientWidth / 2;
+            const centerY = canvasContainer.clientHeight / 2;
+            zoomToPoint(centerX, centerY, newScale);
+            renderFrameWithOverlays();
+        });
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            const newScale = Math.max(0.1, scale * 0.8);
+            const centerX = canvasContainer.clientWidth / 2;
+            const centerY = canvasContainer.clientHeight / 2;
+            zoomToPoint(centerX, centerY, newScale);
+            renderFrameWithOverlays();
         });
 
         // Playback
@@ -1438,7 +2201,7 @@
             if (!videoDecoder) return;
 
             isPlaying = true;
-            playBtn.textContent = 'Pause';
+            playBtn.textContent = '⏸';
             log(`Playback started at frame ${currentFrame}`, 'info');
 
             const interval = 1000 / fps;
@@ -1452,7 +2215,7 @@
         function stopPlayback() {
             const wasPlaying = isPlaying;
             isPlaying = false;
-            playBtn.textContent = 'Play';
+            playBtn.textContent = '▶';
             if (playInterval) {
                 clearInterval(playInterval);
                 playInterval = null;
@@ -1483,6 +2246,10 @@
                 log(`Lookahead updated to ${newSize}`, 'info');
             }
         });
+
+        // Overlay toggle handlers
+        document.getElementById('showFrameIndex').addEventListener('change', updateOverlays);
+        document.getElementById('showTimingStats').addEventListener('change', updateOverlays);
 
         // Re-render cache viz on window resize
         window.addEventListener('resize', () => {
