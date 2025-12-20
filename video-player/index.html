@@ -45,13 +45,38 @@
         .canvas-container {
             position: relative;
             background: #000;
-            border-radius: 8px;
+            border-radius: 8px 8px 0 0;
             overflow: hidden;
-            margin: 20px 0;
+            margin: 20px 0 0 0;
             cursor: grab;
             height: 70vh;
+            min-height: 150px;
+            max-height: 90vh;
         }
         .canvas-container:active { cursor: grabbing; }
+        .resize-handle {
+            height: 8px;
+            background: #2a2a2a;
+            border-radius: 0 0 8px 8px;
+            cursor: ns-resize;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .resize-handle:hover {
+            background: #3a3a3a;
+        }
+        .resize-handle::after {
+            content: '';
+            width: 40px;
+            height: 3px;
+            background: #555;
+            border-radius: 2px;
+        }
+        .resize-handle:hover::after {
+            background: #777;
+        }
         canvas {
             display: block;
             width: 100%;
@@ -410,6 +435,7 @@
         <div class="canvas-container" id="canvasContainer" style="display: none;">
             <canvas id="canvas"></canvas>
         </div>
+        <div class="resize-handle" id="resizeHandle" style="display: none;"></div>
 
         <div class="seekbar-container" id="seekbarContainer" style="display: none;">
             <div class="seekbar" id="seekbar">
@@ -1305,6 +1331,7 @@
         const playBtn = document.getElementById('playBtn');
         const resetZoomBtn = document.getElementById('resetZoomBtn');
         const canvasContainer = document.getElementById('canvasContainer');
+        const resizeHandle = document.getElementById('resizeHandle');
         const seekbar = document.getElementById('seekbar');
         const seekbarProgress = document.getElementById('seekbarProgress');
         const seekbarThumb = document.getElementById('seekbarThumb');
@@ -1316,6 +1343,50 @@
         const cacheVizContainer = document.getElementById('cacheVizContainer');
         const cacheVizCanvas = document.getElementById('cacheVizCanvas');
         const cacheVizCtx = cacheVizCanvas.getContext('2d');
+
+        // Track container size for resize handling
+        let lastContainerWidth = 0;
+        let lastContainerHeight = 0;
+
+        // Helper to get current video geometry (baseScale and centering offset)
+        function getVideoGeometry() {
+            if (!currentBitmap) return { baseScale: 1, drawX: 0, drawY: 0 };
+
+            const containerWidth = canvasContainer.clientWidth;
+            const containerHeight = canvasContainer.clientHeight;
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+
+            let baseScale, drawX, drawY;
+            if (videoAspect > containerAspect) {
+                baseScale = containerWidth / currentBitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - currentBitmap.height * baseScale) / 2;
+            } else {
+                baseScale = containerHeight / currentBitmap.height;
+                drawX = (containerWidth - currentBitmap.width * baseScale) / 2;
+                drawY = 0;
+            }
+            return { baseScale, drawX, drawY };
+        }
+
+        // Zoom towards a specific point (in container coordinates)
+        function zoomToPoint(pointX, pointY, newScale) {
+            const { baseScale, drawX, drawY } = getVideoGeometry();
+            const effectiveScale = baseScale * scale;
+
+            // Find video point under the target point
+            const videoX = (pointX - offsetX - drawX) / effectiveScale;
+            const videoY = (pointY - offsetY - drawY) / effectiveScale;
+
+            // Calculate new offset to keep that video point at the same container position
+            const newEffectiveScale = baseScale * newScale;
+            offsetX = pointX - drawX - videoX * newEffectiveScale;
+            offsetY = pointY - drawY - videoY * newEffectiveScale;
+
+            scale = newScale;
+            constrainOffset();
+        }
 
         // Check WebCodecs support
         if (!('VideoDecoder' in window)) {
@@ -1461,9 +1532,14 @@
 
                 // Show UI
                 canvasContainer.style.display = 'block';
+                resizeHandle.style.display = 'flex';
                 seekbarContainer.style.display = 'block';
                 cacheVizContainer.style.display = 'block';
                 document.getElementById('infoRow').style.display = 'flex';
+
+                // Initialize container size tracking
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
 
                 // Initialize overlays (checked by default)
                 updateOverlays();
@@ -1715,26 +1791,18 @@
                 // Zoom in (centered on canvas)
                 const zoomFactor = e.ctrlKey ? 1.5 : 1.1;
                 const newScale = Math.min(50, scale * zoomFactor);
-                const rect = canvasContainer.getBoundingClientRect();
-                const centerX = rect.width / 2;
-                const centerY = rect.height / 2;
-                offsetX = centerX - (centerX - offsetX) * (newScale / scale);
-                offsetY = centerY - (centerY - offsetY) * (newScale / scale);
-                scale = newScale;
-                constrainOffset();
+                const centerX = canvasContainer.clientWidth / 2;
+                const centerY = canvasContainer.clientHeight / 2;
+                zoomToPoint(centerX, centerY, newScale);
                 renderFrameWithOverlays();
                 e.preventDefault();
             } else if (e.key === 'ArrowDown') {
                 // Zoom out (centered on canvas)
                 const zoomFactor = e.ctrlKey ? 0.67 : 0.9;
                 const newScale = Math.max(0.1, scale * zoomFactor);
-                const rect = canvasContainer.getBoundingClientRect();
-                const centerX = rect.width / 2;
-                const centerY = rect.height / 2;
-                offsetX = centerX - (centerX - offsetX) * (newScale / scale);
-                offsetY = centerY - (centerY - offsetY) * (newScale / scale);
-                scale = newScale;
-                constrainOffset();
+                const centerX = canvasContainer.clientWidth / 2;
+                const centerY = canvasContainer.clientHeight / 2;
+                zoomToPoint(centerX, centerY, newScale);
                 renderFrameWithOverlays();
                 e.preventDefault();
             } else if (e.key === ' ') {
@@ -1799,13 +1867,8 @@
             const zoomFactor = Math.exp(-delta * 0.001);
             const newScale = Math.max(0.1, Math.min(50, scale * zoomFactor));
 
-            // Adjust offset to zoom towards cursor position
-            // The point under cursor should stay fixed after zoom
-            offsetX = mouseX - (mouseX - offsetX) * (newScale / scale);
-            offsetY = mouseY - (mouseY - offsetY) * (newScale / scale);
-
-            scale = newScale;
-            constrainOffset();
+            // Zoom towards cursor position
+            zoomToPoint(mouseX, mouseY, newScale);
             renderFrameWithOverlays();
         });
 
@@ -1878,9 +1941,15 @@
                 const pinchRatio = currentDistance / initialPinchDistance;
                 const newScale = Math.max(0.1, Math.min(50, initialPinchScale * pinchRatio));
 
-                // Zoom towards pinch center
-                offsetX = pinchCenterX - (pinchCenterX - offsetX) * (newScale / scale);
-                offsetY = pinchCenterY - (pinchCenterY - offsetY) * (newScale / scale);
+                // Zoom towards pinch center using correct formula
+                const { baseScale, drawX, drawY } = getVideoGeometry();
+                const effectiveScale = baseScale * scale;
+                const videoX = (pinchCenterX - offsetX - drawX) / effectiveScale;
+                const videoY = (pinchCenterY - offsetY - drawY) / effectiveScale;
+
+                const newEffectiveScale = baseScale * newScale;
+                offsetX = pinchCenterX - drawX - videoX * newEffectiveScale;
+                offsetY = pinchCenterY - drawY - videoY * newEffectiveScale;
 
                 // Pan with pinch center movement
                 offsetX += currentCenter.x - pinchCenterX;
@@ -1937,6 +2006,150 @@
             }
         });
 
+        // Handle container resize - transform offset to keep view stable
+        function handleContainerResize(oldW, oldH, newW, newH) {
+            if (!currentBitmap || oldW === 0 || oldH === 0) return;
+
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+
+            // Calculate old geometry
+            const oldContainerAspect = oldW / oldH;
+            let oldBaseScale, oldDrawX, oldDrawY;
+            if (videoAspect > oldContainerAspect) {
+                oldBaseScale = oldW / currentBitmap.width;
+                oldDrawX = 0;
+                oldDrawY = (oldH - currentBitmap.height * oldBaseScale) / 2;
+            } else {
+                oldBaseScale = oldH / currentBitmap.height;
+                oldDrawX = (oldW - currentBitmap.width * oldBaseScale) / 2;
+                oldDrawY = 0;
+            }
+
+            // Calculate new geometry
+            const newContainerAspect = newW / newH;
+            let newBaseScale, newDrawX, newDrawY;
+            if (videoAspect > newContainerAspect) {
+                newBaseScale = newW / currentBitmap.width;
+                newDrawX = 0;
+                newDrawY = (newH - currentBitmap.height * newBaseScale) / 2;
+            } else {
+                newBaseScale = newH / currentBitmap.height;
+                newDrawX = (newW - currentBitmap.width * newBaseScale) / 2;
+                newDrawY = 0;
+            }
+
+            // Find what video point was at old container center
+            const oldCenterX = oldW / 2;
+            const oldCenterY = oldH / 2;
+            const oldEffectiveScale = oldBaseScale * scale;
+            const videoCenterX = (oldCenterX - offsetX - oldDrawX) / oldEffectiveScale;
+            const videoCenterY = (oldCenterY - offsetY - oldDrawY) / oldEffectiveScale;
+
+            // Calculate new offset to put that video point at new container center
+            const newCenterX = newW / 2;
+            const newCenterY = newH / 2;
+            const newEffectiveScale = newBaseScale * scale;
+            offsetX = newCenterX - newDrawX - videoCenterX * newEffectiveScale;
+            offsetY = newCenterY - newDrawY - videoCenterY * newEffectiveScale;
+
+            constrainOffset();
+        }
+
+        // Resize handle drag
+        let isResizing = false;
+        let resizeStartY = 0;
+        let resizeStartHeight = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizing = true;
+            resizeStartY = e.clientY;
+            resizeStartHeight = canvasContainer.clientHeight;
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'ns-resize';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizing) {
+                const oldHeight = canvasContainer.clientHeight;
+                const oldWidth = canvasContainer.clientWidth;
+                const delta = e.clientY - resizeStartY;
+                const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
+                canvasContainer.style.height = newHeight + 'px';
+
+                // Transform offset to keep view stable
+                handleContainerResize(oldWidth, oldHeight, canvasContainer.clientWidth, canvasContainer.clientHeight);
+                renderFrameWithOverlays();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+                // Update tracked size
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
+            }
+        });
+
+        // Touch support for resize handle
+        resizeHandle.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                isResizing = true;
+                resizeStartY = e.touches[0].clientY;
+                resizeStartHeight = canvasContainer.clientHeight;
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (isResizing && e.touches.length === 1) {
+                const oldHeight = canvasContainer.clientHeight;
+                const oldWidth = canvasContainer.clientWidth;
+                const delta = e.touches[0].clientY - resizeStartY;
+                const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
+                canvasContainer.style.height = newHeight + 'px';
+
+                handleContainerResize(oldWidth, oldHeight, canvasContainer.clientWidth, canvasContainer.clientHeight);
+                renderFrameWithOverlays();
+            }
+        }, { passive: true });
+
+        document.addEventListener('touchend', () => {
+            if (isResizing) {
+                isResizing = false;
+                lastContainerWidth = canvasContainer.clientWidth;
+                lastContainerHeight = canvasContainer.clientHeight;
+            }
+        });
+
+        // Use ResizeObserver to handle window resize and other size changes
+        const containerResizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const newWidth = entry.contentRect.width;
+                const newHeight = entry.contentRect.height;
+
+                // Skip if we're the ones doing the resize (handled in mousemove)
+                if (isResizing) continue;
+
+                // Skip initial observation or if size hasn't changed
+                if (lastContainerWidth === 0 || (newWidth === lastContainerWidth && newHeight === lastContainerHeight)) {
+                    lastContainerWidth = newWidth;
+                    lastContainerHeight = newHeight;
+                    continue;
+                }
+
+                handleContainerResize(lastContainerWidth, lastContainerHeight, newWidth, newHeight);
+                lastContainerWidth = newWidth;
+                lastContainerHeight = newHeight;
+                renderFrameWithOverlays();
+                renderCacheVisualization();
+            }
+        });
+        containerResizeObserver.observe(canvasContainer);
+
         // Reset zoom
         resetZoomBtn.addEventListener('click', () => {
             scale = 1;
@@ -1962,24 +2175,16 @@
         // Zoom buttons
         document.getElementById('zoomInBtn').addEventListener('click', () => {
             const newScale = Math.min(50, scale * 1.25);
-            const rect = canvasContainer.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            offsetX = centerX - (centerX - offsetX) * (newScale / scale);
-            offsetY = centerY - (centerY - offsetY) * (newScale / scale);
-            scale = newScale;
-            constrainOffset();
+            const centerX = canvasContainer.clientWidth / 2;
+            const centerY = canvasContainer.clientHeight / 2;
+            zoomToPoint(centerX, centerY, newScale);
             renderFrameWithOverlays();
         });
         document.getElementById('zoomOutBtn').addEventListener('click', () => {
             const newScale = Math.max(0.1, scale * 0.8);
-            const rect = canvasContainer.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-            offsetX = centerX - (centerX - offsetX) * (newScale / scale);
-            offsetY = centerY - (centerY - offsetY) * (newScale / scale);
-            scale = newScale;
-            constrainOffset();
+            const centerX = canvasContainer.clientWidth / 2;
+            const centerY = canvasContainer.clientHeight / 2;
+            zoomToPoint(centerX, centerY, newScale);
             renderFrameWithOverlays();
         });
 
