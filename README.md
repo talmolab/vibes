@@ -16,6 +16,7 @@ Self-contained HTML tools and applets for the web.
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
 - [Calibration Studio](calibration-studio/) - Multi-camera calibration tool with ChArUco detection, intrinsic/extrinsic calibration, and TOML export
 - [Link Unfurl Preview](link-unfurl/) - Preview how links appear when shared on social media
+- [Video Event Annotator](event-annotator/) - Frame-accurate event segment annotation with multi-track timeline
 
 ## About
 
