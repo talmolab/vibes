@@ -61,6 +61,10 @@
         .hotkey-key { color: #667eea; font-family: monospace; min-width: 65px; }
         .hotkey-desc { color: #aaa; }
         .error-msg { background: #4a2020; border: 1px solid #ff6b6b; color: #ff6b6b; padding: 10px 15px; border-radius: 8px; margin: 10px 0; display: none; font-size: 13px; }
+        .url-input-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .url-input-container input[type="text"] { flex: 1; min-width: 200px; background: #1a1a1a; border: 1px solid #444; border-radius: 6px; padding: 8px 12px; color: #e0e0e0; font-size: 13px; }
+        .url-input-container input[type="text"]:focus { outline: none; border-color: #667eea; }
+        .url-hint { width: 100%; color: #888; font-size: 11px; margin-top: 4px; }
         .log-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 15px 0; }
         .log-container h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; }
         @media (max-width: 600px) { body { padding: 10px; } .info-row { flex-direction: column; } }
@@ -74,10 +78,17 @@
             <input type="file" id="fileInput" accept="video/mp4,video/webm,.mp4,.webm" style="display: none;">
             <input type="file" id="importInput" accept=".json" style="display: none;">
             <button id="loadBtn">Load Video</button>
+            <button id="loadUrlBtn">Load from URL</button>
             <button id="demoBtn">Load Demo</button>
             <button id="importBtn" disabled>Import</button>
             <button id="exportBtn" disabled>Export</button>
             <button id="clearBtn" disabled>Clear</button>
+        </div>
+        <div class="url-input-container" id="urlInputContainer" style="display: none;">
+            <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)">
+            <button id="urlLoadBtn">Load</button>
+            <button id="urlCancelBtn">Cancel</button>
+            <small class="url-hint">URL must support CORS. Range requests enable streaming without downloading the full file.</small>
         </div>
         <div class="error-msg" id="errorMsg"></div>
         <div class="canvas-container" id="canvasContainer" style="display: none;"><canvas id="canvas"></canvas></div>
@@ -211,8 +222,47 @@
             } catch (err) { console.error(err); showError('Error: ' + err.message); }
         }
 
-        document.getElementById('loadBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+        // Load video button - use File System Access API if available
+        document.getElementById('loadBtn').addEventListener('click', async () => {
+            if ('showOpenFilePicker' in window) {
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{ description: 'Video files', accept: { 'video/mp4': ['.mp4'], 'video/webm': ['.webm'] } }],
+                        multiple: false
+                    });
+                    const file = await handle.getFile();
+                    await loadVideo(file);
+                } catch (err) {
+                    if (err.name !== 'AbortError') document.getElementById('fileInput').click();
+                }
+            } else {
+                document.getElementById('fileInput').click();
+            }
+        });
         document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files[0]) loadVideo(e.target.files[0]); });
+
+        // URL loading
+        const urlInputContainer = document.getElementById('urlInputContainer'), urlInput = document.getElementById('urlInput');
+        urlInput.value = `${window.location.origin}/video-player/mice.mp4`;
+        document.getElementById('loadUrlBtn').addEventListener('click', () => { urlInputContainer.style.display = 'flex'; urlInput.focus(); });
+        document.getElementById('urlCancelBtn').addEventListener('click', () => { urlInputContainer.style.display = 'none'; });
+        document.getElementById('urlLoadBtn').addEventListener('click', async () => {
+            const url = urlInput.value.trim(); if (!url) return;
+            urlInputContainer.style.display = 'none';
+            try {
+                showError('Loading from URL...');
+                const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const b = await r.blob();
+                const name = url.split('/').pop().split('?')[0] || 'video.mp4';
+                hideError(); await loadVideo(new File([b], name, { type: b.type || 'video/mp4' }));
+            } catch (e) { showError('URL error: ' + e.message); log(`URL load error: ${e.message}`); }
+        });
+        urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('urlLoadBtn').click(); });
+
+        // Check for URL parameter
+        const urlParam = new URLSearchParams(window.location.search).get('url');
+        if (urlParam) { urlInput.value = urlParam; document.getElementById('urlLoadBtn').click(); }
+
         document.getElementById('demoBtn').addEventListener('click', async () => { try { showError('Loading...'); const r = await fetch('/video-player/mice.mp4'); if (!r.ok) throw new Error('Not found'); const b = await r.blob(); hideError(); await loadVideo(new File([b], 'mice.mp4', { type: 'video/mp4' })); } catch (e) { showError('Demo error: ' + e.message); } });
 
         async function seekToFrame(idx) { if (!state.videoDecoder) return; idx = ((idx % state.totalFrames) + state.totalFrames) % state.totalFrames; const r = await state.videoDecoder.getFrame(idx); if (r?.bitmap) { state.currentFrame = idx; currentBitmap = r.bitmap; renderFrame(); updateSeekbar(); updateStatusDisplay(); renderTimelineTracks(); } }
