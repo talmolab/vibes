@@ -10,11 +10,12 @@ Frame-accurate event segment annotation with multi-row timeline, zoom/pan, and J
 - Load from URL with `?url=` query parameter support
 - Frame-accurate navigation (arrow keys, Home/End)
 - Hotkey-driven annotation (press to start, press again to commit)
+- **Customizable event types** - add, edit, remove event types with custom names, colors, and hotkeys
 - Timeline with one row per event type (events CAN overlap across types)
 - Click segments to select, Delete to remove
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas
-- JSON export/import for annotations
+- JSON export/import for annotations (includes event type definitions)
 - Debug log panel for troubleshooting
 
 ## Keyboard Shortcuts
@@ -26,7 +27,7 @@ Frame-accurate event segment annotation with multi-row timeline, zoom/pan, and J
 | Home/End | First/Last frame |
 | Space | Play/Pause |
 | Up/Down | Zoom in/out |
-| W R E | Start/end event annotation |
+| Event hotkeys | Start/end event annotation (default: W, R, E) |
 | Escape | Cancel current annotation |
 | Delete | Remove selected segment |
 
@@ -86,49 +87,31 @@ mode would be ambiguous - which events should it erase? Instead:
 - **Clear All** button for bulk removal
 - **Future: drag segment edges** to resize
 
-### Future: Subject Assignment
+## TODO
 
-When detection data is available (poses, bboxes, masks), segments can be
-assigned to specific subjects:
+### Subject-Specific Events
+
+Currently all events are frame-level (no subject assignment). The data model already supports `subjectId` on segments:
 
 ```javascript
-// Frame-level event (no subject)
+// Frame-level event (current)
 { eventTypeId: 'walking', startFrame: 10, endFrame: 50, subjectId: null }
 
-// Subject-assigned event
+// Subject-assigned event (future)
 { eventTypeId: 'walking', startFrame: 10, endFrame: 50, subjectId: 'mouse_a' }
 ```
 
-The UI would then allow grouping/filtering by subject:
+Planned features:
+- Load detection data (poses, bboxes, masks) from external files
+- Assign events to specific detected subjects
+- Group/filter timeline by subject
+- Support for multi-subject events (e.g., "Mouse A and B are fighting")
 
-```
-[Frame-level Events]
-  Walking   [████]
-  Eating         [████]
+### Other Future Work
 
-Mouse A (detection)
-  Walking   [██████]
-  Running        [████]
-
-Mouse A + Mouse B (interaction)
-  Fighting       [████]
-```
-
-### Future: Detection Integration
-
-Planned support for spatial annotations:
-
-| Detection Type | Data |
-|----------------|------|
-| Bounding Box | `{ x, y, width, height }` |
-| Keypoints/Pose | `[{ name, x, y, confidence }, ...]` |
-| Centroid | `{ x, y }` |
-| Segmentation Mask | `{ rle: '...' }` or polygon |
-
-These would enable:
-- **Undirected events**: "Mouse A is walking"
-- **Directed events**: "Person X is holding Object Y"
-- **Multi-subject events**: "Mouse A and B are fighting"
+- Drag segment edges to resize
+- Playback speed control
+- Undo/redo
 
 ## Initial Prompt
 
