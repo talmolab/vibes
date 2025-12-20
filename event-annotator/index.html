@@ -109,7 +109,7 @@
         </div>
         <div class="info-row" id="infoRow" style="display: none;">
             <div class="metrics"><h3>Video</h3><div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div><div class="metric"><span class="metric-label">Size:</span> <span id="metricRes">-</span></div><div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div></div>
-            <div class="metrics"><h3>Annotations</h3><div class="metric"><span class="metric-label">Segments:</span> <span id="metricSegments">0</span></div><div class="metric"><span class="metric-label">Tracks:</span> <span id="metricTracks">0</span></div></div>
+            <div class="metrics"><h3>Annotations</h3><div class="metric"><span class="metric-label">Segments:</span> <span id="metricSegments">0</span></div><div class="metric"><span class="metric-label">Event Types:</span> <span id="metricEventTypes">0</span></div></div>
         </div>
         <div class="hotkeys">
             <h3>Keyboard Shortcuts</h3>
@@ -122,7 +122,6 @@
                 <div class="hotkey"><span class="hotkey-key">Wheel</span><span class="hotkey-desc">Zoom</span></div>
                 <div class="hotkey"><span class="hotkey-key">Drag</span><span class="hotkey-desc">Pan</span></div>
                 <div class="hotkey"><span class="hotkey-key">W R E</span><span class="hotkey-desc">Events</span></div>
-                <div class="hotkey"><span class="hotkey-key">X</span><span class="hotkey-desc">Eraser</span></div>
                 <div class="hotkey"><span class="hotkey-key">Escape</span><span class="hotkey-desc">Cancel</span></div>
                 <div class="hotkey"><span class="hotkey-key">Delete</span><span class="hotkey-desc">Remove</span></div>
             </div>
@@ -134,13 +133,11 @@
             videoDecoder: null, currentFrame: 0, totalFrames: 0, fps: 0, fileName: '', videoInfo: null, isPlaying: false, playInterval: null,
             mode: 'idle', activeAnnotation: null, selectedSegmentId: null,
             eventTypes: [
-                { id: 'walking', name: 'Walking', hotkey: 'w', color: '#4ade80', trackId: 'track1' },
-                { id: 'running', name: 'Running', hotkey: 'r', color: '#60a5fa', trackId: 'track1' },
-                { id: 'eating', name: 'Eating', hotkey: 'e', color: '#f472b6', trackId: 'track2' },
-                { id: 'no_event', name: 'Eraser', hotkey: 'x', color: '#444', trackId: null, isEraser: true },
+                { id: 'walking', name: 'Walking', hotkey: 'w', color: '#4ade80' },
+                { id: 'running', name: 'Running', hotkey: 'r', color: '#60a5fa' },
+                { id: 'eating', name: 'Eating', hotkey: 'e', color: '#f472b6' },
             ],
-            tracks: [{ id: 'track1', name: 'Activity' }, { id: 'track2', name: 'Feeding' }],
-            segments: [],
+            segments: [], // { id, eventTypeId, startFrame, endFrame, subjectId }
         };
 
         // Zoom/Pan state
@@ -265,25 +262,54 @@
 
         // Annotation
         function startPainting(etId) { state.mode = 'painting'; state.activeAnnotation = { eventTypeId: etId, startFrame: state.currentFrame }; state.selectedSegmentId = null; updateStatusDisplay(); renderTimelineTracks(); renderFrame(); }
-        function commitAnnotation() { if (!state.activeAnnotation) return; const { eventTypeId, startFrame } = state.activeAnnotation, endFrame = state.currentFrame, et = getEventType(eventTypeId), ss = Math.min(startFrame, endFrame), se = Math.max(startFrame, endFrame); if (et.isEraser) eraseRange(ss, se); else addSegment(et.trackId, eventTypeId, ss, se); state.mode = 'idle'; state.activeAnnotation = null; updateStatusDisplay(); renderTimelineTracks(); renderFrame(); updateMetrics(); }
+        function commitAnnotation() { if (!state.activeAnnotation) return; const { eventTypeId, startFrame } = state.activeAnnotation, endFrame = state.currentFrame, ss = Math.min(startFrame, endFrame), se = Math.max(startFrame, endFrame); addSegment(eventTypeId, ss, se); state.mode = 'idle'; state.activeAnnotation = null; updateStatusDisplay(); renderTimelineTracks(); renderFrame(); updateMetrics(); }
         function cancelPainting() { state.mode = 'idle'; state.activeAnnotation = null; updateStatusDisplay(); renderTimelineTracks(); renderFrame(); }
-        function addSegment(tid, etId, s, e) { const ovs = state.segments.filter(sg => sg.trackId === tid && !(sg.endFrame < s || sg.startFrame > e)); for (const o of ovs) { state.segments.splice(state.segments.indexOf(o), 1); if (o.eventTypeId === etId) { s = Math.min(s, o.startFrame); e = Math.max(e, o.endFrame); } else { if (o.startFrame < s) state.segments.push({ id: crypto.randomUUID(), trackId: tid, eventTypeId: o.eventTypeId, startFrame: o.startFrame, endFrame: s - 1 }); if (o.endFrame > e) state.segments.push({ id: crypto.randomUUID(), trackId: tid, eventTypeId: o.eventTypeId, startFrame: e + 1, endFrame: o.endFrame }); } } state.segments.push({ id: crypto.randomUUID(), trackId: tid, eventTypeId: etId, startFrame: s, endFrame: e }); }
-        function eraseRange(s, e) { const rm = [], add = []; for (const sg of state.segments) { if (sg.endFrame < s || sg.startFrame > e) continue; rm.push(sg); if (sg.startFrame < s) add.push({ ...sg, id: crypto.randomUUID(), endFrame: s - 1 }); if (sg.endFrame > e) add.push({ ...sg, id: crypto.randomUUID(), startFrame: e + 1 }); } for (const sg of rm) state.segments.splice(state.segments.indexOf(sg), 1); state.segments.push(...add); }
+        function addSegment(etId, s, e, subjectId = null) {
+            // Find overlapping segments of the SAME event type and merge them
+            const ovs = state.segments.filter(sg => sg.eventTypeId === etId && sg.subjectId === subjectId && !(sg.endFrame < s || sg.startFrame > e));
+            for (const o of ovs) { state.segments.splice(state.segments.indexOf(o), 1); s = Math.min(s, o.startFrame); e = Math.max(e, o.endFrame); }
+            state.segments.push({ id: crypto.randomUUID(), eventTypeId: etId, startFrame: s, endFrame: e, subjectId });
+        }
         function deleteSelectedSegment() { if (!state.selectedSegmentId) return; const i = state.segments.findIndex(s => s.id === state.selectedSegmentId); if (i !== -1) state.segments.splice(i, 1); state.selectedSegmentId = null; renderTimelineTracks(); updateMetrics(); document.getElementById('selectedSegmentInfo').textContent = ''; }
         function handleEventTypeClick(etId) { if (state.mode === 'painting') { if (state.activeAnnotation.eventTypeId === etId) commitAnnotation(); else { commitAnnotation(); startPainting(etId); } } else startPainting(etId); }
 
-        function renderEventTypeButtons() { const c = document.getElementById('eventTypeButtons'); c.innerHTML = ''; for (const et of state.eventTypes) { const b = document.createElement('button'); b.className = 'event-type-btn'; b.style.background = et.color; b.style.color = et.isEraser ? '#aaa' : '#000'; b.innerHTML = `${et.name} <span class="hotkey">${et.hotkey.toUpperCase()}</span>`; b.addEventListener('click', () => handleEventTypeClick(et.id)); c.appendChild(b); } }
-        function renderTimelineTracks() { const c = document.getElementById('timelineTracks'); c.innerHTML = ''; for (const track of state.tracks) { const t = document.createElement('div'); t.className = 'timeline-track'; t.innerHTML = `<span class="timeline-track-label">${track.name}</span>`; for (const seg of state.segments.filter(s => s.trackId === track.id)) { const et = getEventType(seg.eventTypeId), l = (seg.startFrame / state.totalFrames) * 100, w = ((seg.endFrame - seg.startFrame + 1) / state.totalFrames) * 100; const s = document.createElement('div'); s.className = 'timeline-segment' + (seg.id === state.selectedSegmentId ? ' selected' : ''); s.style.cssText = `left:${l}%;width:${w}%;background:${et.color};`; s.title = `${et.name}: ${seg.startFrame + 1}-${seg.endFrame + 1}`; s.addEventListener('click', ev => { ev.stopPropagation(); state.selectedSegmentId = seg.id; document.getElementById('selectedSegmentInfo').textContent = `${et.name} (${seg.startFrame + 1}-${seg.endFrame + 1}) - Delete to remove`; renderTimelineTracks(); }); t.appendChild(s); } if (state.mode === 'painting' && state.activeAnnotation) { const et = getEventType(state.activeAnnotation.eventTypeId); if (et.trackId === track.id || et.isEraser) { const ss = Math.min(state.activeAnnotation.startFrame, state.currentFrame), se = Math.max(state.activeAnnotation.startFrame, state.currentFrame), l = (ss / state.totalFrames) * 100, w = ((se - ss + 1) / state.totalFrames) * 100; const p = document.createElement('div'); p.className = 'timeline-segment active'; p.style.cssText = `left:${l}%;width:${w}%;background:${et.color};`; t.appendChild(p); } } const ph = document.createElement('div'); ph.className = 'timeline-playhead'; ph.style.left = (state.currentFrame / state.totalFrames) * 100 + '%'; t.appendChild(ph); t.addEventListener('click', () => { state.selectedSegmentId = null; document.getElementById('selectedSegmentInfo').textContent = ''; renderTimelineTracks(); }); c.appendChild(t); } }
+        function renderEventTypeButtons() { const c = document.getElementById('eventTypeButtons'); c.innerHTML = ''; for (const et of state.eventTypes) { const b = document.createElement('button'); b.className = 'event-type-btn'; b.style.background = et.color; b.style.color = '#000'; b.innerHTML = `${et.name} <span class="hotkey">${et.hotkey.toUpperCase()}</span>`; b.addEventListener('click', () => handleEventTypeClick(et.id)); c.appendChild(b); } }
+        function renderTimelineTracks() {
+            const c = document.getElementById('timelineTracks'); c.innerHTML = '';
+            // One row per event type
+            for (const et of state.eventTypes) {
+                const t = document.createElement('div'); t.className = 'timeline-track';
+                t.innerHTML = `<span class="timeline-track-label">${et.name}</span>`;
+                // Render segments for this event type
+                for (const seg of state.segments.filter(s => s.eventTypeId === et.id)) {
+                    const l = (seg.startFrame / state.totalFrames) * 100, w = ((seg.endFrame - seg.startFrame + 1) / state.totalFrames) * 100;
+                    const s = document.createElement('div'); s.className = 'timeline-segment' + (seg.id === state.selectedSegmentId ? ' selected' : '');
+                    s.style.cssText = `left:${l}%;width:${w}%;background:${et.color};`;
+                    s.title = `${et.name}: ${seg.startFrame + 1}-${seg.endFrame + 1}`;
+                    s.addEventListener('click', ev => { ev.stopPropagation(); state.selectedSegmentId = seg.id; document.getElementById('selectedSegmentInfo').textContent = `${et.name} (${seg.startFrame + 1}-${seg.endFrame + 1}) - Delete to remove`; renderTimelineTracks(); });
+                    t.appendChild(s);
+                }
+                // Show active painting on this event type's row
+                if (state.mode === 'painting' && state.activeAnnotation && state.activeAnnotation.eventTypeId === et.id) {
+                    const ss = Math.min(state.activeAnnotation.startFrame, state.currentFrame), se = Math.max(state.activeAnnotation.startFrame, state.currentFrame);
+                    const l = (ss / state.totalFrames) * 100, w = ((se - ss + 1) / state.totalFrames) * 100;
+                    const p = document.createElement('div'); p.className = 'timeline-segment active'; p.style.cssText = `left:${l}%;width:${w}%;background:${et.color};`; t.appendChild(p);
+                }
+                const ph = document.createElement('div'); ph.className = 'timeline-playhead'; ph.style.left = (state.currentFrame / state.totalFrames) * 100 + '%'; t.appendChild(ph);
+                t.addEventListener('click', () => { state.selectedSegmentId = null; document.getElementById('selectedSegmentInfo').textContent = ''; renderTimelineTracks(); });
+                c.appendChild(t);
+            }
+        }
         function updateStatusDisplay() { const m = document.getElementById('modeDisplay'), f = document.getElementById('frameDisplay'), pi = document.getElementById('paintingInfo'), pd = document.getElementById('paintingDisplay'); f.textContent = `${state.currentFrame + 1} / ${state.totalFrames}`; if (state.mode === 'painting' && state.activeAnnotation) { const et = getEventType(state.activeAnnotation.eventTypeId); m.textContent = 'PAINTING'; m.className = 'status-value status-painting'; pi.style.display = 'inline'; pd.textContent = `${et.name} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`; pd.style.color = et.color; } else { m.textContent = 'IDLE'; m.className = 'status-value status-idle'; pi.style.display = 'none'; } }
-        function updateMetrics() { document.getElementById('metricFile').textContent = state.fileName; document.getElementById('metricRes').textContent = state.videoInfo ? `${state.videoInfo.width}x${state.videoInfo.height}` : '-'; document.getElementById('metricFps').textContent = state.fps.toFixed(2); document.getElementById('metricSegments').textContent = state.segments.length; document.getElementById('metricTracks').textContent = state.tracks.length; }
+        function updateMetrics() { document.getElementById('metricFile').textContent = state.fileName; document.getElementById('metricRes').textContent = state.videoInfo ? `${state.videoInfo.width}x${state.videoInfo.height}` : '-'; document.getElementById('metricFps').textContent = state.fps.toFixed(2); document.getElementById('metricSegments').textContent = state.segments.length; document.getElementById('metricEventTypes').textContent = state.eventTypes.length; }
 
         // Keyboard
         document.addEventListener('keydown', e => { if (!state.videoDecoder) return; if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * (e.ctrlKey ? 1.5 : 1.1))); renderFrame(); } else if (e.key === 'ArrowDown') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * (e.ctrlKey ? 0.67 : 0.9))); renderFrame(); } else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); } else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); } else if (e.key === ' ') { e.preventDefault(); togglePlayback(); } else if (e.key === 'Escape') { e.preventDefault(); cancelPainting(); } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedSegment(); } const et = getEventTypeByHotkey(e.key); if (et && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleEventTypeClick(et.id); } });
 
         // Export/Import
-        document.getElementById('exportBtn').addEventListener('click', () => { const d = { videoFile: state.fileName, totalFrames: state.totalFrames, fps: state.fps, eventTypes: state.eventTypes, tracks: state.tracks, segments: state.segments, exportedAt: new Date().toISOString() }; const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = state.fileName.replace(/\.[^.]+$/, '') + '_annotations.json'; a.click(); URL.revokeObjectURL(a.href); });
+        document.getElementById('exportBtn').addEventListener('click', () => { const d = { videoFile: state.fileName, totalFrames: state.totalFrames, fps: state.fps, eventTypes: state.eventTypes, segments: state.segments, exportedAt: new Date().toISOString() }; const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = state.fileName.replace(/\.[^.]+$/, '') + '_annotations.json'; a.click(); URL.revokeObjectURL(a.href); });
         document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
-        document.getElementById('importInput').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; try { const t = await f.text(), d = JSON.parse(t); if (d.segments && Array.isArray(d.segments)) { state.segments = d.segments; if (d.eventTypes) state.eventTypes = d.eventTypes; if (d.tracks) state.tracks = d.tracks; renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); hideError(); } else throw new Error('Invalid file'); } catch (er) { showError('Import error: ' + er.message); } e.target.value = ''; });
+        document.getElementById('importInput').addEventListener('change', async e => { const f = e.target.files[0]; if (!f) return; try { const t = await f.text(), d = JSON.parse(t); if (d.segments && Array.isArray(d.segments)) { state.segments = d.segments; if (d.eventTypes) state.eventTypes = d.eventTypes; renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); hideError(); } else throw new Error('Invalid file'); } catch (er) { showError('Import error: ' + er.message); } e.target.value = ''; });
         document.getElementById('clearBtn').addEventListener('click', () => { if (confirm('Clear all?')) { state.segments = []; state.selectedSegmentId = null; document.getElementById('selectedSegmentInfo').textContent = ''; renderTimelineTracks(); updateMetrics(); } });
         window.addEventListener('resize', () => { if (currentBitmap) renderFrame(); renderTimelineTracks(); });
     </script>
