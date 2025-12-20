@@ -6,7 +6,8 @@ Frame-accurate event segment annotation with multi-row timeline, zoom/pan, and J
 
 ## Features
 
-- Load local MP4/WebM videos
+- Load local MP4/WebM videos (uses File System Access API when available)
+- Load from URL with `?url=` query parameter support
 - Frame-accurate navigation (arrow keys, Home/End)
 - Hotkey-driven annotation (press to start, press again to commit)
 - Timeline with one row per event type (events CAN overlap across types)
@@ -14,6 +15,7 @@ Frame-accurate event segment annotation with multi-row timeline, zoom/pan, and J
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas
 - JSON export/import for annotations
+- Debug log panel for troubleshooting
 
 ## Keyboard Shortcuts
 
