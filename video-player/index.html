@@ -1224,9 +1224,9 @@
         // Overlay system - array of callbacks for drawing on top of video frames
         const overlays = [];
 
-        // Frame index overlay - shows current frame / total frames
+        // Frame index overlay - shows current frame / total frames (1-based display)
         function frameIndexOverlay({ ctx, canvas, frameIndex, totalFrames }) {
-            const text = `${frameIndex} / ${totalFrames}`;
+            const text = `${frameIndex + 1} / ${totalFrames}`;
             const padding = 8;
             const fontSize = 14;
 
@@ -1758,7 +1758,7 @@
             document.getElementById('metricFile').textContent = fileName;
             document.getElementById('metricCodec').textContent = videoInfo ? videoInfo.codec : '-';
             document.getElementById('metricRes').textContent = videoInfo ? `${videoInfo.width}x${videoInfo.height}` : '-';
-            document.getElementById('metricFrame').textContent = currentFrame;
+            document.getElementById('metricFrame').textContent = currentFrame + 1;
             document.getElementById('metricTotal').textContent = totalFrames;
             document.getElementById('metricFps').textContent = fps.toFixed(2);
             document.getElementById('metricSeek').textContent = lastSeekTime.toFixed(0) + 'ms';
@@ -1768,9 +1768,9 @@
             document.getElementById('metricKeyframes').textContent = videoInfo ? videoInfo.keyframes : '-';
         }
 
-        // Update seekbar position
+        // Update seekbar position (1-based: frame 1 = left edge, frame n = right edge)
         function updateSeekbar() {
-            const progress = totalFrames > 0 ? (currentFrame / totalFrames) * 100 : 0;
+            const progress = totalFrames > 1 ? (currentFrame / (totalFrames - 1)) * 100 : 0;
             seekbarProgress.style.width = progress + '%';
             seekbarThumb.style.left = progress + '%';
         }
@@ -1828,7 +1828,8 @@
             const rect = seekbar.getBoundingClientRect();
             const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
             const percent = x / rect.width;
-            const frame = Math.floor(percent * totalFrames);
+            // Map 0-100% to frame 0 to (totalFrames-1) for full-width seekbar
+            const frame = totalFrames > 1 ? Math.round(percent * (totalFrames - 1)) : 0;
             seekToFrame(frame);
         }
 
