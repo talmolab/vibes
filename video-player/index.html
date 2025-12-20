@@ -22,19 +22,20 @@
         }
         .controls {
             background: #2a2a2a;
-            padding: 20px;
+            padding: 10px;
             border-radius: 8px;
             margin: 20px 0;
+            text-align: center;
         }
         button {
             background: #667eea;
             color: white;
             border: none;
-            padding: 12px 24px;
+            padding: 6px 16px;
             border-radius: 6px;
-            font-size: 16px;
+            font-size: 14px;
             cursor: pointer;
-            margin: 5px;
+            margin: 3px;
         }
         button:hover { background: #5568d3; }
         button:disabled {
@@ -90,6 +91,36 @@
             left: 0%;
             pointer-events: none;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .playback-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .playback-controls button {
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .playback-controls #prevFrameBtn,
+        .playback-controls #nextFrameBtn {
+            font-size: 10px;
+        }
+        .playback-controls #firstFrameBtn,
+        .playback-controls #lastFrameBtn {
+            font-size: 9px;
+        }
+        .control-separator {
+            width: 1px;
+            height: 18px;
+            background: #444;
+            margin: 0 6px;
         }
         .overlay-controls {
             display: flex;
@@ -351,8 +382,9 @@
         .log-msg.error { color: #ff6b6b; }
         @media (max-width: 600px) {
             body { padding: 10px; }
-            .controls, .settings, .metrics { padding: 10px 15px; }
-            button { padding: 10px 16px; font-size: 14px; }
+            .controls { padding: 8px 10px; }
+            .settings, .metrics { padding: 10px 15px; }
+            button { padding: 6px 12px; font-size: 13px; }
         }
     </style>
 </head>
@@ -365,8 +397,6 @@
             <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
             <button id="loadBtn">Load Video File</button>
             <button id="loadUrlBtn">Load from URL</button>
-            <button id="playBtn" disabled>Play</button>
-            <button id="resetZoomBtn" disabled>Reset Zoom</button>
         </div>
         <div class="url-input-container" id="urlInputContainer" style="display: none;">
             <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)">
@@ -385,6 +415,17 @@
             <div class="seekbar" id="seekbar">
                 <div class="seekbar-progress" id="seekbarProgress"></div>
                 <div class="seekbar-thumb" id="seekbarThumb"></div>
+            </div>
+            <div class="playback-controls">
+                <button id="firstFrameBtn" title="First frame (Home)">|❮</button>
+                <button id="prevFrameBtn" title="Previous frame (←)">❮</button>
+                <button id="playBtn">▶</button>
+                <button id="nextFrameBtn" title="Next frame (→)">❯</button>
+                <button id="lastFrameBtn" title="Last frame (End)">❯|</button>
+                <span class="control-separator"></span>
+                <button id="zoomOutBtn" title="Zoom out (↓)">−</button>
+                <button id="zoomInBtn" title="Zoom in (↑)">+</button>
+                <button id="resetZoomBtn" title="Reset view">⟲</button>
             </div>
         </div>
 
@@ -439,10 +480,11 @@
             <h3>Keyboard Shortcuts</h3>
             <div class="hotkeys-grid">
                 <div class="hotkey"><span class="hotkey-key">← / →</span><span class="hotkey-desc">±1 frame</span></div>
-                <div class="hotkey"><span class="hotkey-key">↑ / ↓</span><span class="hotkey-desc">±10 frames</span></div>
                 <div class="hotkey"><span class="hotkey-key">Ctrl+← / →</span><span class="hotkey-desc">±30 frames</span></div>
-                <div class="hotkey"><span class="hotkey-key">Ctrl+↑ / ↓</span><span class="hotkey-desc">±100 frames</span></div>
+                <div class="hotkey"><span class="hotkey-key">Home / End</span><span class="hotkey-desc">First/Last frame</span></div>
                 <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                <div class="hotkey"><span class="hotkey-key">↑ / ↓</span><span class="hotkey-desc">Zoom in/out</span></div>
+                <div class="hotkey"><span class="hotkey-key">Ctrl+↑ / ↓</span><span class="hotkey-desc">Zoom (faster)</span></div>
                 <div class="hotkey"><span class="hotkey-key">Mouse Wheel</span><span class="hotkey-desc">Zoom</span></div>
                 <div class="hotkey"><span class="hotkey-key">Click + Drag</span><span class="hotkey-desc">Pan</span></div>
             </div>
@@ -1422,8 +1464,6 @@
                 seekbarContainer.style.display = 'block';
                 cacheVizContainer.style.display = 'block';
                 document.getElementById('infoRow').style.display = 'flex';
-                playBtn.disabled = false;
-                resetZoomBtn.disabled = false;
 
                 // Initialize overlays (checked by default)
                 updateOverlays();
@@ -1700,6 +1740,12 @@
             } else if (e.key === ' ') {
                 togglePlayback();
                 e.preventDefault();
+            } else if (e.key === 'Home') {
+                seekToFrame(0);
+                e.preventDefault();
+            } else if (e.key === 'End') {
+                seekToFrame(totalFrames - 1);
+                e.preventDefault();
             }
 
             if (delta !== 0) {
@@ -1899,6 +1945,44 @@
             renderFrameWithOverlays();
         });
 
+        // Frame step buttons
+        document.getElementById('firstFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(0);
+        });
+        document.getElementById('prevFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(currentFrame - 1);
+        });
+        document.getElementById('nextFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(currentFrame + 1);
+        });
+        document.getElementById('lastFrameBtn').addEventListener('click', () => {
+            if (videoDecoder) seekToFrame(totalFrames - 1);
+        });
+
+        // Zoom buttons
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            const newScale = Math.min(50, scale * 1.25);
+            const rect = canvasContainer.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            offsetX = centerX - (centerX - offsetX) * (newScale / scale);
+            offsetY = centerY - (centerY - offsetY) * (newScale / scale);
+            scale = newScale;
+            constrainOffset();
+            renderFrameWithOverlays();
+        });
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            const newScale = Math.max(0.1, scale * 0.8);
+            const rect = canvasContainer.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            offsetX = centerX - (centerX - offsetX) * (newScale / scale);
+            offsetY = centerY - (centerY - offsetY) * (newScale / scale);
+            scale = newScale;
+            constrainOffset();
+            renderFrameWithOverlays();
+        });
+
         // Playback
         function togglePlayback() {
             if (isPlaying) {
@@ -1912,7 +1996,7 @@
             if (!videoDecoder) return;
 
             isPlaying = true;
-            playBtn.textContent = 'Pause';
+            playBtn.textContent = '⏸';
             log(`Playback started at frame ${currentFrame}`, 'info');
 
             const interval = 1000 / fps;
@@ -1926,7 +2010,7 @@
         function stopPlayback() {
             const wasPlaying = isPlaying;
             isPlaying = false;
-            playBtn.textContent = 'Play';
+            playBtn.textContent = '▶';
             if (playInterval) {
                 clearInterval(playInterval);
                 playInterval = null;
