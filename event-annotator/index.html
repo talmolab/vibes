@@ -282,14 +282,31 @@
             ctx.restore();
         }
 
-        function updateSeekbar() { const p = state.totalFrames > 1 ? (state.currentFrame / (state.totalFrames - 1)) * 100 : 0; seekbarProgress.style.width = p + '%'; seekbarThumb.style.left = p + '%'; }
+        function updateSeekbar() { if (isScrubbing) return; const p = state.totalFrames > 1 ? (state.currentFrame / (state.totalFrames - 1)) * 100 : 0; seekbarProgress.style.width = p + '%'; seekbarThumb.style.left = p + '%'; }
 
-        // Seekbar
-        let isScrubbing = false;
-        const handleSeekbar = e => { const r = seekbar.getBoundingClientRect(), x = Math.max(0, Math.min(e.clientX - r.left, r.width)); seekToFrame(Math.round((x / r.width) * (state.totalFrames - 1))); };
+        // Seekbar with debounced scrubbing
+        let isScrubbing = false, pendingSeekFrame = null, isSeekingFrame = false;
+        function updateSeekbarVisual(frame) {
+            const p = state.totalFrames > 1 ? (frame / (state.totalFrames - 1)) * 100 : 0;
+            seekbarProgress.style.width = p + '%'; seekbarThumb.style.left = p + '%';
+        }
+        async function handleSeekbar(e) {
+            const r = seekbar.getBoundingClientRect(), x = Math.max(0, Math.min(e.clientX - r.left, r.width));
+            const frame = Math.round((x / r.width) * (state.totalFrames - 1));
+            updateSeekbarVisual(frame); // Immediate visual feedback
+            pendingSeekFrame = frame;
+            if (isSeekingFrame) return; // Don't queue multiple seeks
+            isSeekingFrame = true;
+            while (pendingSeekFrame !== null) {
+                const targetFrame = pendingSeekFrame;
+                pendingSeekFrame = null;
+                await seekToFrame(targetFrame);
+            }
+            isSeekingFrame = false;
+        }
         seekbar.addEventListener('mousedown', e => { isScrubbing = true; document.body.style.userSelect = 'none'; handleSeekbar(e); });
         document.addEventListener('mousemove', e => { if (isScrubbing) handleSeekbar(e); });
-        document.addEventListener('mouseup', () => { if (isScrubbing) { document.body.style.userSelect = ''; isScrubbing = false; } });
+        document.addEventListener('mouseup', () => { if (isScrubbing) { document.body.style.userSelect = ''; isScrubbing = false; updateSeekbar(); } });
 
         // Playback
         function togglePlayback() { if (state.isPlaying) { state.isPlaying = false; playBtn.textContent = '\u25B6'; if (state.playInterval) clearInterval(state.playInterval); } else { state.isPlaying = true; playBtn.textContent = '\u23F8'; state.playInterval = setInterval(() => seekToFrame(state.currentFrame + 1), 1000 / state.fps); } }
