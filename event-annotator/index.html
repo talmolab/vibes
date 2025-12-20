@@ -44,8 +44,28 @@
         .status-idle { color: #888; }
         .status-painting { color: #4ade80; }
         .event-types { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; }
-        .event-types h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; }
+        .event-types-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .event-types-header h3 { margin: 0; font-size: 13px; color: #fff; }
         .event-type-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal { background: #2a2a2a; border-radius: 12px; padding: 20px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal h2 { margin: 0 0 15px 0; font-size: 18px; color: #fff; }
+        .modal-close { float: right; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; padding: 0; margin: -5px -5px 0 0; }
+        .modal-close:hover { color: #fff; }
+        .event-type-row { display: flex; gap: 8px; align-items: center; padding: 8px; background: #1a1a1a; border-radius: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+        .event-type-row input[type="text"] { flex: 1; min-width: 100px; background: #333; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; color: #e0e0e0; font-size: 13px; }
+        .event-type-row input[type="text"]:focus { outline: none; border-color: #667eea; }
+        .event-type-row .hotkey-btn { width: 40px; min-width: 40px; flex: 0; text-align: center; background: #333; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; color: #e0e0e0; font-size: 13px; font-family: monospace; cursor: pointer; text-transform: uppercase; }
+        .event-type-row .hotkey-btn:hover { border-color: #667eea; }
+        .event-type-row .hotkey-btn.listening { background: #667eea; border-color: #667eea; color: #fff; animation: pulse-hotkey 1s infinite; }
+        @keyframes pulse-hotkey { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .event-type-row input[type="color"] { width: 36px; height: 30px; border: none; border-radius: 4px; cursor: pointer; padding: 0; }
+        .event-type-row .delete-btn { background: #4a2020; color: #ff6b6b; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .event-type-row .delete-btn:hover { background: #5a2525; }
+        .event-type-row .delete-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .modal-actions { display: flex; justify-content: space-between; margin-top: 15px; gap: 10px; }
+        .add-event-btn { background: #333; border: 1px dashed #555; }
+        .add-event-btn:hover { background: #3a3a3a; border-color: #667eea; }
         .event-type-btn { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
         .event-type-btn:hover { transform: translateY(-1px); }
         .event-type-btn .hotkey { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 3px; font-size: 10px; font-family: monospace; }
@@ -117,8 +137,25 @@
             <div id="timelineTracks"></div>
         </div>
         <div class="event-types" id="eventTypesContainer" style="display: none;">
-            <h3>Event Types (press hotkey to annotate)</h3>
+            <div class="event-types-header">
+                <h3>Event Types (press hotkey to annotate)</h3>
+                <button id="manageEventTypesBtn" style="padding: 4px 10px; font-size: 11px;">Manage</button>
+            </div>
             <div class="event-type-buttons" id="eventTypeButtons"></div>
+        </div>
+        <div class="modal-overlay" id="eventTypeModal" style="display: none;">
+            <div class="modal">
+                <button class="modal-close" id="modalCloseBtn">&times;</button>
+                <h2>Manage Event Types</h2>
+                <div id="eventTypeList"></div>
+                <div class="modal-actions">
+                    <button class="add-event-btn" id="addEventTypeBtn">+ Add Event Type</button>
+                    <div>
+                        <button id="modalCancelBtn">Cancel</button>
+                        <button id="modalSaveBtn">Save</button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="info-row" id="infoRow" style="display: none;">
             <div class="metrics"><h3>Video</h3><div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div><div class="metric"><span class="metric-label">Size:</span> <span id="metricRes">-</span></div><div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div></div>
@@ -354,6 +391,217 @@
         function handleEventTypeClick(etId) { if (state.mode === 'painting') { if (state.activeAnnotation.eventTypeId === etId) commitAnnotation(); else { commitAnnotation(); startPainting(etId); } } else startPainting(etId); }
 
         function renderEventTypeButtons() { const c = document.getElementById('eventTypeButtons'); c.innerHTML = ''; for (const et of state.eventTypes) { const b = document.createElement('button'); b.className = 'event-type-btn'; b.style.background = et.color; b.style.color = '#000'; b.innerHTML = `${et.name} <span class="hotkey">${et.hotkey.toUpperCase()}</span>`; b.addEventListener('click', () => handleEventTypeClick(et.id)); c.appendChild(b); } }
+
+        // Event Type Management Modal
+        const eventTypeModal = document.getElementById('eventTypeModal');
+        const eventTypeList = document.getElementById('eventTypeList');
+        let editingEventTypes = [];
+
+        function openEventTypeModal() {
+            editingEventTypes = state.eventTypes.map(et => ({ ...et }));
+            renderEventTypeList();
+            eventTypeModal.style.display = 'flex';
+        }
+
+        function closeEventTypeModal() {
+            stopListeningForHotkey();
+            eventTypeModal.style.display = 'none';
+            editingEventTypes = [];
+        }
+
+        function getSegmentCountForEventType(etId) {
+            return state.segments.filter(s => s.eventTypeId === etId).length;
+        }
+
+        function generateEventTypeId(name) {
+            return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'event_' + Date.now();
+        }
+
+        function getNextAvailableHotkey() {
+            const usedKeys = new Set(editingEventTypes.map(et => et.hotkey.toLowerCase()));
+            const preferred = 'qwertasdfgzxcvb1234567890';
+            for (const k of preferred) {
+                if (!usedKeys.has(k)) return k;
+            }
+            return '';
+        }
+
+        function getRandomColor() {
+            const colors = ['#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3d8', '#f87171', '#34d399', '#818cf8'];
+            const usedColors = new Set(editingEventTypes.map(et => et.color.toLowerCase()));
+            for (const c of colors) {
+                if (!usedColors.has(c)) return c;
+            }
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        let listeningForHotkey = null; // { idx, btn, cleanup }
+
+        function stopListeningForHotkey() {
+            if (listeningForHotkey) {
+                listeningForHotkey.btn.classList.remove('listening');
+                listeningForHotkey.btn.textContent = editingEventTypes[listeningForHotkey.idx].hotkey.toUpperCase() || '?';
+                document.removeEventListener('keydown', listeningForHotkey.handler);
+                listeningForHotkey = null;
+            }
+        }
+
+        function startListeningForHotkey(idx, btn) {
+            stopListeningForHotkey();
+            btn.classList.add('listening');
+            btn.textContent = '...';
+
+            const handler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (e.key === 'Escape') {
+                    stopListeningForHotkey();
+                    return;
+                }
+
+                // Only accept single printable characters
+                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    const newKey = e.key.toLowerCase();
+                    const oldKey = editingEventTypes[idx].hotkey;
+
+                    // Check if another event type has this hotkey
+                    const otherIdx = editingEventTypes.findIndex((et, i) => i !== idx && et.hotkey.toLowerCase() === newKey);
+                    if (otherIdx !== -1) {
+                        // Swap hotkeys
+                        editingEventTypes[otherIdx].hotkey = oldKey;
+                    }
+                    editingEventTypes[idx].hotkey = newKey;
+
+                    stopListeningForHotkey();
+                    renderEventTypeList();
+                }
+            };
+
+            listeningForHotkey = { idx, btn, handler };
+            document.addEventListener('keydown', handler);
+        }
+
+        function renderEventTypeList() {
+            stopListeningForHotkey();
+            eventTypeList.innerHTML = '';
+            for (let i = 0; i < editingEventTypes.length; i++) {
+                const et = editingEventTypes[i];
+                const segCount = getSegmentCountForEventType(et.id);
+                const row = document.createElement('div');
+                row.className = 'event-type-row';
+                row.innerHTML = `
+                    <input type="color" value="${et.color}" data-idx="${i}" class="color-input" title="Color">
+                    <input type="text" value="${et.name}" data-idx="${i}" class="name-input" placeholder="Name">
+                    <button class="hotkey-btn" data-idx="${i}" title="Click to change hotkey">${et.hotkey.toUpperCase() || '?'}</button>
+                    <button class="delete-btn" data-idx="${i}" ${segCount > 0 ? 'disabled title="Has ' + segCount + ' segment(s)"' : 'title="Delete"'}>&times;</button>
+                `;
+                eventTypeList.appendChild(row);
+            }
+
+            // Attach event listeners
+            eventTypeList.querySelectorAll('.name-input').forEach(input => {
+                input.addEventListener('input', e => {
+                    editingEventTypes[parseInt(e.target.dataset.idx)].name = e.target.value;
+                });
+            });
+            eventTypeList.querySelectorAll('.hotkey-btn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    startListeningForHotkey(idx, e.target);
+                });
+            });
+            eventTypeList.querySelectorAll('.color-input').forEach(input => {
+                input.addEventListener('input', e => {
+                    editingEventTypes[parseInt(e.target.dataset.idx)].color = e.target.value;
+                });
+            });
+            eventTypeList.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', e => {
+                    const idx = parseInt(e.target.dataset.idx);
+                    if (getSegmentCountForEventType(editingEventTypes[idx].id) === 0) {
+                        editingEventTypes.splice(idx, 1);
+                        renderEventTypeList();
+                    }
+                });
+            });
+        }
+
+        function addNewEventType() {
+            const newId = 'event_' + Date.now();
+            editingEventTypes.push({
+                id: newId,
+                name: 'New Event',
+                hotkey: getNextAvailableHotkey(),
+                color: getRandomColor()
+            });
+            renderEventTypeList();
+            // Focus the new name input
+            const inputs = eventTypeList.querySelectorAll('.name-input');
+            if (inputs.length > 0) {
+                const lastInput = inputs[inputs.length - 1];
+                lastInput.focus();
+                lastInput.select();
+            }
+        }
+
+        function saveEventTypes() {
+            // Validate
+            const errors = [];
+            const names = new Set();
+            const hotkeys = new Set();
+
+            for (const et of editingEventTypes) {
+                if (!et.name.trim()) {
+                    errors.push('All event types must have a name');
+                    break;
+                }
+                if (names.has(et.name.toLowerCase())) {
+                    errors.push(`Duplicate name: "${et.name}"`);
+                    break;
+                }
+                names.add(et.name.toLowerCase());
+
+                if (!et.hotkey) {
+                    errors.push(`"${et.name}" needs a hotkey`);
+                    break;
+                }
+                if (hotkeys.has(et.hotkey.toLowerCase())) {
+                    errors.push(`Duplicate hotkey: "${et.hotkey.toUpperCase()}"`);
+                    break;
+                }
+                hotkeys.add(et.hotkey.toLowerCase());
+            }
+
+            if (errors.length > 0) {
+                alert(errors[0]);
+                return;
+            }
+
+            // Update IDs for renamed types (keep old ID if name hasn't changed structurally)
+            for (const et of editingEventTypes) {
+                if (!et.id.startsWith('event_')) continue;
+                const existingWithId = state.eventTypes.find(e => e.id === et.id);
+                if (!existingWithId) {
+                    // New event type - generate proper ID from name
+                    et.id = generateEventTypeId(et.name);
+                }
+            }
+
+            state.eventTypes = editingEventTypes;
+            log(`Updated event types: ${state.eventTypes.map(et => et.name).join(', ')}`);
+            renderEventTypeButtons();
+            renderTimelineTracks();
+            updateMetrics();
+            closeEventTypeModal();
+        }
+
+        document.getElementById('manageEventTypesBtn').addEventListener('click', openEventTypeModal);
+        document.getElementById('modalCloseBtn').addEventListener('click', closeEventTypeModal);
+        document.getElementById('modalCancelBtn').addEventListener('click', closeEventTypeModal);
+        document.getElementById('modalSaveBtn').addEventListener('click', saveEventTypes);
+        document.getElementById('addEventTypeBtn').addEventListener('click', addNewEventType);
+        eventTypeModal.addEventListener('click', e => { if (e.target === eventTypeModal) closeEventTypeModal(); });
         function renderTimelineTracks() {
             const c = document.getElementById('timelineTracks'); c.innerHTML = '';
             // One row per event type
@@ -384,7 +632,7 @@
         function updateMetrics() { document.getElementById('metricFile').textContent = state.fileName; document.getElementById('metricRes').textContent = state.videoInfo ? `${state.videoInfo.width}x${state.videoInfo.height}` : '-'; document.getElementById('metricFps').textContent = state.fps.toFixed(2); document.getElementById('metricSegments').textContent = state.segments.length; document.getElementById('metricEventTypes').textContent = state.eventTypes.length; }
 
         // Keyboard
-        document.addEventListener('keydown', e => { if (!state.videoDecoder) return; if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * (e.ctrlKey ? 1.5 : 1.1))); renderFrame(); } else if (e.key === 'ArrowDown') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * (e.ctrlKey ? 0.67 : 0.9))); renderFrame(); } else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); } else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); } else if (e.key === ' ') { e.preventDefault(); togglePlayback(); } else if (e.key === 'Escape') { e.preventDefault(); cancelPainting(); } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedSegment(); } const et = getEventTypeByHotkey(e.key); if (et && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleEventTypeClick(et.id); } });
+        document.addEventListener('keydown', e => { if (!state.videoDecoder || eventTypeModal.style.display === 'flex') return; if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); } else if (e.key === 'ArrowUp') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * (e.ctrlKey ? 1.5 : 1.1))); renderFrame(); } else if (e.key === 'ArrowDown') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * (e.ctrlKey ? 0.67 : 0.9))); renderFrame(); } else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); } else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); } else if (e.key === ' ') { e.preventDefault(); togglePlayback(); } else if (e.key === 'Escape') { e.preventDefault(); cancelPainting(); } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedSegment(); } const et = getEventTypeByHotkey(e.key); if (et && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleEventTypeClick(et.id); } });
 
         // Export/Import
         document.getElementById('exportBtn').addEventListener('click', () => { const d = { videoFile: state.fileName, totalFrames: state.totalFrames, fps: state.fps, eventTypes: state.eventTypes, segments: state.segments, exportedAt: new Date().toISOString() }; const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = state.fileName.replace(/\.[^.]+$/, '') + '_annotations.json'; a.click(); URL.revokeObjectURL(a.href); log(`Exported: ${state.segments.length} segments to JSON`); });
