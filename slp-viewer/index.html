@@ -430,7 +430,6 @@
                     <input type="range" id="lookahead" min="10" max="120" value="60" step="10">
                     <span class="slider-value" id="lookaheadValue">60</span>
                 </div>
-                <div class="decoder-hint">Changes apply on next video load</div>
             </div>
         </div>
 
@@ -975,12 +974,22 @@
             player?.render();
         });
 
-        // Decoder settings (display only, applied on next load)
+        // Decoder settings (apply immediately)
         document.getElementById('cacheSize').addEventListener('input', (e) => {
-            document.getElementById('cacheSizeValue').textContent = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('cacheSizeValue').textContent = value;
+            if (player?.decoder) {
+                player.decoder.cacheSize = value;
+                log(`Cache size updated to ${value}`, 'info');
+            }
         });
         document.getElementById('lookahead').addEventListener('input', (e) => {
-            document.getElementById('lookaheadValue').textContent = e.target.value;
+            const value = parseInt(e.target.value);
+            document.getElementById('lookaheadValue').textContent = value;
+            if (player?.decoder) {
+                player.decoder.lookahead = value;
+                log(`Lookahead updated to ${value}`, 'info');
+            }
         });
 
         // Keyboard
