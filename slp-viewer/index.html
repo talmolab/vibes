@@ -209,23 +209,63 @@
             flex-shrink: 0;
         }
         .track-name { color: #aaa; }
-        .decoder-settings {
-            flex: 1;
-            min-width: 180px;
+        .cache-viz-container {
             background: #2a2a2a;
             padding: 15px 20px;
             border-radius: 8px;
+            margin: 20px 0;
         }
-        .decoder-settings h3 {
-            margin: 0 0 10px 0;
+        .cache-viz-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .cache-viz-header h3 {
+            margin: 0;
+            color: #fff;
             font-size: 14px;
-            color: #ccc;
         }
-        .decoder-hint {
-            font-size: 11px;
-            color: #666;
-            margin-top: 8px;
-            font-style: italic;
+        .cache-viz-settings {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        .cache-viz-settings label {
+            color: #aaa;
+            font-size: 12px;
+        }
+        .cache-viz-settings input[type="number"] {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: 60px;
+            font-size: 12px;
+        }
+        .cache-viz-legend {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .cache-viz-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cache-viz-legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+        .cache-viz-canvas {
+            width: 100%;
+            height: 24px;
+            border-radius: 4px;
         }
         .slider-row {
             display: flex;
@@ -418,19 +458,22 @@
                 </div>
             </div>
 
-            <div class="decoder-settings" id="decoderSettings">
-                <h3>Decoder</h3>
-                <div class="slider-row">
-                    <label>Cache Size:</label>
-                    <input type="range" id="cacheSize" min="30" max="300" value="120" step="10">
-                    <span class="slider-value" id="cacheSizeValue">120</span>
+        </div>
+
+        <div class="cache-viz-container" id="cacheVizContainer" style="display: none;">
+            <div class="cache-viz-header">
+                <h3>Frame Cache</h3>
+                <div class="cache-viz-settings">
+                    <label>Cache Size: <input type="number" id="cacheSize" value="120" min="10" max="500"></label>
+                    <label>Lookahead: <input type="number" id="lookahead" value="60" min="1" max="200"></label>
                 </div>
-                <div class="slider-row">
-                    <label>Lookahead:</label>
-                    <input type="range" id="lookahead" min="10" max="120" value="60" step="10">
-                    <span class="slider-value" id="lookaheadValue">60</span>
+                <div class="cache-viz-legend">
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #4ade80;"></div> Cached</div>
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #fbbf24;"></div> Keyframe</div>
+                    <div class="cache-viz-legend-item"><div class="cache-viz-legend-color" style="background: #667eea;"></div> Current</div>
                 </div>
             </div>
+            <canvas class="cache-viz-canvas" id="cacheVizCanvas"></canvas>
         </div>
 
         <div class="diagnostic-console" id="diagnosticConsole">
@@ -532,6 +575,13 @@
         const errorMsg = document.getElementById('errorMsg');
         const playBtn = document.getElementById('playBtn');
         const loadVideoBtn = document.getElementById('loadVideoBtn');
+
+        // Cache visualization elements
+        const cacheVizContainer = document.getElementById('cacheVizContainer');
+        const cacheVizCanvas = document.getElementById('cacheVizCanvas');
+        const cacheVizCtx = cacheVizCanvas.getContext('2d');
+        const cacheSizeInput = document.getElementById('cacheSize');
+        const lookaheadInput = document.getElementById('lookahead');
 
         // ============================================
         // SLP Worker
@@ -736,6 +786,7 @@
                         document.getElementById('metricFrame').textContent = frameIndex + 1;
                         seekbarController?.update(frameIndex, totalFrames);
                         updateInstanceCount();
+                        renderCacheVisualization();
                     },
                     renderOverlay: renderAllOverlays,
                     onLog: log
@@ -763,6 +814,10 @@
                 document.getElementById('metricVideo').textContent = name;
                 document.getElementById('metricTotal').textContent = player.frames;
                 document.getElementById('metricFrame').textContent = 1;
+
+                // Show and render cache visualization
+                cacheVizContainer.style.display = 'block';
+                renderCacheVisualization();
 
                 hideLoading();
 
@@ -930,6 +985,79 @@
         }
 
         // ============================================
+        // Cache Visualization
+        // ============================================
+        function renderCacheVisualization() {
+            if (!player?.decoder || player.frames === 0) return;
+
+            const decoder = player.decoder;
+            const totalFrames = player.frames;
+
+            const rect = cacheVizCanvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const width = rect.width * dpr;
+            const height = rect.height * dpr;
+
+            if (cacheVizCanvas.width !== width || cacheVizCanvas.height !== height) {
+                cacheVizCanvas.width = width;
+                cacheVizCanvas.height = height;
+            }
+
+            cacheVizCtx.fillStyle = '#333';
+            cacheVizCtx.fillRect(0, 0, width, height);
+
+            const framesPerPixel = Math.max(1, totalFrames / width);
+            const pixelsPerFrame = width / totalFrames;
+
+            const cachedFrames = new Set(decoder.cache.keys());
+            const keyframes = new Set(decoder.keyframeIndices);
+
+            if (framesPerPixel <= 1) {
+                const frameWidth = Math.max(1, pixelsPerFrame);
+
+                // Draw keyframes first
+                cacheVizCtx.fillStyle = '#fbbf24';
+                for (const kf of keyframes) {
+                    const x = (kf / totalFrames) * width;
+                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
+                }
+
+                // Draw cached frames
+                cacheVizCtx.fillStyle = '#4ade80';
+                for (const frame of cachedFrames) {
+                    const x = (frame / totalFrames) * width;
+                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
+                }
+            } else {
+                for (let px = 0; px < width; px++) {
+                    const frameStart = Math.floor(px * framesPerPixel);
+                    const frameEnd = Math.floor((px + 1) * framesPerPixel);
+
+                    let hasCached = false;
+                    let hasKeyframe = false;
+
+                    for (let f = frameStart; f < frameEnd; f++) {
+                        if (cachedFrames.has(f)) hasCached = true;
+                        if (keyframes.has(f)) hasKeyframe = true;
+                    }
+
+                    if (hasCached) {
+                        cacheVizCtx.fillStyle = '#4ade80';
+                        cacheVizCtx.fillRect(px, 0, 1, height);
+                    } else if (hasKeyframe) {
+                        cacheVizCtx.fillStyle = '#fbbf24';
+                        cacheVizCtx.fillRect(px, 0, 1, height);
+                    }
+                }
+            }
+
+            // Draw current frame indicator
+            const currentX = (player.frame / totalFrames) * width;
+            cacheVizCtx.fillStyle = '#667eea';
+            cacheVizCtx.fillRect(currentX - 1, 0, 3, height);
+        }
+
+        // ============================================
         // Playback Controls
         // ============================================
         playBtn.addEventListener('click', () => {
@@ -974,21 +1102,27 @@
             player?.render();
         });
 
-        // Decoder settings (apply immediately)
-        document.getElementById('cacheSize').addEventListener('input', (e) => {
-            const value = parseInt(e.target.value);
-            document.getElementById('cacheSizeValue').textContent = value;
-            if (player?.decoder) {
+        // Cache settings (apply immediately)
+        cacheSizeInput.addEventListener('change', () => {
+            const value = parseInt(cacheSizeInput.value);
+            if (value >= 10 && value <= 500 && player?.decoder) {
                 player.decoder.cacheSize = value;
                 log(`Cache size updated to ${value}`, 'info');
+                renderCacheVisualization();
             }
         });
-        document.getElementById('lookahead').addEventListener('input', (e) => {
-            const value = parseInt(e.target.value);
-            document.getElementById('lookaheadValue').textContent = value;
-            if (player?.decoder) {
+        lookaheadInput.addEventListener('change', () => {
+            const value = parseInt(lookaheadInput.value);
+            if (value >= 1 && value <= 200 && player?.decoder) {
                 player.decoder.lookahead = value;
                 log(`Lookahead updated to ${value}`, 'info');
+            }
+        });
+
+        // Re-render cache viz on window resize
+        window.addEventListener('resize', () => {
+            if (player?.decoder) {
+                renderCacheVisualization();
             }
         });
 
