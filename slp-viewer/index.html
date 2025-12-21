@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLP Viewer - SLEAP Pose Visualization</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .controls {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 3px;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        .canvas-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+            margin: 20px 0 0 0;
+            cursor: grab;
+            height: 70vh;
+            min-height: 150px;
+            max-height: 90vh;
+        }
+        .canvas-container:active { cursor: grabbing; }
+        .resize-handle {
+            height: 8px;
+            background: #2a2a2a;
+            border-radius: 0 0 8px 8px;
+            cursor: ns-resize;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .resize-handle:hover { background: #3a3a3a; }
+        .resize-handle::after {
+            content: '';
+            width: 40px;
+            height: 3px;
+            background: #555;
+            border-radius: 2px;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: crisp-edges;
+        }
+        .seekbar-container {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .seekbar {
+            width: 100%;
+            height: 8px;
+            background: #444;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .seekbar-progress {
+            height: 100%;
+            background: #667eea;
+            border-radius: 4px;
+            width: 0%;
+            pointer-events: none;
+        }
+        .seekbar-thumb {
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            left: 0%;
+            pointer-events: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .playback-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            margin-top: 10px;
+        }
+        .playback-controls button {
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .control-separator {
+            width: 1px;
+            height: 18px;
+            background: #444;
+            margin: 0 6px;
+        }
+        .info-row {
+            display: flex;
+            gap: 15px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .metrics {
+            flex: 2;
+            min-width: 300px;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #aaa;
+        }
+        .metrics h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #ccc;
+        }
+        .metrics-row {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .metric { margin: 5px 0; }
+        .metric-label { color: #667eea; font-weight: bold; }
+        .overlay-controls {
+            flex: 1;
+            min-width: 200px;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+        }
+        .overlay-controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+        .overlay-controls label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #ccc;
+            margin: 5px 0;
+        }
+        .overlay-controls input[type="checkbox"] { cursor: pointer; }
+        .overlay-controls input[type="range"] {
+            flex: 1;
+            max-width: 100px;
+        }
+        .track-legend {
+            flex: 1;
+            min-width: 150px;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+        }
+        .track-legend h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+        .track-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 5px 0;
+            font-size: 13px;
+        }
+        .track-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .track-name { color: #aaa; }
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+        }
+        .slider-row label {
+            font-size: 13px;
+            color: #aaa;
+            min-width: 80px;
+        }
+        .slider-row input[type="range"] { flex: 1; }
+        .slider-row .slider-value {
+            font-size: 12px;
+            color: #667eea;
+            min-width: 35px;
+            text-align: right;
+        }
+        .diagnostic-console {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .diagnostic-console-header {
+            background: #2a2a2a;
+            padding: 8px 15px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .diagnostic-console-header h3 { margin: 0; color: #fff; font-size: 12px; }
+        .diagnostic-console-header button {
+            background: #444;
+            padding: 4px 10px;
+            font-size: 11px;
+            margin: 0;
+        }
+        .diagnostic-console-body {
+            height: 120px;
+            overflow-y: auto;
+            padding: 10px 15px;
+        }
+        .log-entry { margin: 2px 0; display: flex; gap: 10px; }
+        .log-time { color: #666; flex-shrink: 0; }
+        .log-msg { color: #aaa; }
+        .log-msg.info { color: #667eea; }
+        .log-msg.success { color: #4ade80; }
+        .log-msg.warn { color: #fbbf24; }
+        .log-msg.error { color: #ff6b6b; }
+        .error-msg {
+            background: #4a2020;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            color: #667eea;
+            margin: 20px 0;
+        }
+        .loading.visible { display: flex; }
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #333;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hotkeys {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .hotkeys h3 { margin-top: 0; color: #fff; }
+        .hotkeys-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px 20px;
+        }
+        .hotkey { display: flex; gap: 10px; }
+        .hotkey-key {
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+            min-width: 100px;
+        }
+        .hotkey-desc { color: #aaa; }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .controls { padding: 8px 10px; }
+            button { padding: 6px 12px; font-size: 13px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SLP Viewer</h1>
+        <p class="description">View SLEAP pose predictions overlaid on video. Load an SLP file and its corresponding video.</p>
+
+        <div class="controls">
+            <input type="file" id="slpInput" accept=".slp" style="display: none;">
+            <input type="file" id="videoInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
+            <button id="loadDemoBtn">Load Demo</button>
+            <button id="loadSlpBtn">Load SLP File</button>
+            <button id="loadVideoBtn" disabled>Load Video</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <span id="loadingText">Loading...</span>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+        <div class="canvas-container" id="canvasContainer" style="display: none;">
+            <canvas id="canvas"></canvas>
+        </div>
+        <div class="resize-handle" id="resizeHandle" style="display: none;"></div>
+
+        <div class="seekbar-container" id="seekbarContainer" style="display: none;">
+            <div class="seekbar" id="seekbar">
+                <div class="seekbar-progress" id="seekbarProgress"></div>
+                <div class="seekbar-thumb" id="seekbarThumb"></div>
+            </div>
+            <div class="playback-controls">
+                <button id="firstFrameBtn" title="First frame (Home)">|❮</button>
+                <button id="prevFrameBtn" title="Previous frame (←)">❮</button>
+                <button id="playBtn">▶</button>
+                <button id="nextFrameBtn" title="Next frame (→)">❯</button>
+                <button id="lastFrameBtn" title="Last frame (End)">❯|</button>
+                <span class="control-separator"></span>
+                <button id="zoomOutBtn" title="Zoom out">−</button>
+                <button id="zoomInBtn" title="Zoom in">+</button>
+                <button id="resetZoomBtn" title="Reset view">⟲</button>
+            </div>
+        </div>
+
+        <div class="info-row" id="infoRow" style="display: none;">
+            <div class="metrics" id="metrics">
+                <h3>Info</h3>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">Video:</span> <span id="metricVideo">-</span></div>
+                    <div class="metric"><span class="metric-label">SLP:</span> <span id="metricSlp">-</span></div>
+                </div>
+                <div class="metrics-row">
+                    <div class="metric"><span class="metric-label">Frame:</span> <span id="metricFrame">-</span>/<span id="metricTotal">-</span></div>
+                    <div class="metric"><span class="metric-label">Instances:</span> <span id="metricInstances">-</span></div>
+                    <div class="metric"><span class="metric-label">Skeleton:</span> <span id="metricSkeleton">-</span></div>
+                </div>
+            </div>
+
+            <div class="overlay-controls" id="overlayControls">
+                <h3>Overlays</h3>
+                <label><input type="checkbox" id="showPoses" checked> Show Poses</label>
+                <label><input type="checkbox" id="showEdges" checked> Show Edges</label>
+                <label><input type="checkbox" id="showNodes" checked> Show Nodes</label>
+                <label><input type="checkbox" id="showFrameIndex" checked> Frame Index</label>
+                <div class="slider-row">
+                    <label>Node Size:</label>
+                    <input type="range" id="nodeSize" min="2" max="12" value="5">
+                    <span class="slider-value" id="nodeSizeValue">5</span>
+                </div>
+                <div class="slider-row">
+                    <label>Edge Width:</label>
+                    <input type="range" id="edgeWidth" min="1" max="6" value="2">
+                    <span class="slider-value" id="edgeWidthValue">2</span>
+                </div>
+            </div>
+
+            <div class="track-legend" id="trackLegend">
+                <h3>Tracks</h3>
+                <div id="trackList">
+                    <div class="track-item">
+                        <span class="track-color" style="background: #888;"></span>
+                        <span class="track-name">No tracks loaded</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="diagnostic-console" id="diagnosticConsole">
+            <div class="diagnostic-console-header">
+                <h3>Log</h3>
+                <button id="copyLogBtn">Copy</button>
+            </div>
+            <div class="diagnostic-console-body" id="logBody"></div>
+        </div>
+
+        <div class="hotkeys">
+            <h3>Keyboard Shortcuts</h3>
+            <div class="hotkeys-grid">
+                <div class="hotkey"><span class="hotkey-key">← / →</span><span class="hotkey-desc">±1 frame</span></div>
+                <div class="hotkey"><span class="hotkey-key">Ctrl+← / →</span><span class="hotkey-desc">±30 frames</span></div>
+                <div class="hotkey"><span class="hotkey-key">Home / End</span><span class="hotkey-desc">First/Last frame</span></div>
+                <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                <div class="hotkey"><span class="hotkey-key">P</span><span class="hotkey-desc">Toggle poses</span></div>
+                <div class="hotkey"><span class="hotkey-key">Mouse Wheel</span><span class="hotkey-desc">Zoom</span></div>
+                <div class="hotkey"><span class="hotkey-key">Click + Drag</span><span class="hotkey-desc">Pan</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- mp4box.js for demuxing -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+
+    <script>
+        // ============================================
+        // Track Colors
+        // ============================================
+        const TRACK_COLORS = [
+            '#667eea',  // blue
+            '#4ade80',  // green
+            '#fbbf24',  // yellow
+            '#f472b6',  // pink
+            '#06b6d4',  // cyan
+            '#f97316',  // orange
+            '#a855f7',  // purple
+            '#ef4444',  // red
+        ];
+
+        function getTrackColor(trackIdx) {
+            if (trackIdx < 0) return '#888888';
+            return TRACK_COLORS[trackIdx % TRACK_COLORS.length];
+        }
+
+        // ============================================
+        // Logging
+        // ============================================
+        const logBody = document.getElementById('logBody');
+        const MAX_LOG_ENTRIES = 100;
+
+        function log(msg, level = 'info') {
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${level}">${msg}</span>`;
+            logBody.appendChild(entry);
+            while (logBody.children.length > MAX_LOG_ENTRIES) {
+                logBody.removeChild(logBody.firstChild);
+            }
+            logBody.scrollTop = logBody.scrollHeight;
+        }
+
+        document.getElementById('copyLogBtn').addEventListener('click', () => {
+            const lines = Array.from(logBody.querySelectorAll('.log-entry')).map(entry => {
+                const time = entry.querySelector('.log-time').textContent;
+                const msg = entry.querySelector('.log-msg').textContent;
+                return `${time} ${msg}`;
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(() => {
+                log('Log copied to clipboard', 'success');
+            });
+        });
+
+        log('SLP Viewer initialized', 'info');
+
+        // ============================================
+        // State
+        // ============================================
+        let poseData = null;       // Loaded SLP data
+        let frameIndexMap = null;  // Map frameIdx -> frame data
+        let videoDecoder = null;
+        let currentFrame = 0;
+        let totalFrames = 0;
+        let fps = 30;
+        let isPlaying = false;
+        let playInterval = null;
+        let currentBitmap = null;
+
+        // Canvas state
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        // UI Elements
+        const canvasContainer = document.getElementById('canvasContainer');
+        const resizeHandle = document.getElementById('resizeHandle');
+        const seekbar = document.getElementById('seekbar');
+        const seekbarProgress = document.getElementById('seekbarProgress');
+        const seekbarThumb = document.getElementById('seekbarThumb');
+        const seekbarContainer = document.getElementById('seekbarContainer');
+        const loading = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+        const errorMsg = document.getElementById('errorMsg');
+        const playBtn = document.getElementById('playBtn');
+        const loadVideoBtn = document.getElementById('loadVideoBtn');
+
+        // ============================================
+        // SLP Worker
+        // ============================================
+        let slpWorker = null;
+
+        function initSlpWorker() {
+            if (slpWorker) slpWorker.terminate();
+
+            slpWorker = new Worker('./slp-worker.js');
+
+            slpWorker.onmessage = (e) => {
+                const { type, data } = e.data;
+
+                if (type === 'log') {
+                    log(data.message, data.level);
+                } else if (type === 'loading') {
+                    showLoading(data.message);
+                } else if (type === 'result') {
+                    hideLoading();
+                    handleSlpLoaded(data);
+                } else if (type === 'error') {
+                    hideLoading();
+                    showError(data.message);
+                    log(`Error: ${data.message}`, 'error');
+                }
+            };
+
+            slpWorker.onerror = (e) => {
+                hideLoading();
+                log(`Worker error: ${e.message}`, 'error');
+            };
+        }
+
+        function handleSlpLoaded(data) {
+            poseData = data;
+
+            // Build frame index map for fast lookup
+            frameIndexMap = new Map();
+            for (const frame of data.frames) {
+                frameIndexMap.set(frame.frameIdx, frame);
+            }
+
+            log(`Loaded ${data.frames.length} frames of pose data`, 'success');
+
+            // Update track legend
+            updateTrackLegend();
+
+            // Enable video loading
+            loadVideoBtn.disabled = false;
+
+            // Update metrics
+            document.getElementById('metricSlp').textContent = data.filename;
+            document.getElementById('metricSkeleton').textContent = `${data.skeleton.nodes.length} nodes`;
+
+            // If video path is available, show it
+            if (data.videoPath) {
+                log(`Video reference: ${data.videoPath}`, 'info');
+            }
+        }
+
+        function updateTrackLegend() {
+            const trackList = document.getElementById('trackList');
+            trackList.innerHTML = '';
+
+            if (!poseData || poseData.tracks.length === 0) {
+                // Show untracked indicator
+                const item = document.createElement('div');
+                item.className = 'track-item';
+                item.innerHTML = `
+                    <span class="track-color" style="background: #888;"></span>
+                    <span class="track-name">Untracked instances</span>
+                `;
+                trackList.appendChild(item);
+            } else {
+                for (let i = 0; i < poseData.tracks.length; i++) {
+                    const item = document.createElement('div');
+                    item.className = 'track-item';
+                    item.innerHTML = `
+                        <span class="track-color" style="background: ${getTrackColor(i)};"></span>
+                        <span class="track-name">${poseData.tracks[i]}</span>
+                    `;
+                    trackList.appendChild(item);
+                }
+            }
+        }
+
+        // ============================================
+        // Video Decoder (from event-annotator)
+        // ============================================
+        class VideoDecoderWrapper {
+            constructor(opts = {}) {
+                this.cacheSize = opts.cacheSize || 60;
+                this.lookahead = opts.lookahead || 30;
+                this.cache = new Map();
+                this.samples = [];
+                this.keyframeIndices = [];
+                this.decoder = null;
+                this.config = null;
+                this.videoTrack = null;
+                this.mp4boxFile = null;
+                this.file = null;
+                this.fileSize = 0;
+                this.isDecoding = false;
+            }
+
+            async init(source) {
+                // Handle URL or File
+                if (typeof source === 'string') {
+                    log('Fetching video from URL...', 'info');
+                    const response = await fetch(source);
+                    if (!response.ok) throw new Error(`Failed to fetch video: ${response.status}`);
+                    const blob = await response.blob();
+                    this.file = new File([blob], 'video.mp4', { type: blob.type || 'video/mp4' });
+                } else {
+                    this.file = source;
+                }
+
+                this.fileSize = this.file.size;
+                this.mp4boxFile = MP4Box.createFile();
+
+                const ready = new Promise((res, rej) => {
+                    this.mp4boxFile.onError = rej;
+                    this.mp4boxFile.onReady = res;
+                });
+
+                let offset = 0, resolved = false;
+                ready.then(() => resolved = true);
+
+                while (offset < this.fileSize && !resolved) {
+                    const buf = await this.readChunk(offset, 1024 * 1024);
+                    buf.fileStart = offset;
+                    const next = this.mp4boxFile.appendBuffer(buf);
+                    offset = next === undefined ? offset + buf.byteLength : next;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                const info = await ready;
+                if (!info.videoTracks.length) throw new Error('No video tracks');
+
+                this.videoTrack = info.videoTracks[0];
+                const trak = this.mp4boxFile.getTrackById(this.videoTrack.id);
+                const desc = this.getCodecDesc(trak);
+
+                const codec = this.videoTrack.codec.startsWith('vp08') ? 'vp8' : this.videoTrack.codec;
+                this.config = { codec, codedWidth: this.videoTrack.video.width, codedHeight: this.videoTrack.video.height };
+                if (desc) this.config.description = desc;
+
+                const support = await window.VideoDecoder.isConfigSupported(this.config);
+                if (!support.supported) throw new Error(`Codec ${codec} not supported`);
+
+                this.extractSamples();
+                const dur = this.videoTrack.duration / this.videoTrack.timescale;
+                this.fps = this.samples.length / dur;
+
+                return {
+                    codec,
+                    width: this.videoTrack.video.width,
+                    height: this.videoTrack.video.height,
+                    totalFrames: this.samples.length,
+                    fps: this.fps
+                };
+            }
+
+            async readChunk(off, size) {
+                return await this.file.slice(off, Math.min(off + size, this.fileSize)).arrayBuffer();
+            }
+
+            getCodecDesc(trak) {
+                for (const e of trak.mdia.minf.stbl.stsd.entries) {
+                    const box = e.avcC || e.hvcC || e.vpcC || e.av1C;
+                    if (box) {
+                        const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                        box.write(s);
+                        return new Uint8Array(s.buffer, 8);
+                    }
+                }
+                return null;
+            }
+
+            extractSamples() {
+                const info = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id);
+                if (!info?.length) throw new Error('No samples');
+                const ts = this.videoTrack.timescale;
+                this.samples = info.map((s, i) => ({
+                    offset: s.offset,
+                    size: s.size,
+                    timestamp: s.cts * 1e6 / ts,
+                    duration: s.duration * 1e6 / ts,
+                    isKeyframe: s.is_sync,
+                    cts: s.cts,
+                    decodeIndex: i
+                })).sort((a, b) => a.cts - b.cts);
+                this.samples.forEach((s, i) => { if (s.isKeyframe) this.keyframeIndices.push(i); });
+            }
+
+            findKeyframeBefore(idx) {
+                let r = 0;
+                for (const k of this.keyframeIndices) {
+                    if (k <= idx) r = k;
+                    else break;
+                }
+                return r;
+            }
+
+            async getFrame(idx) {
+                if (idx < 0 || idx >= this.samples.length) return null;
+
+                if (this.cache.has(idx)) {
+                    const bmp = this.cache.get(idx);
+                    this.cache.delete(idx);
+                    this.cache.set(idx, bmp); // Move to end (LRU)
+                    return { bitmap: bmp, fromCache: true };
+                }
+
+                if (this.isDecoding) {
+                    await new Promise(r => {
+                        const c = () => this.isDecoding ? setTimeout(c, 10) : r();
+                        c();
+                    });
+                    if (this.cache.has(idx)) return { bitmap: this.cache.get(idx), fromCache: true };
+                }
+
+                const kf = this.findKeyframeBefore(idx);
+                const end = Math.min(idx + this.lookahead, this.samples.length - 1);
+                await this.decodeRange(kf, end, idx);
+                const bmp = this.cache.get(idx);
+                return bmp ? { bitmap: bmp, fromCache: false } : null;
+            }
+
+            async decodeRange(start, end, target) {
+                this.isDecoding = true;
+                try {
+                    if (this.decoder) try { this.decoder.close(); } catch (e) {}
+
+                    let minDI = Infinity, maxDI = -Infinity;
+                    for (let i = start; i <= end; i++) {
+                        minDI = Math.min(minDI, this.samples[i].decodeIndex);
+                        maxDI = Math.max(maxDI, this.samples[i].decodeIndex);
+                    }
+
+                    const toFeed = [];
+                    for (let i = 0; i < this.samples.length; i++) {
+                        const s = this.samples[i];
+                        if (s.decodeIndex >= minDI && s.decodeIndex <= maxDI) toFeed.push({ pi: i, s });
+                    }
+                    toFeed.sort((a, b) => a.s.decodeIndex - b.s.decodeIndex);
+
+                    const dataMap = new Map();
+                    for (const { s } of toFeed) {
+                        dataMap.set(s.decodeIndex, new Uint8Array(await this.readChunk(s.offset, s.size)));
+                    }
+
+                    const tsMap = new Map();
+                    for (const { pi, s } of toFeed) tsMap.set(Math.round(s.timestamp), pi);
+
+                    const halfC = Math.floor(this.cacheSize / 2);
+                    const cStart = Math.max(start, target - halfC);
+                    const cEnd = Math.min(end, target + halfC);
+
+                    await new Promise((res, rej) => {
+                        let cnt = 0;
+                        this.decoder = new window.VideoDecoder({
+                            output: f => {
+                                let fi = tsMap.get(Math.round(f.timestamp));
+                                if (fi === undefined) {
+                                    let best = Infinity;
+                                    for (const [t, i] of tsMap) {
+                                        const d = Math.abs(t - f.timestamp);
+                                        if (d < best) { best = d; fi = i; }
+                                    }
+                                }
+                                if (fi !== undefined && fi >= cStart && fi <= cEnd) {
+                                    createImageBitmap(f).then(b => {
+                                        this.addToCache(fi, b);
+                                        f.close();
+                                        if (++cnt >= toFeed.length) res();
+                                    }).catch(() => {
+                                        f.close();
+                                        if (++cnt >= toFeed.length) res();
+                                    });
+                                } else {
+                                    f.close();
+                                    if (++cnt >= toFeed.length) res();
+                                }
+                            },
+                            error: e => e.name === 'AbortError' ? res() : rej(e)
+                        });
+
+                        this.decoder.configure(this.config);
+
+                        for (const { s } of toFeed) {
+                            this.decoder.decode(new EncodedVideoChunk({
+                                type: s.isKeyframe ? 'key' : 'delta',
+                                timestamp: s.timestamp,
+                                duration: s.duration,
+                                data: dataMap.get(s.decodeIndex)
+                            }));
+                        }
+                        this.decoder.flush();
+                    });
+                } finally {
+                    this.isDecoding = false;
+                }
+            }
+
+            addToCache(idx, bmp) {
+                if (this.cache.size >= this.cacheSize) {
+                    const first = this.cache.keys().next().value;
+                    this.cache.get(first).close();
+                    this.cache.delete(first);
+                }
+                this.cache.set(idx, bmp);
+            }
+
+            close() {
+                if (this.decoder) this.decoder.close();
+                for (const b of this.cache.values()) b.close();
+                this.cache.clear();
+            }
+        }
+
+        // ============================================
+        // UI Helpers
+        // ============================================
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loading.classList.add('visible');
+        }
+
+        function hideLoading() {
+            loading.classList.remove('visible');
+        }
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMsg.style.display = 'none';
+        }
+
+        // ============================================
+        // Load SLP
+        // ============================================
+        document.getElementById('loadSlpBtn').addEventListener('click', () => {
+            document.getElementById('slpInput').click();
+        });
+
+        document.getElementById('slpInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            hideError();
+            log(`Loading SLP: ${file.name}`, 'info');
+
+            initSlpWorker();
+            showLoading('Initializing h5wasm...');
+            slpWorker.postMessage({ type: 'loadLocal', file });
+        });
+
+        // ============================================
+        // Load Video
+        // ============================================
+        loadVideoBtn.addEventListener('click', () => {
+            document.getElementById('videoInput').click();
+        });
+
+        document.getElementById('videoInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            hideError();
+            log(`Loading video: ${file.name}`, 'info');
+            showLoading('Loading video...');
+
+            try {
+                if (videoDecoder) videoDecoder.close();
+
+                videoDecoder = new VideoDecoderWrapper({ cacheSize: 60, lookahead: 30 });
+                const info = await videoDecoder.init(file);
+
+                totalFrames = info.totalFrames;
+                fps = info.fps;
+
+                log(`Video: ${info.width}x${info.height}, ${totalFrames} frames, ${fps.toFixed(1)} fps`, 'success');
+
+                // Show UI
+                canvasContainer.style.display = 'block';
+                resizeHandle.style.display = 'flex';
+                seekbarContainer.style.display = 'block';
+                document.getElementById('infoRow').style.display = 'flex';
+
+                document.getElementById('metricVideo').textContent = file.name;
+                document.getElementById('metricTotal').textContent = totalFrames;
+
+                hideLoading();
+
+                // Load first frame
+                await seekToFrame(0);
+
+            } catch (err) {
+                hideLoading();
+                showError('Error loading video: ' + err.message);
+                log(`Error: ${err.message}`, 'error');
+            }
+        });
+
+        // ============================================
+        // Load Demo
+        // ============================================
+        async function loadVideoFromUrl(url, name) {
+            hideError();
+            log(`Loading video: ${name}`, 'info');
+            showLoading('Loading video...');
+
+            try {
+                if (videoDecoder) videoDecoder.close();
+
+                videoDecoder = new VideoDecoderWrapper({ cacheSize: 60, lookahead: 30 });
+                const info = await videoDecoder.init(url);
+
+                totalFrames = info.totalFrames;
+                fps = info.fps;
+
+                log(`Video: ${info.width}x${info.height}, ${totalFrames} frames, ${fps.toFixed(1)} fps`, 'success');
+
+                // Show UI
+                canvasContainer.style.display = 'block';
+                resizeHandle.style.display = 'flex';
+                seekbarContainer.style.display = 'block';
+                document.getElementById('infoRow').style.display = 'flex';
+
+                document.getElementById('metricVideo').textContent = name;
+                document.getElementById('metricTotal').textContent = totalFrames;
+
+                hideLoading();
+
+                // Load first frame
+                await seekToFrame(0);
+
+            } catch (err) {
+                hideLoading();
+                showError('Error loading video: ' + err.message);
+                log(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        document.getElementById('loadDemoBtn').addEventListener('click', async () => {
+            const baseUrl = window.location.origin + '/slp-viewer/';
+            const slpUrl = baseUrl + 'mice.tracked.slp';
+            const videoUrl = baseUrl + 'mice.mp4';
+
+            hideError();
+            log('Loading demo data...', 'info');
+
+            // Load SLP first
+            initSlpWorker();
+            showLoading('Loading demo SLP...');
+
+            // Wait for SLP to load
+            const slpLoaded = new Promise((resolve, reject) => {
+                const originalOnMessage = slpWorker.onmessage;
+                slpWorker.onmessage = (e) => {
+                    originalOnMessage(e);
+                    if (e.data.type === 'result') resolve();
+                    else if (e.data.type === 'error') reject(new Error(e.data.data.message));
+                };
+            });
+
+            slpWorker.postMessage({ type: 'loadUrl', url: slpUrl });
+
+            try {
+                await slpLoaded;
+                // Now load video
+                await loadVideoFromUrl(videoUrl, 'mice.mp4');
+            } catch (err) {
+                hideLoading();
+                showError('Error loading demo: ' + err.message);
+                log(`Error: ${err.message}`, 'error');
+            }
+        });
+
+        // ============================================
+        // Pose Overlay Rendering
+        // ============================================
+        function renderPoseOverlay() {
+            if (!poseData || !currentBitmap) return;
+            if (!document.getElementById('showPoses').checked) return;
+
+            const frameData = frameIndexMap.get(currentFrame);
+            if (!frameData) return;
+
+            const skeleton = poseData.skeleton;
+            const showEdges = document.getElementById('showEdges').checked;
+            const showNodes = document.getElementById('showNodes').checked;
+            const nodeSize = parseInt(document.getElementById('nodeSize').value);
+            const edgeWidth = parseInt(document.getElementById('edgeWidth').value);
+
+            // Get geometry for coordinate transform
+            const { baseScale, drawX, drawY } = getVideoGeometry();
+            const effectiveScale = baseScale * scale;
+            const dpr = window.devicePixelRatio || 1;
+
+            ctx.save();
+            ctx.scale(dpr, dpr);
+
+            for (const inst of frameData.instances) {
+                const color = getTrackColor(inst.trackIdx);
+                const points = inst.points;
+
+                // Draw edges first (behind nodes)
+                if (showEdges) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = edgeWidth;
+                    ctx.lineCap = 'round';
+
+                    for (const [srcIdx, dstIdx] of skeleton.edges) {
+                        const srcPt = points[srcIdx];
+                        const dstPt = points[dstIdx];
+                        if (!srcPt || !dstPt) continue;
+
+                        const x1 = drawX + offsetX + srcPt[0] * effectiveScale;
+                        const y1 = drawY + offsetY + srcPt[1] * effectiveScale;
+                        const x2 = drawX + offsetX + dstPt[0] * effectiveScale;
+                        const y2 = drawY + offsetY + dstPt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw nodes
+                if (showNodes) {
+                    ctx.fillStyle = color;
+
+                    for (const pt of points) {
+                        if (!pt) continue;
+
+                        const cx = drawX + offsetX + pt[0] * effectiveScale;
+                        const cy = drawY + offsetY + pt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, nodeSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            ctx.restore();
+
+            // Update instance count
+            document.getElementById('metricInstances').textContent = frameData.instances.length;
+        }
+
+        function renderFrameIndexOverlay() {
+            if (!document.getElementById('showFrameIndex').checked) return;
+
+            const text = `${currentFrame + 1} / ${totalFrames}`;
+            const padding = 8;
+            const fontSize = 14;
+            const dpr = window.devicePixelRatio || 1;
+
+            ctx.save();
+            ctx.scale(dpr, dpr);
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, 10, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, 10 + padding + fontSize - 2);
+
+            ctx.restore();
+        }
+
+        // ============================================
+        // Rendering
+        // ============================================
+        function getVideoGeometry() {
+            if (!currentBitmap) return { baseScale: 1, drawX: 0, drawY: 0 };
+
+            const containerWidth = canvasContainer.clientWidth;
+            const containerHeight = canvasContainer.clientHeight;
+            const videoAspect = currentBitmap.width / currentBitmap.height;
+            const containerAspect = containerWidth / containerHeight;
+
+            let baseScale, drawX, drawY;
+            if (videoAspect > containerAspect) {
+                baseScale = containerWidth / currentBitmap.width;
+                drawX = 0;
+                drawY = (containerHeight - currentBitmap.height * baseScale) / 2;
+            } else {
+                baseScale = containerHeight / currentBitmap.height;
+                drawX = (containerWidth - currentBitmap.width * baseScale) / 2;
+                drawY = 0;
+            }
+            return { baseScale, drawX, drawY };
+        }
+
+        function renderFrame(bitmap) {
+            if (!bitmap) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const containerWidth = canvasContainer.clientWidth;
+            const containerHeight = canvasContainer.clientHeight;
+
+            if (canvas.width !== containerWidth * dpr || canvas.height !== containerHeight * dpr) {
+                canvas.width = containerWidth * dpr;
+                canvas.height = containerHeight * dpr;
+            }
+
+            const { baseScale, drawX, drawY } = getVideoGeometry();
+            const effectiveScale = baseScale * scale;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.scale(dpr, dpr);
+            ctx.imageSmoothingEnabled = effectiveScale < 2;
+            ctx.translate(offsetX, offsetY);
+            ctx.translate(drawX, drawY);
+            ctx.scale(effectiveScale, effectiveScale);
+            ctx.drawImage(bitmap, 0, 0);
+            ctx.restore();
+        }
+
+        function render() {
+            renderFrame(currentBitmap);
+            renderPoseOverlay();
+            renderFrameIndexOverlay();
+        }
+
+        async function seekToFrame(frameIndex) {
+            if (!videoDecoder) return;
+
+            if (totalFrames > 0) {
+                frameIndex = ((frameIndex % totalFrames) + totalFrames) % totalFrames;
+            }
+
+            const result = await videoDecoder.getFrame(frameIndex);
+            if (result && result.bitmap) {
+                currentFrame = frameIndex;
+                currentBitmap = result.bitmap;
+                render();
+                updateSeekbar();
+                document.getElementById('metricFrame').textContent = currentFrame + 1;
+            }
+        }
+
+        function updateSeekbar() {
+            const progress = totalFrames > 1 ? (currentFrame / (totalFrames - 1)) * 100 : 0;
+            seekbarProgress.style.width = progress + '%';
+            seekbarThumb.style.left = progress + '%';
+        }
+
+        // ============================================
+        // Playback
+        // ============================================
+        function togglePlayback() {
+            if (isPlaying) {
+                stopPlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        function startPlayback() {
+            if (!videoDecoder) return;
+            isPlaying = true;
+            playBtn.textContent = '⏸';
+            log('Playback started', 'info');
+
+            playInterval = setInterval(async () => {
+                await seekToFrame(currentFrame + 1);
+            }, 1000 / fps);
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            playBtn.textContent = '▶';
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+        }
+
+        playBtn.addEventListener('click', togglePlayback);
+
+        // ============================================
+        // Controls
+        // ============================================
+        document.getElementById('firstFrameBtn').addEventListener('click', () => seekToFrame(0));
+        document.getElementById('prevFrameBtn').addEventListener('click', () => seekToFrame(currentFrame - 1));
+        document.getElementById('nextFrameBtn').addEventListener('click', () => seekToFrame(currentFrame + 1));
+        document.getElementById('lastFrameBtn').addEventListener('click', () => seekToFrame(totalFrames - 1));
+
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            scale = Math.min(50, scale * 1.25);
+            render();
+        });
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            scale = Math.max(0.1, scale * 0.8);
+            render();
+        });
+        document.getElementById('resetZoomBtn').addEventListener('click', () => {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+            render();
+        });
+
+        // Overlay toggles
+        document.getElementById('showPoses').addEventListener('change', render);
+        document.getElementById('showEdges').addEventListener('change', render);
+        document.getElementById('showNodes').addEventListener('change', render);
+        document.getElementById('showFrameIndex').addEventListener('change', render);
+
+        // Sliders
+        document.getElementById('nodeSize').addEventListener('input', (e) => {
+            document.getElementById('nodeSizeValue').textContent = e.target.value;
+            render();
+        });
+        document.getElementById('edgeWidth').addEventListener('input', (e) => {
+            document.getElementById('edgeWidthValue').textContent = e.target.value;
+            render();
+        });
+
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            if (!videoDecoder) return;
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                seekToFrame(currentFrame - (e.ctrlKey ? 30 : 1));
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                seekToFrame(currentFrame + (e.ctrlKey ? 30 : 1));
+            } else if (e.key === ' ') {
+                e.preventDefault();
+                togglePlayback();
+            } else if (e.key === 'Home') {
+                e.preventDefault();
+                seekToFrame(0);
+            } else if (e.key === 'End') {
+                e.preventDefault();
+                seekToFrame(totalFrames - 1);
+            } else if (e.key === 'p' || e.key === 'P') {
+                const cb = document.getElementById('showPoses');
+                cb.checked = !cb.checked;
+                render();
+            }
+        });
+
+        // Seekbar with debounced scrubbing (prevents rubberbanding)
+        let isScrubbing = false;
+        let pendingSeekFrame = null;
+        let isSeekingFrame = false;
+
+        function updateSeekbarVisual(frame) {
+            const p = totalFrames > 1 ? (frame / (totalFrames - 1)) * 100 : 0;
+            seekbarProgress.style.width = p + '%';
+            seekbarThumb.style.left = p + '%';
+        }
+
+        async function handleSeekbar(e) {
+            const rect = seekbar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const frame = totalFrames > 1 ? Math.round((x / rect.width) * (totalFrames - 1)) : 0;
+
+            updateSeekbarVisual(frame); // Immediate visual feedback
+            pendingSeekFrame = frame;
+
+            if (isSeekingFrame) return; // Don't queue multiple seeks
+            isSeekingFrame = true;
+
+            while (pendingSeekFrame !== null) {
+                const targetFrame = pendingSeekFrame;
+                pendingSeekFrame = null;
+                await seekToFrame(targetFrame);
+            }
+            isSeekingFrame = false;
+        }
+
+        seekbar.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isScrubbing = true;
+            document.body.style.userSelect = 'none';
+            handleSeekbar(e);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isScrubbing) handleSeekbar(e);
+            if (isDragging) {
+                offsetX = e.clientX - dragStartX;
+                offsetY = e.clientY - dragStartY;
+                render();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isScrubbing) {
+                document.body.style.userSelect = '';
+                isScrubbing = false;
+                updateSeekbar();
+            }
+            isDragging = false;
+        });
+
+        // Pan
+        canvasContainer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStartX = e.clientX - offsetX;
+            dragStartY = e.clientY - offsetY;
+        });
+
+        // Zoom
+        canvasContainer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = Math.max(-100, Math.min(100, e.deltaY));
+            const zoomFactor = Math.exp(-delta * 0.002);
+            scale = Math.max(0.1, Math.min(50, scale * zoomFactor));
+            render();
+        });
+
+        // Resize handle
+        let isResizing = false;
+        let resizeStartY = 0;
+        let resizeStartHeight = 0;
+
+        resizeHandle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizing = true;
+            resizeStartY = e.clientY;
+            resizeStartHeight = canvasContainer.clientHeight;
+            document.body.style.cursor = 'ns-resize';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizing) {
+                const delta = e.clientY - resizeStartY;
+                const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
+                canvasContainer.style.height = newHeight + 'px';
+                render();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+            }
+        });
+    </script>
+</body>
+</html>
