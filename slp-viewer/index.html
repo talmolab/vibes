@@ -436,6 +436,7 @@
                 <label><input type="checkbox" id="showEdges" checked> Show Edges</label>
                 <label><input type="checkbox" id="showNodes" checked> Show Nodes</label>
                 <label><input type="checkbox" id="showFrameIndex" checked> Frame Index</label>
+                <label><input type="checkbox" id="showTiming" checked> Timing Stats</label>
                 <div class="slider-row">
                     <label>Node Size:</label>
                     <input type="range" id="nodeSize" min="2" max="12" value="5">
@@ -782,6 +783,7 @@
                     canvas: canvas,
                     cacheSize: parseInt(document.getElementById('cacheSize').value),
                     lookahead: parseInt(document.getElementById('lookahead').value),
+                    showTimingOverlay: document.getElementById('showTiming').checked,
                     onFrameChange: (frameIndex, totalFrames) => {
                         document.getElementById('metricFrame').textContent = frameIndex + 1;
                         seekbarController?.update(frameIndex, totalFrames);
@@ -1091,6 +1093,12 @@
         document.getElementById('showEdges').addEventListener('change', () => player?.render());
         document.getElementById('showNodes').addEventListener('change', () => player?.render());
         document.getElementById('showFrameIndex').addEventListener('change', () => player?.render());
+        document.getElementById('showTiming').addEventListener('change', (e) => {
+            if (player) {
+                player.showTimingOverlay = e.target.checked;
+                player.render();
+            }
+        });
 
         // Sliders
         document.getElementById('nodeSize').addEventListener('input', (e) => {

@@ -10,6 +10,57 @@
  */
 
 // ============================================
+// Performance Timing Utility
+// ============================================
+class PerfTimer {
+    constructor() {
+        this.marks = new Map();
+        this.measures = [];
+        this.enabled = true;
+    }
+
+    mark(name) {
+        if (!this.enabled) return;
+        this.marks.set(name, performance.now());
+    }
+
+    measure(name, startMark, endMark) {
+        if (!this.enabled) return 0;
+        const start = this.marks.get(startMark);
+        const end = endMark ? this.marks.get(endMark) : performance.now();
+        if (start === undefined) return 0;
+        const duration = end - start;
+        this.measures.push({ name, duration, timestamp: Date.now() });
+        // Keep only last 100 measures
+        if (this.measures.length > 100) this.measures.shift();
+        return duration;
+    }
+
+    getStats() {
+        const stats = {};
+        for (const m of this.measures) {
+            if (!stats[m.name]) stats[m.name] = { count: 0, total: 0, min: Infinity, max: 0 };
+            stats[m.name].count++;
+            stats[m.name].total += m.duration;
+            stats[m.name].min = Math.min(stats[m.name].min, m.duration);
+            stats[m.name].max = Math.max(stats[m.name].max, m.duration);
+        }
+        for (const name in stats) {
+            stats[name].avg = stats[name].total / stats[name].count;
+        }
+        return stats;
+    }
+
+    clear() {
+        this.marks.clear();
+        this.measures = [];
+    }
+}
+
+// Global perf timer instance
+const perfTimer = new PerfTimer();
+
+// ============================================
 // VideoDecoderWrapper - Low-level decoder with caching
 // ============================================
 class VideoDecoderWrapper {
@@ -29,6 +80,19 @@ class VideoDecoderWrapper {
         this.supportsRangeRequests = false;
         this.isDecoding = false;
         this.onLog = opts.onLog || null;
+
+        // Performance tracking
+        this.lastSeekTime = 0;
+        this.lastFromCache = false;
+        this.lastDecodeStats = null;
+
+        // Pending frame queue - skip stale requests during rapid seeking
+        this.pendingFrame = null;
+
+        // Prefetch state
+        this.prefetchRequested = false;
+        this.lastAccessedFrame = -1;
+        this.accessDirection = 1; // 1 = forward, -1 = backward
     }
 
     _log(msg, level = 'info') {
@@ -138,6 +202,57 @@ class VideoDecoderWrapper {
         }
     }
 
+    /**
+     * Read sample data with batching - groups contiguous samples into single reads
+     * This dramatically reduces HTTP requests for range-based streaming
+     */
+    async readSampleDataByDecodeOrder(samplesToFeed) {
+        const results = new Map();
+        let totalBytes = 0;
+        let totalRequests = 0;
+
+        // samplesToFeed is already sorted by decodeIndex
+        // Group samples that are contiguous in the file for batch reading
+        let i = 0;
+        while (i < samplesToFeed.length) {
+            const first = samplesToFeed[i];
+            let regionEnd = i;
+            let regionBytes = first.s.size;
+
+            // Extend region while samples are contiguous in file
+            while (regionEnd < samplesToFeed.length - 1) {
+                const current = samplesToFeed[regionEnd];
+                const next = samplesToFeed[regionEnd + 1];
+
+                // Check if next sample immediately follows current in file
+                if (next.s.offset === current.s.offset + current.s.size) {
+                    regionEnd++;
+                    regionBytes += next.s.size;
+                } else {
+                    break;
+                }
+            }
+
+            // Read the entire contiguous region in one request
+            const buffer = await this.readChunk(first.s.offset, regionBytes);
+            const bufferView = new Uint8Array(buffer);
+            totalBytes += regionBytes;
+            totalRequests++;
+
+            // Extract individual samples from the batch
+            let bufferOffset = 0;
+            for (let j = i; j <= regionEnd; j++) {
+                const { pi, s } = samplesToFeed[j];
+                results.set(s.decodeIndex, bufferView.slice(bufferOffset, bufferOffset + s.size));
+                bufferOffset += s.size;
+            }
+
+            i = regionEnd + 1;
+        }
+
+        return { results, totalBytes, totalRequests };
+    }
+
     getCodecDesc(trak) {
         for (const e of trak.mdia.minf.stbl.stsd.entries) {
             const box = e.avcC || e.hvcC || e.vpcC || e.av1C;
@@ -176,32 +291,166 @@ class VideoDecoderWrapper {
     }
 
     async getFrame(idx) {
+        perfTimer.mark('getFrame_start');
+        const getFrameStart = performance.now();
+
         if (idx < 0 || idx >= this.samples.length) return null;
 
+        // Track access direction for prefetching
+        if (this.lastAccessedFrame >= 0) {
+            const delta = idx - this.lastAccessedFrame;
+            if (delta > 0) this.accessDirection = 1;
+            else if (delta < 0) this.accessDirection = -1;
+        }
+        this.lastAccessedFrame = idx;
+
+        // Check cache first
         if (this.cache.has(idx)) {
             const bmp = this.cache.get(idx);
             this.cache.delete(idx);
             this.cache.set(idx, bmp); // Move to end (LRU)
+            this.lastSeekTime = performance.now() - getFrameStart;
+            this.lastFromCache = true;
+            perfTimer.measure('getFrame_cacheHit', 'getFrame_start');
+
+            // Trigger background prefetch if we're getting close to cache edge
+            this.maybeStartPrefetch(idx);
+
             return { bitmap: bmp, fromCache: true };
         }
 
+        // If currently decoding, queue this frame and wait
         if (this.isDecoding) {
+            this.pendingFrame = idx;
+            perfTimer.mark('waitForDecode_start');
+            const waitStart = performance.now();
+
+            // Wait for current decode to finish
             await new Promise(r => {
                 const c = () => this.isDecoding ? setTimeout(c, 10) : r();
                 c();
             });
-            if (this.cache.has(idx)) return { bitmap: this.cache.get(idx), fromCache: true };
+
+            const waitTime = performance.now() - waitStart;
+            perfTimer.measure('waitForDecode', 'waitForDecode_start');
+
+            // Check cache again - might have been decoded
+            if (this.cache.has(idx)) {
+                const bmp = this.cache.get(idx);
+                this.cache.delete(idx);
+                this.cache.set(idx, bmp);
+                this.lastSeekTime = performance.now() - getFrameStart;
+                this.lastFromCache = true;
+                return { bitmap: bmp, fromCache: true };
+            }
+
+            // If there's a newer pending frame, skip this one (stale request)
+            if (this.pendingFrame !== null && this.pendingFrame !== idx) {
+                return null;
+            }
         }
 
         const kf = this.findKeyframeBefore(idx);
         const end = Math.min(idx + this.lookahead, this.samples.length - 1);
+
+        this._log(`Decode range: keyframe=${kf} -> end=${end} (${end - kf + 1} frames) for target ${idx}`, 'info');
+
         await this.decodeRange(kf, end, idx);
+
         const bmp = this.cache.get(idx);
+        this.lastSeekTime = performance.now() - getFrameStart;
+        this.lastFromCache = false;
+        perfTimer.measure('getFrame_decode', 'getFrame_start');
+
         return bmp ? { bitmap: bmp, fromCache: false } : null;
     }
 
+    /**
+     * Check if we should start prefetching ahead
+     */
+    maybeStartPrefetch(currentFrame) {
+        if (this.isDecoding || this.prefetchRequested) return;
+
+        // Find the edge of cached frames in the access direction
+        let cachedAhead = 0;
+        if (this.accessDirection > 0) {
+            // Moving forward - count cached frames ahead
+            for (let i = currentFrame + 1; i < this.samples.length && this.cache.has(i); i++) {
+                cachedAhead++;
+            }
+        } else {
+            // Moving backward - count cached frames behind
+            for (let i = currentFrame - 1; i >= 0 && this.cache.has(i); i++) {
+                cachedAhead++;
+            }
+        }
+
+        // If we have less than half lookahead frames cached ahead, start prefetching
+        if (cachedAhead < this.lookahead / 2) {
+            this.prefetchRequested = true;
+            // Use setTimeout to not block the current frame return
+            setTimeout(() => this.prefetch(currentFrame), 0);
+        }
+    }
+
+    /**
+     * Prefetch frames in the current access direction
+     */
+    async prefetch(fromFrame) {
+        if (this.isDecoding) {
+            this.prefetchRequested = false;
+            return;
+        }
+
+        const direction = this.accessDirection;
+        let targetFrame;
+
+        if (direction > 0) {
+            // Find first uncached frame ahead
+            targetFrame = fromFrame + 1;
+            while (targetFrame < this.samples.length && this.cache.has(targetFrame)) {
+                targetFrame++;
+            }
+            if (targetFrame >= this.samples.length) {
+                this.prefetchRequested = false;
+                return;
+            }
+        } else {
+            // Find first uncached frame behind
+            targetFrame = fromFrame - 1;
+            while (targetFrame >= 0 && this.cache.has(targetFrame)) {
+                targetFrame--;
+            }
+            if (targetFrame < 0) {
+                this.prefetchRequested = false;
+                return;
+            }
+        }
+
+        // Decode a range around the target
+        const keyframe = this.findKeyframeBefore(targetFrame);
+        const endFrame = Math.min(targetFrame + this.lookahead, this.samples.length - 1);
+
+        this._log(`Prefetch: keyframe=${keyframe} -> end=${endFrame} for target ${targetFrame}`, 'info');
+
+        await this.decodeRange(keyframe, endFrame, targetFrame);
+        this.prefetchRequested = false;
+    }
+
     async decodeRange(start, end, target) {
+        perfTimer.mark('decodeRange_start');
+        const decodeRangeStart = performance.now();
         this.isDecoding = true;
+
+        const stats = {
+            framesToDecode: 0,
+            bytesToRead: 0,
+            readRequests: 0,
+            readTime: 0,
+            decodeTime: 0,
+            bitmapTime: 0,
+        };
+
         try {
             if (this.decoder) try { this.decoder.close(); } catch (e) {}
 
@@ -218,10 +467,17 @@ class VideoDecoderWrapper {
             }
             toFeed.sort((a, b) => a.s.decodeIndex - b.s.decodeIndex);
 
-            const dataMap = new Map();
-            for (const { s } of toFeed) {
-                dataMap.set(s.decodeIndex, new Uint8Array(await this.readChunk(s.offset, s.size)));
-            }
+            stats.framesToDecode = toFeed.length;
+
+            // Read sample data with batching - groups contiguous samples
+            perfTimer.mark('readSamples_start');
+            const readStart = performance.now();
+            const { results: dataMap, totalBytes, totalRequests } = await this.readSampleDataByDecodeOrder(toFeed);
+            stats.bytesToRead = totalBytes;
+            stats.readRequests = totalRequests;
+            stats.readTime = performance.now() - readStart;
+            perfTimer.measure('readSamples', 'readSamples_start');
+            this._log(`Read ${toFeed.length} samples in ${totalRequests} batches (${(totalBytes / 1024).toFixed(0)} KB) in ${stats.readTime.toFixed(0)}ms`, 'info');
 
             const tsMap = new Map();
             for (const { pi, s } of toFeed) tsMap.set(Math.round(s.timestamp), pi);
@@ -230,8 +486,13 @@ class VideoDecoderWrapper {
             const cStart = Math.max(start, target - halfC);
             const cEnd = Math.min(end, target + halfC);
 
+            perfTimer.mark('decode_start');
+            const decodeStart = performance.now();
+
             await new Promise((res, rej) => {
                 let cnt = 0;
+                let bitmapTimeTotal = 0;
+
                 this.decoder = new window.VideoDecoder({
                     output: f => {
                         let fi = tsMap.get(Math.round(f.timestamp));
@@ -243,10 +504,15 @@ class VideoDecoderWrapper {
                             }
                         }
                         if (fi !== undefined && fi >= cStart && fi <= cEnd) {
+                            const bmpStart = performance.now();
                             createImageBitmap(f).then(b => {
+                                bitmapTimeTotal += performance.now() - bmpStart;
                                 this.addToCache(fi, b);
                                 f.close();
-                                if (++cnt >= toFeed.length) res();
+                                if (++cnt >= toFeed.length) {
+                                    stats.bitmapTime = bitmapTimeTotal;
+                                    res();
+                                }
                             }).catch(() => {
                                 f.close();
                                 if (++cnt >= toFeed.length) res();
@@ -271,6 +537,15 @@ class VideoDecoderWrapper {
                 }
                 this.decoder.flush();
             });
+
+            stats.decodeTime = performance.now() - decodeStart;
+            perfTimer.measure('decode', 'decode_start');
+
+            const totalTime = performance.now() - decodeRangeStart;
+            this._log(`Decode complete: ${stats.framesToDecode} frames in ${totalTime.toFixed(0)}ms (read: ${stats.readTime.toFixed(0)}ms, decode: ${stats.decodeTime.toFixed(0)}ms, bitmap: ${stats.bitmapTime.toFixed(0)}ms)`, 'success');
+
+            this.lastDecodeStats = stats;
+            perfTimer.measure('decodeRange', 'decodeRange_start');
         } finally {
             this.isDecoding = false;
         }
@@ -306,6 +581,7 @@ class VideoPlayer {
      * @param {Function} [options.onFrameChange] - Callback(frameIndex, totalFrames) after frame changes
      * @param {Function} [options.renderOverlay] - Callback(ctx, info) to render overlays after frame
      * @param {Function} [options.onLog] - Callback(message, level) for logging
+     * @param {boolean} [options.showTimingOverlay=false] - Show timing stats overlay
      */
     constructor(options) {
         this.container = options.container;
@@ -337,6 +613,7 @@ class VideoPlayer {
         // Options
         this.cacheSize = options.cacheSize || 60;
         this.lookahead = options.lookahead || 30;
+        this.showTimingOverlay = options.showTimingOverlay || false;
 
         // Callbacks
         this.onFrameChange = options.onFrameChange || null;
@@ -503,6 +780,88 @@ class VideoPlayer {
                 containerHeight
             });
         }
+
+        // Render timing overlay if enabled
+        if (this.showTimingOverlay && this.decoder) {
+            this._renderTimingOverlay(dpr);
+        }
+    }
+
+    /**
+     * Render timing stats overlay in top-right corner
+     */
+    _renderTimingOverlay(dpr) {
+        const ctx = this.ctx;
+        const decoder = this.decoder;
+
+        ctx.save();
+        ctx.scale(dpr, dpr);
+
+        const fontSize = 11;
+        const lineHeight = 14;
+        const padding = 8;
+        const rightMargin = 10;
+        const topMargin = 10;
+
+        ctx.font = `${fontSize}px monospace`;
+
+        // Build stats lines
+        const lines = [];
+        lines.push(`Seek: ${decoder.lastSeekTime.toFixed(1)}ms (${decoder.lastFromCache ? 'cache' : 'decode'})`);
+        lines.push(`Cache: ${decoder.cache.size}/${decoder.cacheSize}`);
+
+        if (decoder.lastDecodeStats) {
+            const s = decoder.lastDecodeStats;
+            lines.push(`Last decode: ${s.framesToDecode} frames`);
+            lines.push(`  Read: ${s.readTime.toFixed(0)}ms (${s.readRequests} reqs, ${(s.bytesToRead/1024).toFixed(0)}KB)`);
+            lines.push(`  Decode: ${s.decodeTime.toFixed(0)}ms`);
+            lines.push(`  Bitmap: ${s.bitmapTime.toFixed(0)}ms`);
+        }
+
+        // Get perf stats
+        const perfStats = perfTimer.getStats();
+        if (Object.keys(perfStats).length > 0) {
+            lines.push('--- Averages ---');
+            for (const [name, stat] of Object.entries(perfStats)) {
+                if (stat.count > 1) {
+                    lines.push(`${name}: ${stat.avg.toFixed(1)}ms (n=${stat.count})`);
+                }
+            }
+        }
+
+        // Calculate box dimensions
+        let maxWidth = 0;
+        for (const line of lines) {
+            maxWidth = Math.max(maxWidth, ctx.measureText(line).width);
+        }
+        const boxWidth = maxWidth + padding * 2;
+        const boxHeight = lines.length * lineHeight + padding * 2;
+
+        const containerWidth = this.container.clientWidth;
+        const x = containerWidth - boxWidth - rightMargin;
+        const y = topMargin;
+
+        // Draw background
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(x, y, boxWidth, boxHeight);
+
+        // Draw text
+        ctx.fillStyle = '#4ade80';
+        for (let i = 0; i < lines.length; i++) {
+            const lineY = y + padding + (i + 1) * lineHeight - 3;
+            const line = lines[i];
+            // Color code
+            if (line.includes('Read:')) ctx.fillStyle = '#fbbf24';
+            else if (line.includes('Decode:')) ctx.fillStyle = '#667eea';
+            else if (line.includes('Bitmap:')) ctx.fillStyle = '#f472b6';
+            else if (line.includes('---')) ctx.fillStyle = '#888';
+            else if (line.includes('Seek:')) ctx.fillStyle = decoder.lastFromCache ? '#4ade80' : '#fbbf24';
+            else ctx.fillStyle = '#aaa';
+
+            ctx.fillText(line, x + padding, lineY);
+        }
+
+        ctx.restore();
     }
 
     /**
