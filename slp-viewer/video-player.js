@@ -605,10 +605,27 @@ class VideoPlayer {
         this.offsetX = 0;
         this.offsetY = 0;
 
-        // Drag state
+        // Drag state (mouse)
         this._isDragging = false;
         this._dragStartX = 0;
         this._dragStartY = 0;
+
+        // Touch state (single finger pan)
+        this._touchStartX = null;
+        this._touchStartY = null;
+        this._touchStartOffsetX = null;
+        this._touchStartOffsetY = null;
+
+        // Pinch zoom state
+        this._initialPinchDistance = null;
+        this._initialPinchScale = null;
+        this._pinchCenterX = null;
+        this._pinchCenterY = null;
+
+        // Container size tracking for resize handling
+        this._lastContainerWidth = 0;
+        this._lastContainerHeight = 0;
+        this._resizeObserver = null;
 
         // Options
         this.cacheSize = options.cacheSize || 60;
@@ -625,6 +642,9 @@ class VideoPlayer {
         this._onMouseMove = this._onMouseMove.bind(this);
         this._onMouseUp = this._onMouseUp.bind(this);
         this._onWheel = this._onWheel.bind(this);
+        this._onTouchStart = this._onTouchStart.bind(this);
+        this._onTouchMove = this._onTouchMove.bind(this);
+        this._onTouchEnd = this._onTouchEnd.bind(this);
 
         this._setupEventListeners();
     }
@@ -641,6 +661,33 @@ class VideoPlayer {
 
         // Zoom with wheel
         this.container.addEventListener('wheel', this._onWheel);
+
+        // Touch events for mobile
+        this.container.addEventListener('touchstart', this._onTouchStart, { passive: false });
+        this.container.addEventListener('touchmove', this._onTouchMove, { passive: false });
+        this.container.addEventListener('touchend', this._onTouchEnd);
+
+        // Handle container resize to keep view stable
+        this._resizeObserver = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                const newWidth = entry.contentRect.width;
+                const newHeight = entry.contentRect.height;
+
+                // Skip initial observation or if size hasn't changed
+                if (this._lastContainerWidth === 0 ||
+                    (newWidth === this._lastContainerWidth && newHeight === this._lastContainerHeight)) {
+                    this._lastContainerWidth = newWidth;
+                    this._lastContainerHeight = newHeight;
+                    continue;
+                }
+
+                this._handleContainerResize(this._lastContainerWidth, this._lastContainerHeight, newWidth, newHeight);
+                this._lastContainerWidth = newWidth;
+                this._lastContainerHeight = newHeight;
+                this.render();
+            }
+        });
+        this._resizeObserver.observe(this.container);
     }
 
     _onMouseDown(e) {
@@ -653,6 +700,7 @@ class VideoPlayer {
         if (this._isDragging) {
             this.offsetX = e.clientX - this._dragStartX;
             this.offsetY = e.clientY - this._dragStartY;
+            this._constrainOffset();
             this.render();
         }
     }
@@ -663,10 +711,222 @@ class VideoPlayer {
 
     _onWheel(e) {
         e.preventDefault();
-        const delta = Math.max(-100, Math.min(100, e.deltaY));
-        const zoomFactor = Math.exp(-delta * 0.002);
-        this.scale = Math.max(0.1, Math.min(50, this.scale * zoomFactor));
+
+        // Get cursor position relative to container
+        const rect = this.container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Normalize deltaY for different input devices (mouse vs trackpad)
+        let delta = e.deltaY;
+        if (e.deltaMode === 1) delta *= 40; // line mode
+        delta = Math.max(-100, Math.min(100, delta)); // Clamp to prevent huge jumps
+
+        // Exponential scaling: ~10% zoom per 100px of scroll
+        const zoomFactor = Math.exp(-delta * 0.001);
+        const newScale = Math.max(0.1, Math.min(50, this.scale * zoomFactor));
+
+        // Zoom towards cursor position
+        this._zoomToPoint(mouseX, mouseY, newScale);
         this.render();
+    }
+
+    // ============================================
+    // Touch event handlers
+    // ============================================
+
+    _getTouchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    _getTouchCenter(touches, rect) {
+        return {
+            x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+            y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+        };
+    }
+
+    _onTouchStart(e) {
+        if (e.touches.length === 2) {
+            // Pinch-to-zoom start
+            e.preventDefault();
+            this._initialPinchDistance = this._getTouchDistance(e.touches);
+            this._initialPinchScale = this.scale;
+            const rect = this.container.getBoundingClientRect();
+            const center = this._getTouchCenter(e.touches, rect);
+            this._pinchCenterX = center.x;
+            this._pinchCenterY = center.y;
+            // Clear single-finger pan state to prevent snap when lifting one finger
+            this._touchStartX = null;
+            this._touchStartY = null;
+            this._touchStartOffsetX = null;
+            this._touchStartOffsetY = null;
+        } else if (e.touches.length === 1) {
+            // Single-finger pan start
+            this._touchStartX = e.touches[0].clientX;
+            this._touchStartY = e.touches[0].clientY;
+            this._touchStartOffsetX = this.offsetX;
+            this._touchStartOffsetY = this.offsetY;
+        }
+    }
+
+    _onTouchMove(e) {
+        if (e.touches.length === 2 && this._initialPinchDistance !== null) {
+            // Pinch-to-zoom
+            e.preventDefault();
+            const rect = this.container.getBoundingClientRect();
+            const currentCenter = this._getTouchCenter(e.touches, rect);
+            const currentDistance = this._getTouchDistance(e.touches);
+            const pinchRatio = currentDistance / this._initialPinchDistance;
+            const newScale = Math.max(0.1, Math.min(50, this._initialPinchScale * pinchRatio));
+
+            // Zoom towards pinch center
+            const { baseScale, drawX, drawY } = this.getVideoGeometry();
+            const effectiveScale = baseScale * this.scale;
+            const videoX = (this._pinchCenterX - this.offsetX - drawX) / effectiveScale;
+            const videoY = (this._pinchCenterY - this.offsetY - drawY) / effectiveScale;
+
+            const newEffectiveScale = baseScale * newScale;
+            this.offsetX = this._pinchCenterX - drawX - videoX * newEffectiveScale;
+            this.offsetY = this._pinchCenterY - drawY - videoY * newEffectiveScale;
+
+            // Pan with pinch center movement
+            this.offsetX += currentCenter.x - this._pinchCenterX;
+            this.offsetY += currentCenter.y - this._pinchCenterY;
+            this._pinchCenterX = currentCenter.x;
+            this._pinchCenterY = currentCenter.y;
+
+            this.scale = newScale;
+            this._constrainOffset();
+            this.render();
+        } else if (e.touches.length === 1 && this._touchStartX !== null) {
+            // Single-finger pan
+            e.preventDefault();
+            this.offsetX = this._touchStartOffsetX + (e.touches[0].clientX - this._touchStartX);
+            this.offsetY = this._touchStartOffsetY + (e.touches[0].clientY - this._touchStartY);
+            this._constrainOffset();
+            this.render();
+        }
+    }
+
+    _onTouchEnd(e) {
+        if (e.touches.length < 2) {
+            this._initialPinchDistance = null;
+            this._initialPinchScale = null;
+            this._pinchCenterX = null;
+            this._pinchCenterY = null;
+        }
+        if (e.touches.length === 0) {
+            this._touchStartX = null;
+            this._touchStartY = null;
+            this._touchStartOffsetX = null;
+            this._touchStartOffsetY = null;
+        }
+    }
+
+    // ============================================
+    // Zoom and pan helpers
+    // ============================================
+
+    /**
+     * Constrain offset to keep at least 25% of image visible on each axis
+     */
+    _constrainOffset() {
+        if (!this.currentBitmap) return;
+
+        const containerWidth = this.container.clientWidth;
+        const containerHeight = this.container.clientHeight;
+        const { baseScale, drawX, drawY } = this.getVideoGeometry();
+
+        const scaledWidth = this.currentBitmap.width * baseScale * this.scale;
+        const scaledHeight = this.currentBitmap.height * baseScale * this.scale;
+
+        // Require at least 25% visible on each axis
+        const minVisible = 0.25;
+        const minVisibleX = scaledWidth * minVisible;
+        const minVisibleY = scaledHeight * minVisible;
+
+        // Calculate bounds accounting for the centering offset (drawX, drawY)
+        const minOffsetX = minVisibleX - scaledWidth - drawX;
+        const maxOffsetX = containerWidth - minVisibleX - drawX;
+        const minOffsetY = minVisibleY - scaledHeight - drawY;
+        const maxOffsetY = containerHeight - minVisibleY - drawY;
+
+        this.offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, this.offsetX));
+        this.offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, this.offsetY));
+    }
+
+    /**
+     * Zoom towards a specific point (in container coordinates)
+     */
+    _zoomToPoint(pointX, pointY, newScale) {
+        const { baseScale, drawX, drawY } = this.getVideoGeometry();
+        const effectiveScale = baseScale * this.scale;
+
+        // Find video point under the target point
+        const videoX = (pointX - this.offsetX - drawX) / effectiveScale;
+        const videoY = (pointY - this.offsetY - drawY) / effectiveScale;
+
+        // Calculate new offset to keep that video point at the same container position
+        const newEffectiveScale = baseScale * newScale;
+        this.offsetX = pointX - drawX - videoX * newEffectiveScale;
+        this.offsetY = pointY - drawY - videoY * newEffectiveScale;
+
+        this.scale = newScale;
+        this._constrainOffset();
+    }
+
+    /**
+     * Handle container resize to keep view stable
+     */
+    _handleContainerResize(oldW, oldH, newW, newH) {
+        if (!this.currentBitmap || oldW === 0 || oldH === 0) return;
+
+        const videoAspect = this.currentBitmap.width / this.currentBitmap.height;
+
+        // Calculate old geometry
+        const oldContainerAspect = oldW / oldH;
+        let oldBaseScale, oldDrawX, oldDrawY;
+        if (videoAspect > oldContainerAspect) {
+            oldBaseScale = oldW / this.currentBitmap.width;
+            oldDrawX = 0;
+            oldDrawY = (oldH - this.currentBitmap.height * oldBaseScale) / 2;
+        } else {
+            oldBaseScale = oldH / this.currentBitmap.height;
+            oldDrawX = (oldW - this.currentBitmap.width * oldBaseScale) / 2;
+            oldDrawY = 0;
+        }
+
+        // Calculate new geometry
+        const newContainerAspect = newW / newH;
+        let newBaseScale, newDrawX, newDrawY;
+        if (videoAspect > newContainerAspect) {
+            newBaseScale = newW / this.currentBitmap.width;
+            newDrawX = 0;
+            newDrawY = (newH - this.currentBitmap.height * newBaseScale) / 2;
+        } else {
+            newBaseScale = newH / this.currentBitmap.height;
+            newDrawX = (newW - this.currentBitmap.width * newBaseScale) / 2;
+            newDrawY = 0;
+        }
+
+        // Find what video point was at old container center
+        const oldCenterX = oldW / 2;
+        const oldCenterY = oldH / 2;
+        const oldEffectiveScale = oldBaseScale * this.scale;
+        const videoCenterX = (oldCenterX - this.offsetX - oldDrawX) / oldEffectiveScale;
+        const videoCenterY = (oldCenterY - this.offsetY - oldDrawY) / oldEffectiveScale;
+
+        // Calculate new offset to put that video point at new container center
+        const newCenterX = newW / 2;
+        const newCenterY = newH / 2;
+        const newEffectiveScale = newBaseScale * this.scale;
+        this.offsetX = newCenterX - newDrawX - videoCenterX * newEffectiveScale;
+        this.offsetY = newCenterY - newDrawY - videoCenterY * newEffectiveScale;
+
+        this._constrainOffset();
     }
 
     /**
@@ -695,6 +955,10 @@ class VideoPlayer {
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
+
+        // Initialize container size tracking for resize handling
+        this._lastContainerWidth = this.container.clientWidth;
+        this._lastContainerHeight = this.container.clientHeight;
 
         this._log(`Video loaded: ${info.width}x${info.height}, ${info.totalFrames} frames, ${info.fps.toFixed(1)} fps`, 'success');
 
@@ -933,12 +1197,23 @@ class VideoPlayer {
     }
 
     /**
-     * Set zoom level
+     * Set zoom level (zooms towards center of container)
      * @param {number} newScale - Zoom scale (1 = 100%)
      */
     setZoom(newScale) {
-        this.scale = Math.max(0.1, Math.min(50, newScale));
+        const centerX = this.container.clientWidth / 2;
+        const centerY = this.container.clientHeight / 2;
+        this._zoomToPoint(centerX, centerY, Math.max(0.1, Math.min(50, newScale)));
         this.render();
+    }
+
+    /**
+     * Zoom by a factor (zooms towards center of container)
+     * @param {number} factor - Zoom factor (>1 zoom in, <1 zoom out)
+     */
+    zoomBy(factor) {
+        const newScale = Math.max(0.1, Math.min(50, this.scale * factor));
+        this.setZoom(newScale);
     }
 
     /**
@@ -948,6 +1223,7 @@ class VideoPlayer {
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
+        this._constrainOffset();
         this.render();
     }
 
@@ -992,11 +1268,22 @@ class VideoPlayer {
     destroy() {
         this.pause();
 
-        // Remove event listeners
+        // Remove mouse event listeners
         this.container.removeEventListener('mousedown', this._onMouseDown);
         document.removeEventListener('mousemove', this._onMouseMove);
         document.removeEventListener('mouseup', this._onMouseUp);
         this.container.removeEventListener('wheel', this._onWheel);
+
+        // Remove touch event listeners
+        this.container.removeEventListener('touchstart', this._onTouchStart);
+        this.container.removeEventListener('touchmove', this._onTouchMove);
+        this.container.removeEventListener('touchend', this._onTouchEnd);
+
+        // Disconnect resize observer
+        if (this._resizeObserver) {
+            this._resizeObserver.disconnect();
+            this._resizeObserver = null;
+        }
 
         if (this.decoder) {
             this.decoder.close();
