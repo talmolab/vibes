@@ -718,15 +718,15 @@
                     getTotal: () => player.frames
                 });
 
-                const info = await player.load(source);
-
-                log(`Video: ${info.width}x${info.height}, ${player.frames} frames, ${player.fps.toFixed(1)} fps`, 'success');
-
-                // Show UI
+                // Show container before loading so canvas has dimensions
                 canvasContainer.style.display = 'block';
                 resizeHandle.style.display = 'flex';
                 seekbarContainer.style.display = 'block';
                 document.getElementById('infoRow').style.display = 'flex';
+
+                const info = await player.load(source);
+
+                log(`Video: ${info.width}x${info.height}, ${player.frames} frames, ${player.fps.toFixed(1)} fps`, 'success');
 
                 document.getElementById('metricVideo').textContent = name;
                 document.getElementById('metricTotal').textContent = player.frames;
