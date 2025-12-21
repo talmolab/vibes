@@ -209,6 +209,24 @@
             flex-shrink: 0;
         }
         .track-name { color: #aaa; }
+        .decoder-settings {
+            flex: 1;
+            min-width: 180px;
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+        }
+        .decoder-settings h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ccc;
+        }
+        .decoder-hint {
+            font-size: 11px;
+            color: #666;
+            margin-top: 8px;
+            font-style: italic;
+        }
         .slider-row {
             display: flex;
             align-items: center;
@@ -398,6 +416,21 @@
                         <span class="track-name">No tracks loaded</span>
                     </div>
                 </div>
+            </div>
+
+            <div class="decoder-settings" id="decoderSettings">
+                <h3>Decoder</h3>
+                <div class="slider-row">
+                    <label>Cache Size:</label>
+                    <input type="range" id="cacheSize" min="30" max="300" value="120" step="10">
+                    <span class="slider-value" id="cacheSizeValue">120</span>
+                </div>
+                <div class="slider-row">
+                    <label>Lookahead:</label>
+                    <input type="range" id="lookahead" min="10" max="120" value="60" step="10">
+                    <span class="slider-value" id="lookaheadValue">60</span>
+                </div>
+                <div class="decoder-hint">Changes apply on next video load</div>
             </div>
         </div>
 
@@ -698,8 +731,8 @@
                 player = new VideoPlayer({
                     container: canvasContainer,
                     canvas: canvas,
-                    cacheSize: 60,
-                    lookahead: 30,
+                    cacheSize: parseInt(document.getElementById('cacheSize').value),
+                    lookahead: parseInt(document.getElementById('lookahead').value),
                     onFrameChange: (frameIndex, totalFrames) => {
                         document.getElementById('metricFrame').textContent = frameIndex + 1;
                         seekbarController?.update(frameIndex, totalFrames);
@@ -940,6 +973,14 @@
         document.getElementById('edgeWidth').addEventListener('input', (e) => {
             document.getElementById('edgeWidthValue').textContent = e.target.value;
             player?.render();
+        });
+
+        // Decoder settings (display only, applied on next load)
+        document.getElementById('cacheSize').addEventListener('input', (e) => {
+            document.getElementById('cacheSizeValue').textContent = e.target.value;
+        });
+        document.getElementById('lookahead').addEventListener('input', (e) => {
+            document.getElementById('lookaheadValue').textContent = e.target.value;
         });
 
         // Keyboard
