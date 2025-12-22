@@ -17,7 +17,7 @@ Self-contained HTML tools and applets for the web.
 - [Calibration Studio](calibration-studio/) - Multi-camera calibration tool with ChArUco detection, intrinsic/extrinsic calibration, and TOML export
 - [Link Unfurl Preview](link-unfurl/) - Preview how links appear when shared on social media
 - [Video Event Annotator](event-annotator/) - Frame-accurate event segment annotation with multi-track timeline
-- [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay and track colors
+- [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay, track colors, and shareable links
 
 ## About
 
