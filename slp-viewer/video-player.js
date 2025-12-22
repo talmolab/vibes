@@ -66,7 +66,7 @@ const perfTimer = new PerfTimer();
 class VideoDecoderWrapper {
     constructor(opts = {}) {
         this.cacheSize = opts.cacheSize || 60;
-        this.lookahead = opts.lookahead || 30;
+        this.lookahead = opts.lookahead || 60;
         this.cache = new Map();
         this.samples = [];
         this.keyframeIndices = [];
@@ -93,6 +93,7 @@ class VideoDecoderWrapper {
         this.prefetchRequested = false;
         this.lastAccessedFrame = -1;
         this.accessDirection = 1; // 1 = forward, -1 = backward
+        this._prefetchInterval = null;
     }
 
     _log(msg, level = 'info') {
@@ -290,6 +291,37 @@ class VideoDecoderWrapper {
         return r;
     }
 
+    hasFrame(idx) {
+        return this.cache.has(idx);
+    }
+
+    getFrameSync(idx) {
+        if (idx < 0 || idx >= this.samples.length) return null;
+
+        // Update access tracking (same as getFrame)
+        if (this.lastAccessedFrame >= 0) {
+            const delta = idx - this.lastAccessedFrame;
+            if (delta > 0) this.accessDirection = 1;
+            else if (delta < 0) this.accessDirection = -1;
+        }
+        this.lastAccessedFrame = idx;
+
+        if (this.cache.has(idx)) {
+            const bmp = this.cache.get(idx);
+            this.cache.delete(idx);
+            this.cache.set(idx, bmp); // LRU update
+            this.lastFromCache = true;
+            this.lastSeekTime = 0.1; // Near-instant
+            return { bitmap: bmp, fromCache: true };
+        }
+        // Trigger background decode but don't wait
+        if (!this.isDecoding) {
+            this.getFrame(idx); // Fire and forget only if not already decoding
+        }
+        this.lastFromCache = false;
+        return null;
+    }
+
     async getFrame(idx) {
         perfTimer.mark('getFrame_start');
         const getFrameStart = performance.now();
@@ -385,8 +417,8 @@ class VideoDecoderWrapper {
             }
         }
 
-        // If we have less than half lookahead frames cached ahead, start prefetching
-        if (cachedAhead < this.lookahead / 2) {
+        // Trigger prefetch when less than 2/3 of lookahead is cached (more aggressive)
+        if (cachedAhead < (this.lookahead * 2 / 3)) {
             this.prefetchRequested = true;
             // Use setTimeout to not block the current frame return
             setTimeout(() => this.prefetch(currentFrame), 0);
@@ -489,45 +521,54 @@ class VideoDecoderWrapper {
             perfTimer.mark('decode_start');
             const decodeStart = performance.now();
 
-            await new Promise((res, rej) => {
-                let cnt = 0;
-                let bitmapTimeTotal = 0;
+            // Set up decoder with completion tracking
+            let cnt = 0;
+            let bitmapTimeTotal = 0;
+            let resolveComplete, rejectComplete;
+            const completionPromise = new Promise((res, rej) => {
+                resolveComplete = res;
+                rejectComplete = rej;
+            });
 
-                this.decoder = new window.VideoDecoder({
-                    output: f => {
-                        let fi = tsMap.get(Math.round(f.timestamp));
-                        if (fi === undefined) {
-                            let best = Infinity;
-                            for (const [t, i] of tsMap) {
-                                const d = Math.abs(t - f.timestamp);
-                                if (d < best) { best = d; fi = i; }
-                            }
+            this.decoder = new window.VideoDecoder({
+                output: f => {
+                    let fi = tsMap.get(Math.round(f.timestamp));
+                    if (fi === undefined) {
+                        let best = Infinity;
+                        for (const [t, i] of tsMap) {
+                            const d = Math.abs(t - f.timestamp);
+                            if (d < best) { best = d; fi = i; }
                         }
-                        if (fi !== undefined && fi >= cStart && fi <= cEnd) {
-                            const bmpStart = performance.now();
-                            createImageBitmap(f).then(b => {
-                                bitmapTimeTotal += performance.now() - bmpStart;
-                                this.addToCache(fi, b);
-                                f.close();
-                                if (++cnt >= toFeed.length) {
-                                    stats.bitmapTime = bitmapTimeTotal;
-                                    res();
-                                }
-                            }).catch(() => {
-                                f.close();
-                                if (++cnt >= toFeed.length) res();
-                            });
-                        } else {
+                    }
+                    if (fi !== undefined && fi >= cStart && fi <= cEnd) {
+                        const bmpStart = performance.now();
+                        createImageBitmap(f).then(b => {
+                            bitmapTimeTotal += performance.now() - bmpStart;
+                            this.addToCache(fi, b);
                             f.close();
-                            if (++cnt >= toFeed.length) res();
-                        }
-                    },
-                    error: e => e.name === 'AbortError' ? res() : rej(e)
-                });
+                            if (++cnt >= toFeed.length) {
+                                stats.bitmapTime = bitmapTimeTotal;
+                                resolveComplete();
+                            }
+                        }).catch(() => {
+                            f.close();
+                            if (++cnt >= toFeed.length) resolveComplete();
+                        });
+                    } else {
+                        f.close();
+                        if (++cnt >= toFeed.length) resolveComplete();
+                    }
+                },
+                error: e => e.name === 'AbortError' ? resolveComplete() : rejectComplete(e)
+            });
 
-                this.decoder.configure(this.config);
+            this.decoder.configure(this.config);
 
-                for (const { s } of toFeed) {
+            // Feed chunks in batches with yielding to prevent blocking render
+            const BATCH_SIZE = 15;
+            for (let i = 0; i < toFeed.length; i += BATCH_SIZE) {
+                const batch = toFeed.slice(i, i + BATCH_SIZE);
+                for (const { s } of batch) {
                     this.decoder.decode(new EncodedVideoChunk({
                         type: s.isKeyframe ? 'key' : 'delta',
                         timestamp: s.timestamp,
@@ -535,8 +576,15 @@ class VideoDecoderWrapper {
                         data: dataMap.get(s.decodeIndex)
                     }));
                 }
-                this.decoder.flush();
-            });
+                // Yield to event loop every batch to let render loop run
+                if (i + BATCH_SIZE < toFeed.length) {
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            this.decoder.flush();
+
+            // Wait for all frames to be processed
+            await completionPromise;
 
             stats.decodeTime = performance.now() - decodeStart;
             perfTimer.measure('decode', 'decode_start');
@@ -548,6 +596,19 @@ class VideoDecoderWrapper {
             perfTimer.measure('decodeRange', 'decodeRange_start');
         } finally {
             this.isDecoding = false;
+
+            // Check for pending prefetch request and trigger it
+            if (this._pendingPrefetchTarget !== null && this._pendingPrefetchTarget !== undefined) {
+                const target = this._pendingPrefetchTarget;
+                this._pendingPrefetchTarget = null;
+                // Use setTimeout to avoid recursion and let the event loop breathe
+                setTimeout(() => {
+                    if (!this.isDecoding && target < this.samples.length) {
+                        this._log(`Executing queued prefetch: frame ${target}`, 'info');
+                        this.getFrame(target);
+                    }
+                }, 10);
+            }
         }
     }
 
@@ -560,7 +621,94 @@ class VideoDecoderWrapper {
         this.cache.set(idx, bmp);
     }
 
+    /**
+     * Start continuous prefetch loop during playback
+     */
+    _startPrefetchLoop() {
+        if (this._prefetchInterval) return;
+        this._pendingPrefetchTarget = null;
+
+        this._prefetchInterval = setInterval(() => {
+            // Prefetch ahead of current playback position
+            const currentFrame = this.lastAccessedFrame;
+            if (currentFrame < 0) return;
+
+            const cacheEnd = this._findCacheEnd(currentFrame);
+            const framesAhead = cacheEnd - currentFrame;
+
+            // If we have less than 40 frames ahead cached, we need to prefetch
+            if (framesAhead < 40 && cacheEnd + 1 < this.samples.length) {
+                const prefetchTarget = cacheEnd + 1;
+
+                // If already decoding, just remember we need to prefetch this target
+                if (this.isDecoding) {
+                    if (this._pendingPrefetchTarget !== prefetchTarget) {
+                        this._pendingPrefetchTarget = prefetchTarget;
+                        this._log(`Queued prefetch: frame ${prefetchTarget} (${framesAhead} frames ahead, decoding...)`, 'info');
+                    }
+                    return;
+                }
+
+                // Not decoding - start prefetch now
+                this._pendingPrefetchTarget = null;
+                this._log(`Proactive prefetch: frame ${prefetchTarget} (${framesAhead} frames ahead)`, 'info');
+                this.getFrame(prefetchTarget); // Fire and forget
+            }
+        }, 50); // Check every 50ms for more responsive prefetching
+    }
+
+    /**
+     * Stop prefetch loop
+     */
+    _stopPrefetchLoop() {
+        if (this._prefetchInterval) {
+            clearInterval(this._prefetchInterval);
+            this._prefetchInterval = null;
+        }
+    }
+
+    /**
+     * Find the last consecutive cached frame starting from fromFrame
+     */
+    _findCacheEnd(fromFrame) {
+        let end = fromFrame;
+        while (end < this.samples.length && this.cache.has(end)) {
+            end++;
+        }
+        return end - 1;
+    }
+
+    /**
+     * Bidirectional prefetch around a frame (for scrubbing)
+     */
+    _prefetchAround(frameIndex) {
+        if (this.isDecoding) return;
+
+        const prefetchRadius = 30; // Frames before and after
+
+        // Find first uncached frame ahead
+        for (let i = 1; i <= prefetchRadius; i++) {
+            const ahead = frameIndex + i;
+            if (ahead < this.samples.length && !this.cache.has(ahead)) {
+                this._log(`Bidirectional prefetch ahead: frame ${ahead}`, 'info');
+                this.getFrame(ahead);
+                return; // One prefetch at a time
+            }
+        }
+
+        // If all ahead are cached, try behind
+        for (let i = 1; i <= prefetchRadius; i++) {
+            const behind = frameIndex - i;
+            if (behind >= 0 && !this.cache.has(behind)) {
+                this._log(`Bidirectional prefetch behind: frame ${behind}`, 'info');
+                this.getFrame(behind);
+                return;
+            }
+        }
+    }
+
     close() {
+        this._stopPrefetchLoop();
         if (this.decoder) this.decoder.close();
         for (const b of this.cache.values()) b.close();
         this.cache.clear();
@@ -1151,6 +1299,11 @@ class VideoPlayer {
                 this.onFrameChange(this.currentFrame, this.totalFrames);
             }
 
+            // Trigger bidirectional prefetch around seek target (for scrubbing)
+            if (!this.isPlaying) {
+                this.decoder._prefetchAround(frameIndex);
+            }
+
             return true;
         }
 
@@ -1162,13 +1315,46 @@ class VideoPlayer {
      */
     play() {
         if (!this.decoder || this.isPlaying) return;
-
         this.isPlaying = true;
+        this._lastPlayTime = performance.now();
+        this._playbackFrame = this.currentFrame;
         this._log('Playback started', 'info');
+        this.decoder._startPrefetchLoop();
+        this._playLoop();
+    }
 
-        this.playInterval = setInterval(async () => {
-            await this.seek(this.currentFrame + 1);
-        }, 1000 / this.fps);
+    _playLoop() {
+        if (!this.isPlaying) return;
+
+        const now = performance.now();
+        const elapsed = now - this._lastPlayTime;
+        const frameDuration = 1000 / this.fps;
+
+        if (elapsed >= frameDuration) {
+            const framesToAdvance = Math.floor(elapsed / frameDuration);
+            this._playbackFrame += framesToAdvance;
+
+            // Wrap around
+            if (this._playbackFrame >= this.totalFrames) {
+                this._playbackFrame = this._playbackFrame % this.totalFrames;
+            }
+
+            // Try to get frame synchronously
+            const result = this.decoder.getFrameSync(this._playbackFrame);
+            if (result && result.bitmap) {
+                this.currentFrame = this._playbackFrame;
+                this.currentBitmap = result.bitmap;
+                this.render();
+                if (this.onFrameChange) {
+                    this.onFrameChange(this.currentFrame, this.totalFrames);
+                }
+            }
+            // If no frame available, skip it (prefetch will catch up)
+
+            this._lastPlayTime = now - (elapsed % frameDuration);
+        }
+
+        requestAnimationFrame(() => this._playLoop());
     }
 
     /**
@@ -1181,6 +1367,9 @@ class VideoPlayer {
         if (this.playInterval) {
             clearInterval(this.playInterval);
             this.playInterval = null;
+        }
+        if (this.decoder) {
+            this.decoder._stopPrefetchLoop();
         }
         this._log('Playback paused', 'info');
     }
@@ -1286,6 +1475,7 @@ class VideoPlayer {
         }
 
         if (this.decoder) {
+            this.decoder._stopPrefetchLoop();
             this.decoder.close();
             this.decoder = null;
         }
