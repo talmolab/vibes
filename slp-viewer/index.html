@@ -990,8 +990,11 @@
         // Cache Visualization
         // ============================================
         function renderCacheVisualization() {
-            if (!player?.decoder || player.frames === 0) return;
+            if (!player || player.frames === 0) return;
 
+            // In OffscreenCanvas mode, we don't have detailed cache info
+            // Just show a simplified visualization based on controller's cache.size
+            const isOffscreenMode = player.useOffscreenCanvas && player.offscreenController;
             const decoder = player.decoder;
             const totalFrames = player.frames;
 
@@ -1008,55 +1011,80 @@
             cacheVizCtx.fillStyle = '#333';
             cacheVizCtx.fillRect(0, 0, width, height);
 
-            const framesPerPixel = Math.max(1, totalFrames / width);
-            const pixelsPerFrame = width / totalFrames;
+            if (isOffscreenMode) {
+                // Simplified visualization for OffscreenCanvas mode
+                // Show a bar indicating approximate cache coverage around current frame
+                const controller = player.offscreenController;
+                const cacheSize = controller.cache?.size || controller._cacheSize || 0;
+                const currentFrame = player.frame;
 
-            const cachedFrames = new Set(decoder.cache.keys());
-            const keyframes = new Set(decoder.keyframeIndices);
+                // Estimate cache range (assumes cache is centered around current frame)
+                const halfCache = Math.floor(cacheSize / 2);
+                const cacheStart = Math.max(0, currentFrame - halfCache);
+                const cacheEnd = Math.min(totalFrames - 1, currentFrame + halfCache);
 
-            if (framesPerPixel <= 1) {
-                const frameWidth = Math.max(1, pixelsPerFrame);
-
-                // Draw keyframes first
-                cacheVizCtx.fillStyle = '#fbbf24';
-                for (const kf of keyframes) {
-                    const x = (kf / totalFrames) * width;
-                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
-                }
-
-                // Draw cached frames
+                // Draw estimated cached region
+                const startX = (cacheStart / totalFrames) * width;
+                const endX = (cacheEnd / totalFrames) * width;
                 cacheVizCtx.fillStyle = '#4ade80';
-                for (const frame of cachedFrames) {
-                    const x = (frame / totalFrames) * width;
-                    cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
-                }
-            } else {
-                for (let px = 0; px < width; px++) {
-                    const frameStart = Math.floor(px * framesPerPixel);
-                    const frameEnd = Math.floor((px + 1) * framesPerPixel);
+                cacheVizCtx.fillRect(startX, 0, endX - startX, height);
 
-                    let hasCached = false;
-                    let hasKeyframe = false;
+                // Draw current frame indicator
+                const currentX = (currentFrame / totalFrames) * width;
+                cacheVizCtx.fillStyle = '#667eea';
+                cacheVizCtx.fillRect(currentX - 1, 0, 3, height);
+            } else if (decoder) {
+                // Full visualization for traditional mode
+                const framesPerPixel = Math.max(1, totalFrames / width);
+                const pixelsPerFrame = width / totalFrames;
 
-                    for (let f = frameStart; f < frameEnd; f++) {
-                        if (cachedFrames.has(f)) hasCached = true;
-                        if (keyframes.has(f)) hasKeyframe = true;
+                const cachedFrames = new Set(decoder.cache.keys());
+                const keyframes = new Set(decoder.keyframeIndices);
+
+                if (framesPerPixel <= 1) {
+                    const frameWidth = Math.max(1, pixelsPerFrame);
+
+                    // Draw keyframes first
+                    cacheVizCtx.fillStyle = '#fbbf24';
+                    for (const kf of keyframes) {
+                        const x = (kf / totalFrames) * width;
+                        cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
                     }
 
-                    if (hasCached) {
-                        cacheVizCtx.fillStyle = '#4ade80';
-                        cacheVizCtx.fillRect(px, 0, 1, height);
-                    } else if (hasKeyframe) {
-                        cacheVizCtx.fillStyle = '#fbbf24';
-                        cacheVizCtx.fillRect(px, 0, 1, height);
+                    // Draw cached frames
+                    cacheVizCtx.fillStyle = '#4ade80';
+                    for (const frame of cachedFrames) {
+                        const x = (frame / totalFrames) * width;
+                        cacheVizCtx.fillRect(x, 0, Math.max(1, frameWidth), height);
+                    }
+                } else {
+                    for (let px = 0; px < width; px++) {
+                        const frameStart = Math.floor(px * framesPerPixel);
+                        const frameEnd = Math.floor((px + 1) * framesPerPixel);
+
+                        let hasCached = false;
+                        let hasKeyframe = false;
+
+                        for (let f = frameStart; f < frameEnd; f++) {
+                            if (cachedFrames.has(f)) hasCached = true;
+                            if (keyframes.has(f)) hasKeyframe = true;
+                        }
+
+                        if (hasCached) {
+                            cacheVizCtx.fillStyle = '#4ade80';
+                            cacheVizCtx.fillRect(px, 0, 1, height);
+                        } else if (hasKeyframe) {
+                            cacheVizCtx.fillStyle = '#fbbf24';
+                            cacheVizCtx.fillRect(px, 0, 1, height);
+                        }
                     }
                 }
+
+                // Draw current frame indicator
+                const currentX = (player.frame / totalFrames) * width;
+                cacheVizCtx.fillStyle = '#667eea';
+                cacheVizCtx.fillRect(currentX - 1, 0, 3, height);
             }
-
-            // Draw current frame indicator
-            const currentX = (player.frame / totalFrames) * width;
-            cacheVizCtx.fillStyle = '#667eea';
-            cacheVizCtx.fillRect(currentX - 1, 0, 3, height);
         }
 
         // ============================================

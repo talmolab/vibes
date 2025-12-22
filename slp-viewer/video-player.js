@@ -7,7 +7,20 @@
  * - Zoom/pan with mouse and touch support
  * - Overlay rendering hooks
  * - Debounced seekbar scrubbing
+ * - OffscreenCanvas mode for stutter-free playback (when supported)
  */
+
+// ============================================
+// Feature Detection
+// ============================================
+const supportsOffscreenCanvas = (() => {
+    try {
+        const testCanvas = document.createElement('canvas');
+        return typeof testCanvas.transferControlToOffscreen === 'function';
+    } catch (e) {
+        return false;
+    }
+})();
 
 // ============================================
 // Performance Timing Utility
@@ -716,6 +729,288 @@ class VideoDecoderWrapper {
 }
 
 // ============================================
+// OffscreenVideoController - Worker-based decoder/renderer
+// ============================================
+class OffscreenVideoController {
+    /**
+     * Controller that delegates decoding and rendering to a Web Worker
+     * using OffscreenCanvas. Zero frame transfers during playback.
+     */
+    constructor(opts = {}) {
+        this.worker = null;
+        this.canvas = null;
+        this.offscreen = null;
+        this.onLog = opts.onLog || null;
+        this.onFrameChange = opts.onFrameChange || null;
+        this.onReady = opts.onReady || null;
+        this.onTransformUpdate = opts.onTransformUpdate || null;
+
+        // Mimic VideoDecoderWrapper properties for compatibility
+        this.samples = [];
+        this.cache = { size: 0 };
+        this.cacheSize = opts.cacheSize || 120;
+        this.lastSeekTime = 0;
+        this.lastFromCache = true;
+        this.lastDecodeStats = null;
+        this.isDecoding = false;
+        this.fps = 30;
+
+        // State synced from worker
+        this._currentFrame = 0;
+        this._totalFrames = 0;
+        this._cacheSize = 0;
+        this._isPlaying = false;
+        this._stutterCount = 0;
+
+        // Transform state (main thread is source of truth for zoom/pan calculations)
+        this.scale = 1;
+        this.offsetX = 0;
+        this.offsetY = 0;
+        this.baseScale = 1;
+        this.drawX = 0;
+        this.drawY = 0;
+        this.videoWidth = 0;
+        this.videoHeight = 0;
+
+        // Pending operations
+        this._initPromise = null;
+        this._initResolve = null;
+        this._seekResolve = null;
+
+        this._boundOnMessage = this._onMessage.bind(this);
+    }
+
+    _log(msg, level = 'info') {
+        if (this.onLog) this.onLog(msg, level);
+    }
+
+    _onMessage(e) {
+        const { type, ...data } = e.data;
+
+        switch (type) {
+            case 'ready':
+                this.fps = data.fps;
+                this.videoWidth = data.width;
+                this.videoHeight = data.height;
+                this._totalFrames = data.totalFrames;
+                this.samples = new Array(data.totalFrames); // Placeholder for length
+                if (this._initResolve) {
+                    this._initResolve(data);
+                    this._initResolve = null;
+                }
+                break;
+
+            case 'status':
+                this._currentFrame = data.currentFrame ?? this._currentFrame;
+                this._totalFrames = data.totalFrames ?? this._totalFrames;
+                this._cacheSize = data.cacheSize ?? this._cacheSize;
+                this._isPlaying = data.isPlaying ?? this._isPlaying;
+                this._stutterCount = data.stutterCount ?? this._stutterCount;
+                this.isDecoding = data.isDecoding ?? this.isDecoding;
+                this.cache.size = this._cacheSize;
+
+                if (data.phase === 'ready' && this.onReady) {
+                    this.onReady();
+                }
+
+                if (this.onFrameChange && data.currentFrame !== undefined) {
+                    this.onFrameChange(data.currentFrame, this._totalFrames);
+                }
+
+                // If we were waiting for a seek to complete
+                if (this._seekResolve && !this.isDecoding) {
+                    this._seekResolve();
+                    this._seekResolve = null;
+                }
+                break;
+
+            case 'transformInfo':
+                this.baseScale = data.baseScale;
+                this.drawX = data.drawX;
+                this.drawY = data.drawY;
+                this.videoWidth = data.videoWidth || this.videoWidth;
+                this.videoHeight = data.videoHeight || this.videoHeight;
+                // Trigger callback so overlay can re-render with updated geometry
+                if (this.onTransformUpdate) {
+                    this.onTransformUpdate();
+                }
+                break;
+
+            case 'timingAnalysis':
+                this._log(`Timing: ${data.stutterCount} stutters in ${data.totalFrames} frames`,
+                    data.stutterCount > 5 ? 'warn' : 'success');
+                break;
+
+            case 'log':
+                this._log(data.message, data.level);
+                break;
+
+            case 'error':
+                this._log(`Worker error: ${data.error}`, 'error');
+                break;
+        }
+    }
+
+    async init(source, canvas, containerWidth, containerHeight) {
+        this.canvas = canvas;
+
+        // Transfer canvas control to worker
+        this.offscreen = canvas.transferControlToOffscreen();
+
+        // Determine worker path - try to find it relative to current script
+        let workerUrl = 'video-offscreen-worker.js';
+        try {
+            // Try to get path from current script element
+            const scripts = document.getElementsByTagName('script');
+            for (const script of scripts) {
+                if (script.src && script.src.includes('video-player.js')) {
+                    workerUrl = script.src.replace('video-player.js', 'video-offscreen-worker.js');
+                    break;
+                }
+            }
+        } catch (e) {
+            // Fallback to relative path
+        }
+        this.worker = new Worker(workerUrl);
+        this.worker.onmessage = this._boundOnMessage;
+        this.worker.onerror = (e) => {
+            this._log(`Worker error: ${e.message}`, 'error');
+        };
+
+        const dpr = window.devicePixelRatio || 1;
+
+        // Create init promise
+        this._initPromise = new Promise((resolve) => {
+            this._initResolve = resolve;
+        });
+
+        // Send init message with canvas
+        const initMsg = {
+            type: 'init',
+            canvas: this.offscreen,
+            width: containerWidth * dpr,
+            height: containerHeight * dpr,
+            dpr: dpr
+        };
+
+        if (typeof source === 'string') {
+            initMsg.videoUrl = source;
+        } else {
+            initMsg.videoFile = source;
+        }
+
+        this.worker.postMessage(initMsg, [this.offscreen]);
+
+        // Wait for ready
+        const info = await this._initPromise;
+        this._log(`OffscreenCanvas mode active: ${info.width}x${info.height}, ${info.totalFrames} frames`, 'success');
+
+        return info;
+    }
+
+    play() {
+        if (this.worker) {
+            this.worker.postMessage({ type: 'play' });
+        }
+    }
+
+    pause() {
+        if (this.worker) {
+            this.worker.postMessage({ type: 'pause' });
+        }
+    }
+
+    async seek(frameIndex) {
+        if (!this.worker) return;
+
+        // Create a promise that resolves when seek completes
+        const seekPromise = new Promise((resolve) => {
+            this._seekResolve = resolve;
+        });
+
+        this.worker.postMessage({ type: 'seek', frame: frameIndex });
+
+        // Wait briefly for seek, but don't block indefinitely
+        await Promise.race([
+            seekPromise,
+            new Promise(r => setTimeout(r, 100))
+        ]);
+    }
+
+    resize(width, height) {
+        if (this.worker) {
+            const dpr = window.devicePixelRatio || 1;
+            this.worker.postMessage({
+                type: 'resize',
+                width: width * dpr,
+                height: height * dpr,
+                dpr: dpr
+            });
+        }
+    }
+
+    setTransform(scale, offsetX, offsetY) {
+        this.scale = scale;
+        this.offsetX = offsetX;
+        this.offsetY = offsetY;
+        if (this.worker) {
+            this.worker.postMessage({
+                type: 'setTransform',
+                scale,
+                offsetX,
+                offsetY
+            });
+        }
+    }
+
+    resetTransform() {
+        this.scale = 1;
+        this.offsetX = 0;
+        this.offsetY = 0;
+        if (this.worker) {
+            this.worker.postMessage({ type: 'resetTransform' });
+        }
+    }
+
+    getTransformInfo() {
+        // Return current transform info for zoom calculations
+        return {
+            scale: this.scale,
+            offsetX: this.offsetX,
+            offsetY: this.offsetY,
+            baseScale: this.baseScale,
+            drawX: this.drawX,
+            drawY: this.drawY,
+            videoWidth: this.videoWidth,
+            videoHeight: this.videoHeight
+        };
+    }
+
+    get currentFrame() {
+        return this._currentFrame;
+    }
+
+    get totalFrames() {
+        return this._totalFrames;
+    }
+
+    get isPlaying() {
+        return this._isPlaying;
+    }
+
+    get stutterCount() {
+        return this._stutterCount;
+    }
+
+    close() {
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+        }
+    }
+}
+
+// ============================================
 // VideoPlayer - High-level player with UI integration
 // ============================================
 class VideoPlayer {
@@ -730,15 +1025,48 @@ class VideoPlayer {
      * @param {Function} [options.renderOverlay] - Callback(ctx, info) to render overlays after frame
      * @param {Function} [options.onLog] - Callback(message, level) for logging
      * @param {boolean} [options.showTimingOverlay=false] - Show timing stats overlay
+     * @param {boolean} [options.useOffscreenCanvas=true] - Use OffscreenCanvas mode if supported
      */
     constructor(options) {
         this.container = options.container;
+
+        // Determine if we should use OffscreenCanvas mode
+        const preferOffscreen = options.useOffscreenCanvas !== false;
+        this.useOffscreenCanvas = preferOffscreen && supportsOffscreenCanvas;
+
+        // Set up canvases
         this.canvas = options.canvas || this.container.querySelector('canvas');
         if (!this.canvas) {
             this.canvas = document.createElement('canvas');
+            this.canvas.style.position = 'absolute';
+            this.canvas.style.top = '0';
+            this.canvas.style.left = '0';
+            this.canvas.style.width = '100%';
+            this.canvas.style.height = '100%';
             this.container.appendChild(this.canvas);
         }
-        this.ctx = this.canvas.getContext('2d');
+
+        // For OffscreenCanvas mode, we need a separate overlay canvas
+        this.overlayCanvas = null;
+        this.overlayCtx = null;
+        if (this.useOffscreenCanvas) {
+            this.overlayCanvas = document.createElement('canvas');
+            this.overlayCanvas.style.position = 'absolute';
+            this.overlayCanvas.style.top = '0';
+            this.overlayCanvas.style.left = '0';
+            this.overlayCanvas.style.width = '100%';
+            this.overlayCanvas.style.height = '100%';
+            this.overlayCanvas.style.pointerEvents = 'none'; // Let events pass through
+            this.container.appendChild(this.overlayCanvas);
+            this.overlayCtx = this.overlayCanvas.getContext('2d');
+            // Note: this.ctx will be null in OffscreenCanvas mode (canvas transferred to worker)
+            this.ctx = null;
+        } else {
+            this.ctx = this.canvas.getContext('2d');
+        }
+
+        // OffscreenCanvas controller (used instead of decoder when in OffscreenCanvas mode)
+        this.offscreenController = null;
 
         this.decoder = null;
         this.currentFrame = 0;
@@ -849,6 +1177,7 @@ class VideoPlayer {
             this.offsetX = e.clientX - this._dragStartX;
             this.offsetY = e.clientY - this._dragStartY;
             this._constrainOffset();
+            this._syncTransformToWorker();
             this.render();
         }
     }
@@ -876,6 +1205,7 @@ class VideoPlayer {
 
         // Zoom towards cursor position
         this._zoomToPoint(mouseX, mouseY, newScale);
+        this._syncTransformToWorker();
         this.render();
     }
 
@@ -948,6 +1278,7 @@ class VideoPlayer {
 
             this.scale = newScale;
             this._constrainOffset();
+            this._syncTransformToWorker();
             this.render();
         } else if (e.touches.length === 1 && this._touchStartX !== null) {
             // Single-finger pan
@@ -955,6 +1286,7 @@ class VideoPlayer {
             this.offsetX = this._touchStartOffsetX + (e.touches[0].clientX - this._touchStartX);
             this.offsetY = this._touchStartOffsetY + (e.touches[0].clientY - this._touchStartY);
             this._constrainOffset();
+            this._syncTransformToWorker();
             this.render();
         }
     }
@@ -979,9 +1311,55 @@ class VideoPlayer {
     // ============================================
 
     /**
+     * Sync transform state to worker (for OffscreenCanvas mode)
+     */
+    _syncTransformToWorker() {
+        if (this.useOffscreenCanvas && this.offscreenController) {
+            this.offscreenController.setTransform(this.scale, this.offsetX, this.offsetY);
+        }
+    }
+
+    /**
      * Constrain offset to keep at least 25% of image visible on each axis
      */
     _constrainOffset() {
+        if (this.useOffscreenCanvas) {
+            // In OffscreenCanvas mode, use controller's video dimensions
+            if (!this.offscreenController) return;
+            const { videoWidth, videoHeight, baseScale } = this.offscreenController.getTransformInfo();
+            if (!videoWidth || !videoHeight) return;
+
+            const containerWidth = this.container.clientWidth;
+            const containerHeight = this.container.clientHeight;
+            const videoAspect = videoWidth / videoHeight;
+            const containerAspect = containerWidth / containerHeight;
+
+            let drawX, drawY;
+            if (videoAspect > containerAspect) {
+                drawX = 0;
+                drawY = (containerHeight - videoHeight * baseScale) / 2;
+            } else {
+                drawX = (containerWidth - videoWidth * baseScale) / 2;
+                drawY = 0;
+            }
+
+            const scaledWidth = videoWidth * baseScale * this.scale;
+            const scaledHeight = videoHeight * baseScale * this.scale;
+
+            const minVisible = 0.25;
+            const minVisibleX = scaledWidth * minVisible;
+            const minVisibleY = scaledHeight * minVisible;
+
+            const minOffsetX = minVisibleX - scaledWidth - drawX;
+            const maxOffsetX = containerWidth - minVisibleX - drawX;
+            const minOffsetY = minVisibleY - scaledHeight - drawY;
+            const maxOffsetY = containerHeight - minVisibleY - drawY;
+
+            this.offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, this.offsetX));
+            this.offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, this.offsetY));
+            return;
+        }
+
         if (!this.currentBitmap) return;
 
         const containerWidth = this.container.clientWidth;
@@ -1030,6 +1408,20 @@ class VideoPlayer {
      * Handle container resize to keep view stable
      */
     _handleContainerResize(oldW, oldH, newW, newH) {
+        if (this.useOffscreenCanvas) {
+            // In OffscreenCanvas mode, notify the worker of the resize
+            if (this.offscreenController) {
+                this.offscreenController.resize(newW, newH);
+                // Also update overlay canvas size
+                if (this.overlayCanvas) {
+                    const dpr = window.devicePixelRatio || 1;
+                    this.overlayCanvas.width = newW * dpr;
+                    this.overlayCanvas.height = newH * dpr;
+                }
+            }
+            return;
+        }
+
         if (!this.currentBitmap || oldW === 0 || oldH === 0) return;
 
         const videoAspect = this.currentBitmap.width / this.currentBitmap.height;
@@ -1083,37 +1475,134 @@ class VideoPlayer {
      * @returns {Promise<Object>} Video info { codec, width, height, totalFrames, fps }
      */
     async load(source) {
+        // Clean up previous decoder/controller
         if (this.decoder) {
             this.decoder.close();
+            this.decoder = null;
+        }
+        if (this.offscreenController) {
+            this.offscreenController.close();
+            this.offscreenController = null;
         }
 
-        this._log('Loading video...', 'info');
-
-        this.decoder = new VideoDecoderWrapper({
-            cacheSize: this.cacheSize,
-            lookahead: this.lookahead,
-            onLog: this.onLog
-        });
-
-        const info = await this.decoder.init(source);
-
-        this.totalFrames = info.totalFrames;
-        this.fps = info.fps;
-        this.currentFrame = 0;
-        this.scale = 1;
-        this.offsetX = 0;
-        this.offsetY = 0;
+        this._log(`Loading video... (OffscreenCanvas: ${this.useOffscreenCanvas ? 'yes' : 'no'})`, 'info');
 
         // Initialize container size tracking for resize handling
         this._lastContainerWidth = this.container.clientWidth;
         this._lastContainerHeight = this.container.clientHeight;
 
+        let info;
+
+        if (this.useOffscreenCanvas) {
+            // OffscreenCanvas mode - use worker-based controller
+            this.offscreenController = new OffscreenVideoController({
+                cacheSize: this.cacheSize,
+                onLog: this.onLog,
+                onFrameChange: (frame, total) => {
+                    this.currentFrame = frame;
+                    this.totalFrames = total;
+                    if (this.onFrameChange) {
+                        this.onFrameChange(frame, total);
+                    }
+                    // Render overlay when frame changes
+                    this._renderOverlayOnly();
+                },
+                onTransformUpdate: () => {
+                    // Re-render overlay when worker reports updated geometry (e.g., after resize)
+                    this._renderOverlayOnly();
+                }
+            });
+
+            info = await this.offscreenController.init(
+                source,
+                this.canvas,
+                this.container.clientWidth,
+                this.container.clientHeight
+            );
+
+            this.totalFrames = info.totalFrames;
+            this.fps = info.fps;
+            this.currentFrame = 0;
+
+            // Sync transform state
+            this.scale = 1;
+            this.offsetX = 0;
+            this.offsetY = 0;
+
+        } else {
+            // Traditional mode - use VideoDecoderWrapper
+            this.decoder = new VideoDecoderWrapper({
+                cacheSize: this.cacheSize,
+                lookahead: this.lookahead,
+                onLog: this.onLog
+            });
+
+            info = await this.decoder.init(source);
+
+            this.totalFrames = info.totalFrames;
+            this.fps = info.fps;
+            this.currentFrame = 0;
+            this.scale = 1;
+            this.offsetX = 0;
+            this.offsetY = 0;
+
+            // Load first frame
+            await this.seek(0);
+        }
+
         this._log(`Video loaded: ${info.width}x${info.height}, ${info.totalFrames} frames, ${info.fps.toFixed(1)} fps`, 'success');
 
-        // Load first frame
-        await this.seek(0);
-
         return info;
+    }
+
+    /**
+     * Render overlay only (for OffscreenCanvas mode)
+     */
+    _renderOverlayOnly() {
+        if (!this.useOffscreenCanvas || !this.overlayCanvas || !this.renderOverlay) return;
+        if (!this.offscreenController) return;
+
+        const dpr = window.devicePixelRatio || 1;
+        const containerWidth = this.container.clientWidth;
+        const containerHeight = this.container.clientHeight;
+
+        // Ensure overlay canvas is sized correctly
+        if (this.overlayCanvas.width !== containerWidth * dpr ||
+            this.overlayCanvas.height !== containerHeight * dpr) {
+            this.overlayCanvas.width = containerWidth * dpr;
+            this.overlayCanvas.height = containerHeight * dpr;
+        }
+
+        // Clear overlay
+        this.overlayCtx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+
+        // Get transform info from controller
+        // Note: Worker reports values in device pixels (canvas sized with DPR)
+        // but overlay rendering uses ctx.scale(dpr, dpr), so we need CSS pixels
+        const transform = this.offscreenController.getTransformInfo();
+
+        // Convert device pixel values to CSS pixels for overlay rendering
+        // baseScale, drawX, drawY from worker are in device pixels
+        const baseScaleCSS = transform.baseScale / dpr;
+        const drawXCSS = transform.drawX / dpr;
+        const drawYCSS = transform.drawY / dpr;
+
+        // Render overlay with CSS-pixel coordinates
+        this.renderOverlay(this.overlayCtx, {
+            bitmap: null, // No bitmap access in OffscreenCanvas mode
+            frameIndex: this.currentFrame,
+            totalFrames: this.totalFrames,
+            scale: transform.scale,
+            offsetX: transform.offsetX,
+            offsetY: transform.offsetY,
+            baseScale: baseScaleCSS,
+            drawX: drawXCSS,
+            drawY: drawYCSS,
+            effectiveScale: baseScaleCSS * transform.scale,
+            dpr,
+            containerWidth,
+            containerHeight
+        });
     }
 
     /**
@@ -1151,6 +1640,13 @@ class VideoPlayer {
      * Render the current frame to canvas
      */
     render() {
+        if (this.useOffscreenCanvas) {
+            // In OffscreenCanvas mode, worker handles video rendering
+            // We only render the overlay
+            this._renderOverlayOnly();
+            return;
+        }
+
         if (!this.currentBitmap) return;
 
         const dpr = window.devicePixelRatio || 1;
@@ -1282,12 +1778,19 @@ class VideoPlayer {
      * @returns {Promise<boolean>} True if successful
      */
     async seek(frameIndex) {
-        if (!this.decoder) return false;
-
         // Wrap around
         if (this.totalFrames > 0) {
             frameIndex = ((frameIndex % this.totalFrames) + this.totalFrames) % this.totalFrames;
         }
+
+        if (this.useOffscreenCanvas && this.offscreenController) {
+            // OffscreenCanvas mode - send seek command to worker
+            await this.offscreenController.seek(frameIndex);
+            this.currentFrame = frameIndex;
+            return true;
+        }
+
+        if (!this.decoder) return false;
 
         const result = await this.decoder.getFrame(frameIndex);
         if (result && result.bitmap) {
@@ -1314,7 +1817,17 @@ class VideoPlayer {
      * Start playback
      */
     play() {
-        if (!this.decoder || this.isPlaying) return;
+        if (this.isPlaying) return;
+
+        if (this.useOffscreenCanvas && this.offscreenController) {
+            // OffscreenCanvas mode - worker handles playback
+            this.offscreenController.play();
+            this.isPlaying = true;
+            this._log('Playback started (OffscreenCanvas)', 'info');
+            return;
+        }
+
+        if (!this.decoder) return;
         this.isPlaying = true;
         this._lastPlayTime = performance.now();
         this._playbackFrame = this.currentFrame;
@@ -1364,6 +1877,14 @@ class VideoPlayer {
         if (!this.isPlaying) return;
 
         this.isPlaying = false;
+
+        if (this.useOffscreenCanvas && this.offscreenController) {
+            // OffscreenCanvas mode - worker handles pause
+            this.offscreenController.pause();
+            this._log('Playback paused (OffscreenCanvas)', 'info');
+            return;
+        }
+
         if (this.playInterval) {
             clearInterval(this.playInterval);
             this.playInterval = null;
@@ -1393,6 +1914,7 @@ class VideoPlayer {
         const centerX = this.container.clientWidth / 2;
         const centerY = this.container.clientHeight / 2;
         this._zoomToPoint(centerX, centerY, Math.max(0.1, Math.min(50, newScale)));
+        this._syncTransformToWorker();
         this.render();
     }
 
@@ -1413,6 +1935,9 @@ class VideoPlayer {
         this.offsetX = 0;
         this.offsetY = 0;
         this._constrainOffset();
+        if (this.useOffscreenCanvas && this.offscreenController) {
+            this.offscreenController.resetTransform();
+        }
         this.render();
     }
 
@@ -1472,6 +1997,19 @@ class VideoPlayer {
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
+        }
+
+        // Clean up OffscreenCanvas controller
+        if (this.offscreenController) {
+            this.offscreenController.close();
+            this.offscreenController = null;
+        }
+
+        // Clean up overlay canvas
+        if (this.overlayCanvas && this.overlayCanvas.parentNode) {
+            this.overlayCanvas.parentNode.removeChild(this.overlayCanvas);
+            this.overlayCanvas = null;
+            this.overlayCtx = null;
         }
 
         if (this.decoder) {
