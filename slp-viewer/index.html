@@ -563,6 +563,10 @@
         let player = null;         // VideoPlayer instance
         let seekbarController = null; // SeekbarController instance
 
+        // URL state - track loaded URLs for sharing
+        let currentSlpUrl = null;
+        let currentVideoUrl = null;
+
         // UI Elements
         const canvas = document.getElementById('canvas');
         const canvasContainer = document.getElementById('canvasContainer');
@@ -692,11 +696,114 @@
         }
 
         // ============================================
+        // URL State Management
+        // ============================================
+
+        /**
+         * Update browser URL with current SLP and video URLs
+         */
+        function updateUrlState() {
+            const params = new URLSearchParams();
+            if (currentSlpUrl) params.set('slp', currentSlpUrl);
+            if (currentVideoUrl) params.set('video', currentVideoUrl);
+
+            const newUrl = params.toString()
+                ? `${window.location.pathname}?${params.toString()}`
+                : window.location.pathname;
+
+            // Use replaceState to avoid polluting history
+            window.history.replaceState({}, '', newUrl);
+        }
+
+        /**
+         * Read URL params and return SLP/video URLs if present
+         */
+        function getUrlParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                slp: params.get('slp'),
+                video: params.get('video')
+            };
+        }
+
+        /**
+         * Load SLP from URL (returns promise that resolves when loaded)
+         */
+        function loadSlpFromUrl(url) {
+            return new Promise((resolve, reject) => {
+                initSlpWorker();
+                showLoading('Loading SLP from URL...');
+
+                const originalOnMessage = slpWorker.onmessage;
+                slpWorker.onmessage = (e) => {
+                    originalOnMessage(e);
+                    if (e.data.type === 'result') {
+                        currentSlpUrl = url;
+                        resolve();
+                    } else if (e.data.type === 'error') {
+                        reject(new Error(e.data.data.message));
+                    }
+                };
+
+                slpWorker.postMessage({ type: 'loadUrl', url });
+            });
+        }
+
+        /**
+         * Load both SLP and video from URLs
+         */
+        async function loadFromUrls(slpUrl, videoUrl) {
+            hideError();
+            log(`Loading from URLs...`, 'info');
+
+            try {
+                // Load SLP first
+                await loadSlpFromUrl(slpUrl);
+
+                // Then load video
+                if (videoUrl) {
+                    const videoName = videoUrl.split('/').pop().split('?')[0] || 'video.mp4';
+                    await initVideoPlayer(videoUrl, videoName);
+                    currentVideoUrl = videoUrl;
+                }
+
+                // Update URL state for sharing
+                updateUrlState();
+                log('Loaded from URL - shareable link updated', 'success');
+
+            } catch (err) {
+                hideLoading();
+                showError('Error loading from URL: ' + err.message);
+                log(`Error: ${err.message}`, 'error');
+            }
+        }
+
+        /**
+         * Check URL params on page load and auto-load if present
+         */
+        async function checkUrlParamsOnLoad() {
+            const { slp, video } = getUrlParams();
+
+            if (slp) {
+                log(`Found URL params - slp: ${slp}`, 'info');
+                if (video) {
+                    log(`Found URL params - video: ${video}`, 'info');
+                }
+                await loadFromUrls(slp, video);
+            }
+        }
+
+        // ============================================
         // Load SLP
         // ============================================
         async function loadSlpFile(file) {
             hideError();
             log(`Loading SLP: ${file.name}`, 'info');
+
+            // Clear URL state since local files can't be shared
+            currentSlpUrl = null;
+            currentVideoUrl = null;
+            updateUrlState();
 
             initSlpWorker();
             showLoading('Initializing h5wasm...');
@@ -754,6 +861,9 @@
                         multiple: false
                     });
                     const file = await handle.getFile();
+                    // Clear video URL since local files can't be shared
+                    currentVideoUrl = null;
+                    updateUrlState();
                     await initVideoPlayer(file, file.name);
                 } catch (err) {
                     // User cancelled or API error
@@ -834,6 +944,9 @@
         document.getElementById('videoInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            // Clear video URL since local files can't be shared
+            currentVideoUrl = null;
+            updateUrlState();
             await initVideoPlayer(file, file.name);
         });
 
@@ -845,34 +958,8 @@
             const slpUrl = baseUrl + 'mice.tracked.slp';
             const videoUrl = baseUrl + 'mice.mp4';
 
-            hideError();
             log('Loading demo data...', 'info');
-
-            // Load SLP first
-            initSlpWorker();
-            showLoading('Loading demo SLP...');
-
-            // Wait for SLP to load
-            const slpLoaded = new Promise((resolve, reject) => {
-                const originalOnMessage = slpWorker.onmessage;
-                slpWorker.onmessage = (e) => {
-                    originalOnMessage(e);
-                    if (e.data.type === 'result') resolve();
-                    else if (e.data.type === 'error') reject(new Error(e.data.data.message));
-                };
-            });
-
-            slpWorker.postMessage({ type: 'loadUrl', url: slpUrl });
-
-            try {
-                await slpLoaded;
-                // Now load video
-                await initVideoPlayer(videoUrl, 'mice.mp4');
-            } catch (err) {
-                hideLoading();
-                showError('Error loading demo: ' + err.message);
-                log(`Error: ${err.message}`, 'error');
-            }
+            await loadFromUrls(slpUrl, videoUrl);
         });
 
         // ============================================
@@ -1217,6 +1304,11 @@
                 document.body.style.cursor = '';
             }
         });
+
+        // ============================================
+        // Auto-load from URL params on page load
+        // ============================================
+        checkUrlParamsOnLoad();
     </script>
 </body>
 </html>
