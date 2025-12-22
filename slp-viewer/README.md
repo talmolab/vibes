@@ -12,6 +12,7 @@ Browser-based viewer for [SLEAP](https://sleap.ai) pose predictions overlaid on 
 - **Zoom/pan support** with mouse wheel, drag, and touch gestures
 - **Stutter-free playback** via OffscreenCanvas architecture (98% stutter reduction)
 - **URL streaming** with HTTP range requests for large videos
+- **Shareable links** with URL state encoding for SLP and video files
 - **Responsive design** with resizable canvas and mobile-friendly controls
 
 ## Architecture
@@ -107,6 +108,22 @@ Other optimizations:
 3. Click "Load Video" to select the corresponding video
 4. Use the seekbar and keyboard shortcuts to navigate
 5. Adjust overlay settings (node size, edge width, toggles)
+
+## Shareable Links
+
+When loading files from URLs (including the demo), the browser URL is updated with query parameters:
+
+```
+?slp=<encoded-slp-url>&video=<encoded-video-url>
+```
+
+This URL can be shared and will auto-load the files when visited. Example demo link:
+
+```
+https://vibes.tlab.sh/slp-viewer/?slp=https%3A%2F%2Fvibes.tlab.sh%2Fslp-viewer%2Fmice.tracked.slp&video=https%3A%2F%2Fvibes.tlab.sh%2Fslp-viewer%2Fmice.mp4
+```
+
+Note: Local files cannot be shared via URL (the URL params are cleared when loading local files).
 
 ## Dependencies
 
