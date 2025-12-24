@@ -33,7 +33,7 @@ Create a new self-contained HTML vibe (tool/applet) for vibes.tlab.sh.
 
 6. **Open PR**:
    - Push branch and create PR to `main`
-   - Include deployment link: `https://vibes.tlab.sh/<vibe-name>/`
+   - A preview deployment comment will be added automatically
    - PRs are squash merged
 
 ## Template
