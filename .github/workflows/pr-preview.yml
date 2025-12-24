@@ -13,39 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  preview:
+  deploy:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Pages
-        if: github.event.action != 'closed'
         uses: actions/configure-pages@v4
 
       - name: Build with Jekyll
-        if: github.event.action != 'closed'
         uses: actions/jekyll-build-pages@v1
 
       - name: Expose README files
-        if: github.event.action != 'closed'
         run: .github/scripts/expose-readmes.sh _site
 
       - name: Deploy PR Preview
-        uses: rossjrw/pr-preview-action@v1
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          source-dir: _site
-          umbrella-dir: pr
-          action: auto
+          branch: gh-pages
+          folder: _site
+          target-folder: pr/${{ github.event.number }}
+          commit-message: "Deploy PR #${{ github.event.number }} preview"
 
       - name: Get changed vibes
-        if: github.event.action != 'closed'
         id: changed-vibes
         run: |
           # Fetch the base branch for comparison
           git fetch origin ${{ github.base_ref }} --depth=1
 
-          # Get list of changed files compared to base branch (use .. instead of ... for shallow clones)
+          # Get list of changed files compared to base branch
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
 
           # Extract unique top-level directories that look like vibes (have index.html)
@@ -55,7 +53,7 @@ jobs:
               if [ -n "$VIBES" ]; then
                 VIBES="$VIBES, "
               fi
-              VIBES="$VIBES[$dir](https://vibes.tlab.sh/pr/pr-${{ github.event.number }}/$dir/)"
+              VIBES="$VIBES[$dir](https://vibes.tlab.sh/pr/${{ github.event.number }}/$dir/)"
             fi
           done
 
@@ -66,7 +64,6 @@ jobs:
           echo "vibes=$VIBES" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
-        if: github.event.action != 'closed'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview
@@ -75,15 +72,36 @@ jobs:
 
             | | |
             |---|---|
-            | **Preview URL** | https://vibes.tlab.sh/pr/pr-${{ github.event.number }}/ |
+            | **Preview URL** | https://vibes.tlab.sh/pr/${{ github.event.number }}/ |
             | **Changed Vibes** | ${{ steps.changed-vibes.outputs.vibes }} |
             | **Commit** | ${{ github.sha }} |
             | **Updated** | ${{ github.event.pull_request.updated_at }} |
 
             _This preview will be removed when the PR is closed._
 
+  cleanup:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Remove PR preview
+        run: |
+          if [ -d "pr/${{ github.event.number }}" ]; then
+            rm -rf "pr/${{ github.event.number }}"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Remove PR #${{ github.event.number }} preview" || echo "Nothing to commit"
+            git push
+          else
+            echo "Preview directory pr/${{ github.event.number }} does not exist"
+          fi
+
       - name: Comment on PR (cleanup)
-        if: github.event.action == 'closed'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: pr-preview

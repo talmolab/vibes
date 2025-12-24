@@ -43,10 +43,10 @@ Or manually:
 
 When you open a PR, a preview deployment is automatically created at:
 ```
-https://vibes.tlab.sh/pr/pr-{PR_NUMBER}/
+https://vibes.tlab.sh/pr/{PR_NUMBER}/
 ```
 
-For example, PR #42 would be available at `https://vibes.tlab.sh/pr/pr-42/`.
+For example, PR #42 would be available at `https://vibes.tlab.sh/pr/42/`.
 
 A comment will be added to the PR with:
 - Preview URL
