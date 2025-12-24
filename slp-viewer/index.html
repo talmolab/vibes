@@ -1915,6 +1915,15 @@
             // Exit fallback mode when loading a video
             exitFallbackMode();
 
+            // Replace canvas with a fresh one (required because:
+            // 1. Fallback mode uses getContext('2d') which prevents transferControlToOffscreen
+            // 2. Previous VideoPlayer may have transferred control to OffscreenCanvas)
+            const oldCanvas = document.getElementById('canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'canvas';
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            canvas = newCanvas;
+
             try {
                 // Clean up previous player
                 if (player) player.destroy();
