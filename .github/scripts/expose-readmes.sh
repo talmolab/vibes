@@ -93,12 +93,25 @@ read -r -d '' TEMPLATE << 'EOF' || true
 EOF
 
 echo "Exposing README.md files..."
+echo "Site directory: $SITE_DIR"
+
+# Ensure site directory is writable (Jekyll may create with restrictive permissions)
+if [ -d "$SITE_DIR" ]; then
+    chmod -R u+w "$SITE_DIR" 2>/dev/null || true
+fi
 
 # Find all vibe directories (have index.html but aren't the root)
 for vibe_dir in */; do
     vibe="${vibe_dir%/}"
 
-    # Skip non-vibe directories
+    # Skip hidden directories and special directories
+    case "$vibe" in
+        .*|_*|node_modules|scratch|tmp)
+            continue
+            ;;
+    esac
+
+    # Skip non-vibe directories (must have index.html)
     if [ ! -f "$vibe/index.html" ]; then
         continue
     fi
@@ -119,7 +132,7 @@ for vibe_dir in */; do
         echo "$TEMPLATE" | sed "s|{{VIBE}}|$vibe|g" | sed "s|{{REPO_URL}}|$REPO_URL|g" > "$SITE_DIR/$vibe/README/index.html"
         echo "  $vibe: created README/index.html"
     else
-        echo "  $vibe: _site directory not found, skipping"
+        echo "  $vibe: $SITE_DIR/$vibe not found, skipping"
     fi
 done
 
