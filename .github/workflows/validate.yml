@@ -1,0 +1,28 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check-reserved-names:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for reserved directory names
+        run: |
+          # List of reserved directory names (used for PR previews, etc.)
+          RESERVED_NAMES="pr"
+
+          for name in $RESERVED_NAMES; do
+            if [ -d "$name" ]; then
+              echo "::error::Directory '$name' is reserved and cannot be used as a vibe name."
+              echo "Reserved names: $RESERVED_NAMES"
+              exit 1
+            fi
+          done
+
+          echo "No reserved directory names found."

@@ -1,0 +1,86 @@
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pr-preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        if: github.event.action != 'closed'
+        uses: actions/configure-pages@v4
+
+      - name: Build with Jekyll
+        if: github.event.action != 'closed'
+        uses: actions/jekyll-build-pages@v1
+
+      - name: Deploy PR Preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: _site
+          umbrella-dir: pr
+          action: auto
+
+      - name: Get changed vibes
+        if: github.event.action != 'closed'
+        id: changed-vibes
+        run: |
+          # Get list of changed files compared to base branch
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+
+          # Extract unique top-level directories that look like vibes (have index.html)
+          VIBES=""
+          for dir in $(echo "$CHANGED_FILES" | cut -d'/' -f1 | sort -u); do
+            if [ -f "$dir/index.html" ] && [ "$dir" != "." ]; then
+              if [ -n "$VIBES" ]; then
+                VIBES="$VIBES, "
+              fi
+              VIBES="$VIBES[$dir](https://vibes.tlab.sh/pr/${{ github.event.number }}/$dir/)"
+            fi
+          done
+
+          if [ -z "$VIBES" ]; then
+            VIBES="_No vibe changes detected_"
+          fi
+
+          echo "vibes=$VIBES" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        if: github.event.action != 'closed'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview
+          message: |
+            ## Preview Deployment
+
+            | | |
+            |---|---|
+            | **Preview URL** | https://vibes.tlab.sh/pr/${{ github.event.number }}/ |
+            | **Changed Vibes** | ${{ steps.changed-vibes.outputs.vibes }} |
+            | **Commit** | ${{ github.sha }} |
+            | **Updated** | ${{ github.event.pull_request.updated_at }} |
+
+            _This preview will be removed when the PR is closed._
+
+      - name: Comment on PR (cleanup)
+        if: github.event.action == 'closed'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: pr-preview
+          message: |
+            ## Preview Deployment
+
+            Preview has been removed.

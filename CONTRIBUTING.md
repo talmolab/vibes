@@ -22,6 +22,9 @@
 
 Each vibe is a directory at the repo root with an `index.html`.
 
+**Reserved names:** The following directory names cannot be used for vibes:
+- `pr` - Used for PR preview deployments
+
 ## Creating a New Vibe
 
 Use the Claude Code command:
@@ -35,6 +38,23 @@ Or manually:
 3. Create `<vibe-name>/README.md` with deployment link and description
 4. Add link to the main README
 5. Open a PR to `main` (squash merge)
+
+## PR Previews
+
+When you open a PR, a preview deployment is automatically created at:
+```
+https://vibes.tlab.sh/pr/{PR_NUMBER}/
+```
+
+For example, PR #42 would be available at `https://vibes.tlab.sh/pr/42/`.
+
+A comment will be added to the PR with:
+- Preview URL
+- List of changed vibes (with direct links)
+- Commit SHA
+- Deployment timestamp
+
+The preview is automatically removed when the PR is closed.
 
 ## @claude in Issues
 
@@ -70,7 +90,8 @@ Proxy: DNS only (gray cloud)
 
 ### GitHub Pages
 
-- Settings > Pages > Source: GitHub Actions
+- Settings > Pages > Source: Deploy from a branch
+- Branch: `gh-pages` / `/ (root)`
 - Custom domain: `vibes.tlab.sh`
 
 ### Claude Integration
