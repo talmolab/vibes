@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLEAP-NN Config Helper</title>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        :root {
+            --bg: #1a1a2e;
+            --surface: #252542;
+            --surface-hover: #2d2d4a;
+            --border: #3a3a5c;
+            --text: #e8e8f0;
+            --text-dim: #8888aa;
+            --accent: #6c63ff;
+            --accent-dim: #5551cc;
+            --success: #4ade80;
+            --warning: #fbbf24;
+            --error: #f87171;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        header { margin-bottom: 24px; }
+        h1 { margin: 0 0 8px 0; font-size: 1.8rem; }
+        .subtitle { color: var(--text-dim); margin: 0; }
+        .main-layout { display: grid; grid-template-columns: 320px 1fr; gap: 24px; }
+        @media (max-width: 900px) { .main-layout { grid-template-columns: 1fr; } }
+        .sidebar { display: flex; flex-direction: column; gap: 16px; }
+        .tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        .tab { padding: 10px 16px; background: transparent; border: none; color: var(--text-dim); font-size: 0.9rem; cursor: pointer; border-radius: 8px 8px 0 0; transition: all 0.2s; }
+        .tab:hover { background: var(--surface); color: var(--text); }
+        .tab.active { background: var(--surface); color: var(--accent); font-weight: 600; }
+        .sub-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .sub-tab { padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); color: var(--text-dim); font-size: 0.85rem; cursor: pointer; border-radius: 6px; transition: all 0.2s; }
+        .sub-tab:hover { background: var(--border); }
+        .sub-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .sub-panel, .tab-panel { display: none; }
+        .sub-panel.active, .tab-panel.active { display: block; }
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card h2 { margin: 0 0 14px 0; font-size: 1rem; }
+        .card h3 { margin: 14px 0 10px 0; font-size: 0.9rem; color: var(--text-dim); }
+        .file-group { margin-bottom: 12px; }
+        .file-group label { display: block; margin-bottom: 6px; color: var(--text-dim); font-size: 0.8rem; }
+        .file-group input[type="file"] { display: none; }
+        .file-btn { display: inline-block; padding: 8px 16px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+        .file-btn:hover { background: var(--accent-dim); }
+        .file-btn.secondary { background: var(--border); }
+        .file-status { margin-top: 6px; font-size: 0.75rem; color: var(--text-dim); }
+        .file-status.loaded { color: var(--success); }
+        .viewer-container { background: var(--bg); border-radius: 8px; padding: 8px; position: relative; }
+        .viewer-canvas { width: 100%; height: 150px; display: block; border-radius: 4px; background: #111; }
+        .frame-controls { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+        .frame-slider { flex: 1; height: 4px; background: var(--border); border-radius: 2px; -webkit-appearance: none; }
+        .frame-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        .frame-info { font-size: 0.75rem; color: var(--text-dim); min-width: 80px; text-align: right; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .stat-item { background: var(--bg); padding: 8px 12px; border-radius: 6px; }
+        .stat-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; }
+        .stat-value { font-size: 0.95rem; font-weight: 600; }
+        .recommendation-box { background: linear-gradient(135deg, var(--accent), #8b5cf6); padding: 16px; border-radius: 8px; margin-bottom: 16px; }
+        .recommendation-box h3 { margin: 0 0 8px 0; color: white; font-size: 0.85rem; }
+        .pipeline-badge { display: inline-block; background: white; color: var(--accent); padding: 4px 12px; border-radius: 20px; font-weight: 600; font-size: 0.9rem; }
+        .rec-details { margin: 10px 0 0 0; padding: 0; list-style: none; font-size: 0.8rem; color: rgba(255,255,255,0.9); }
+        .rec-details li { margin: 4px 0; }
+        .radio-group { display: flex; flex-direction: column; gap: 8px; }
+        .radio-option { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg); border: 2px solid transparent; border-radius: 8px; cursor: pointer; transition: all 0.2s; }
+        .radio-option:hover { border-color: var(--border); }
+        .radio-option.selected { border-color: var(--accent); background: rgba(108, 99, 255, 0.1); }
+        .radio-option input { margin-top: 4px; accent-color: var(--accent); }
+        .radio-option strong { display: block; margin-bottom: 2px; }
+        .radio-option .desc { font-size: 0.8rem; color: var(--text-dim); }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+        .form-group { margin-bottom: 12px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: var(--text-dim); }
+        .form-group select, .form-group input { width: 100%; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 16px; }
+        .form-group select:focus, .form-group input:focus { outline: none; border-color: var(--accent); }
+        .slider-group { display: flex; align-items: center; gap: 12px; }
+        .slider-group input[type="range"] { flex: 1; height: 6px; background: var(--border); border-radius: 3px; -webkit-appearance: none; }
+        .slider-group input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        .slider-value { min-width: 50px; text-align: right; font-weight: 600; }
+        .viz-canvas { width: 100%; height: 120px; background: var(--bg); border-radius: 8px; display: block; }
+        .info-box { background: rgba(108, 99, 255, 0.1); border: 1px solid var(--accent); border-radius: 6px; padding: 12px; font-size: 0.8rem; margin: 12px 0; }
+        .warning-box { background: rgba(251, 191, 36, 0.1); border: 1px solid var(--warning); border-radius: 6px; padding: 12px; font-size: 0.8rem; margin: 12px 0; color: var(--warning); }
+        .yaml-output { background: var(--bg); border-radius: 8px; padding: 16px; font-family: 'Menlo', 'Monaco', monospace; font-size: 0.75rem; white-space: pre-wrap; max-height: 400px; overflow-y: auto; line-height: 1.5; }
+        .btn-group { display: flex; gap: 8px; margin-top: 12px; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; transition: all 0.2s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-dim); }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        .btn-secondary:hover { background: var(--surface-hover); }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+        .toggle-label { font-size: 0.85rem; }
+        .toggle { position: relative; width: 44px; height: 24px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: var(--border); border-radius: 24px; transition: 0.3s; }
+        .toggle-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle input:checked + .toggle-slider { background: var(--accent); }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+        .log-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-top: 20px; max-height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; }
+        .log-entry { margin: 2px 0; }
+        .log-entry .time { color: var(--text-dim); }
+        .log-entry.success { color: var(--success); }
+        .log-entry.warning { color: var(--warning); }
+        .log-entry.error { color: var(--error); }
+        .tooltip-icon { display: inline-block; width: 16px; height: 16px; background: var(--border); color: var(--text-dim); border-radius: 50%; text-align: center; font-size: 0.7rem; line-height: 16px; cursor: help; margin-left: 4px; position: relative; }
+        .tooltip-icon .tooltip-text { visibility: hidden; width: 200px; background: var(--bg); color: var(--text); text-align: left; border-radius: 6px; padding: 8px; position: absolute; z-index: 100; bottom: 125%; left: 50%; transform: translateX(-50%); font-size: 0.75rem; line-height: 1.4; border: 1px solid var(--border); }
+        .tooltip-icon:hover .tooltip-text { visibility: visible; }
+        .multi-class-option { margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 8px; }
+        .multi-class-option.disabled { opacity: 0.5; pointer-events: none; }
+        .track-info { font-size: 0.8rem; color: var(--text-dim); margin-top: 4px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SLEAP-NN Config Helper</h1>
+            <p class="subtitle">Generate training configurations for pose estimation</p>
+        </header>
+
+        <div class="main-layout">
+            <!-- ==================== SIDEBAR ==================== -->
+            <aside class="sidebar">
+                <!-- Load Data Card -->
+                <div class="card">
+                    <h2>Load Data</h2>
+                    <div class="file-group">
+                        <label>SLEAP Labels File (.slp)</label>
+                        <button class="file-btn" onclick="document.getElementById('slp-input').click()">Choose SLP File</button>
+                        <input type="file" id="slp-input" accept=".slp,.h5,.hdf5">
+                        <div class="file-status" id="slp-status">No file loaded</div>
+                    </div>
+                    <div class="file-group">
+                        <label>Video File (optional, for preview)</label>
+                        <button class="file-btn secondary" onclick="document.getElementById('video-input').click()">Choose Video</button>
+                        <input type="file" id="video-input" accept="video/*">
+                        <div class="file-status" id="video-status">No video loaded</div>
+                    </div>
+                </div>
+
+                <!-- Frame Viewer Card -->
+                <div class="card" id="viewer-card" style="display: none;">
+                    <h2>Frame Viewer</h2>
+                    <div class="viewer-container">
+                        <canvas id="frame-canvas" class="viewer-canvas"></canvas>
+                        <div class="frame-controls">
+                            <input type="range" id="frame-slider" class="frame-slider" min="0" max="0" value="0">
+                            <span class="frame-info" id="frame-info">0 / 0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Analysis Card -->
+                <div class="card" id="stats-card" style="display: none;">
+                    <h2>Data Analysis</h2>
+                    <div class="stats-grid">
+                        <div class="stat-item"><div class="stat-label">Frames</div><div class="stat-value" id="stat-frames">-</div></div>
+                        <div class="stat-item"><div class="stat-label">Keypoints</div><div class="stat-value" id="stat-keypoints">-</div></div>
+                        <div class="stat-item"><div class="stat-label">Avg Inst/Fr</div><div class="stat-value" id="stat-instances">-</div></div>
+                        <div class="stat-item"><div class="stat-label">Max Size</div><div class="stat-value" id="stat-maxsize">-</div></div>
+                        <div class="stat-item"><div class="stat-label">Tracks</div><div class="stat-value" id="stat-tracks">-</div></div>
+                        <div class="stat-item"><div class="stat-label">Overlap</div><div class="stat-value" id="stat-overlap">-</div></div>
+                    </div>
+                    <h3>Skeleton</h3>
+                    <div id="skeleton-info" style="font-size: 0.8rem; color: var(--text-dim);"></div>
+                </div>
+            </aside>
+
+            <!-- ==================== MAIN CONTENT ==================== -->
+            <main>
+                <div class="tabs">
+                    <button class="tab active" data-tab="model">Model</button>
+                    <button class="tab" data-tab="training">Training</button>
+                    <button class="tab" data-tab="export">Export</button>
+                </div>
+
+                <!-- ==================== MODEL TAB ==================== -->
+                <div class="tab-panel active" id="panel-model">
+                    <!-- Recommendation -->
+                    <div class="card" id="rec-card" style="display: none;">
+                        <div class="recommendation-box">
+                            <h3>Recommended Pipeline</h3>
+                            <span class="pipeline-badge" id="rec-pipeline">-</span>
+                            <ul class="rec-details" id="rec-details"></ul>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Selection -->
+                    <div class="card">
+                        <h2>Pipeline Type</h2>
+                        <div class="radio-group" id="pipeline-options">
+                            <label class="radio-option">
+                                <input type="radio" name="pipeline" value="single_instance">
+                                <div>
+                                    <strong>Single Instance</strong>
+                                    <div class="desc">Best for videos with exactly one animal per frame</div>
+                                </div>
+                            </label>
+                            <label class="radio-option selected">
+                                <input type="radio" name="pipeline" value="topdown" checked>
+                                <div>
+                                    <strong>Top-Down</strong>
+                                    <div class="desc">Best for multiple well-separated animals; finds each animal first, then estimates pose</div>
+                                </div>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="pipeline" value="bottomup">
+                                <div>
+                                    <strong>Bottom-Up</strong>
+                                    <div class="desc">Best for crowded/overlapping animals; detects all parts, then groups into instances</div>
+                                </div>
+                            </label>
+                        </div>
+                        <div class="multi-class-option disabled" id="multi-class-option">
+                            <label style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="multi-class-checkbox" disabled>
+                                <span>Enable Multi-Class (identity tracking)</span>
+                            </label>
+                            <div class="track-info" id="track-info">Requires tracks in your SLP file</div>
+                        </div>
+                    </div>
+
+                    <!-- Top-Down Model Selector -->
+                    <div id="topdown-selector" class="card" style="display: block; background: linear-gradient(135deg, var(--accent), #8b5cf6);">
+                        <div style="color: white; margin-bottom: 12px;">
+                            <strong>Top-Down Pipeline</strong> requires training TWO models:
+                        </div>
+                        <div class="sub-tabs" id="model-sub-tabs">
+                            <button class="sub-tab active" data-model="centroid" style="background: white; color: var(--accent);">Centroid Model</button>
+                            <button class="sub-tab" data-model="centered" style="background: rgba(255,255,255,0.2); color: white;">Centered Instance</button>
+                        </div>
+                    </div>
+
+                    <!-- Backbone Config -->
+                    <div class="card">
+                        <h2>Backbone</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Architecture <span class="tooltip-icon">?<span class="tooltip-text">UNet: lightweight, good default. ConvNeXt/SwinT: modern architectures with pretrained weights.</span></span></label>
+                                <select id="backbone-type">
+                                    <option value="unet" selected>UNet</option>
+                                    <option value="convnext">ConvNeXt</option>
+                                    <option value="swint">Swin Transformer</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Max Stride <span class="tooltip-icon">?<span class="tooltip-text">Determines receptive field size. Higher = larger RF but lower resolution.</span></span></label>
+                                <select id="max-stride">
+                                    <option value="8">8</option>
+                                    <option value="16" selected>16</option>
+                                    <option value="32">32</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="unet-params">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Filters</label>
+                                    <div class="slider-group">
+                                        <input type="range" id="filters" min="8" max="64" value="24" step="8">
+                                        <span class="slider-value" id="filters-value">24</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>Filters Rate</label>
+                                    <div class="slider-group">
+                                        <input type="range" id="filters-rate" min="1" max="3" value="2" step="0.5">
+                                        <span class="slider-value" id="filters-rate-value">2.0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="pretrained-params" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Model Size</label>
+                                    <select id="model-size">
+                                        <option value="tiny" selected>Tiny</option>
+                                        <option value="small">Small</option>
+                                        <option value="base">Base</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Pretrained Weights</label>
+                                    <select id="pretrained">
+                                        <option value="imagenet" selected>ImageNet</option>
+                                        <option value="none">None</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="info-box" id="model-params">
+                            Parameters: ~1.2M | Head output: 24 -> 13 channels
+                        </div>
+                    </div>
+
+                    <!-- Head Config -->
+                    <div class="card">
+                        <h2>Head Configuration</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Sigma (confmap spread) <span class="tooltip-icon">?<span class="tooltip-text">Gaussian spread for confidence maps. Larger = more forgiving but less precise.</span></span></label>
+                                <div class="slider-group">
+                                    <input type="range" id="sigma" min="1" max="15" value="5" step="0.5">
+                                    <span class="slider-value" id="sigma-value">5.0 px</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Output Stride</label>
+                                <select id="output-stride">
+                                    <option value="1" selected>1 (full resolution)</option>
+                                    <option value="2">2</option>
+                                    <option value="4">4</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="anchor-section">
+                            <div class="form-group">
+                                <label>Anchor Part <span class="tooltip-icon">?<span class="tooltip-text">Node used for centroid detection (Top-Down) or crop centering.</span></span></label>
+                                <select id="anchor-part">
+                                    <option value="">Use bbox center</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="paf-section" style="display: none;">
+                            <h3>Part Affinity Fields (PAFs)</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>PAF Sigma</label>
+                                    <div class="slider-group">
+                                        <input type="range" id="paf-sigma" min="5" max="30" value="15">
+                                        <span class="slider-value" id="paf-sigma-value">15 px</span>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>PAF Output Stride</label>
+                                    <select id="paf-output-stride">
+                                        <option value="1" selected>1</option>
+                                        <option value="2">2</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Crop Size (Top-Down only) -->
+                    <div class="card" id="crop-card">
+                        <h2>Crop Size <span class="tooltip-icon">?<span class="tooltip-text">Size of crops extracted around each detected animal. Should be larger than the largest animal.</span></span></h2>
+                        <div class="form-group">
+                            <div class="slider-group">
+                                <input type="range" id="crop-size" min="64" max="512" value="160" step="16">
+                                <span class="slider-value" id="crop-size-value">160 px</span>
+                            </div>
+                        </div>
+                        <canvas id="crop-canvas" class="viz-canvas"></canvas>
+                        <div class="info-box" id="crop-info">
+                            Crop covers ~100% of largest instance
+                        </div>
+                    </div>
+
+                    <!-- Preprocessing -->
+                    <div class="card">
+                        <h2>Preprocessing</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Input Scale <span class="tooltip-icon">?<span class="tooltip-text">Scale factor for input images. Lower = faster training, less memory.</span></span></label>
+                                <select id="input-scale">
+                                    <option value="1.0" selected>1.0 (original)</option>
+                                    <option value="0.75">0.75</option>
+                                    <option value="0.5">0.5 (half)</option>
+                                    <option value="0.25">0.25 (quarter)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Channels</label>
+                                <select id="channels">
+                                    <option value="auto" selected>Auto</option>
+                                    <option value="grayscale">Grayscale</option>
+                                    <option value="rgb">RGB</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="info-box" id="size-info">
+                            Original: - | Processed: -
+                        </div>
+                    </div>
+
+                    <!-- Receptive Field -->
+                    <div class="card">
+                        <h2>Receptive Field</h2>
+                        <canvas id="rf-canvas" class="viz-canvas"></canvas>
+                        <div class="info-box" id="rf-info">
+                            RF: 76 px | Max instance: - | Coverage: -
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== TRAINING TAB ==================== -->
+                <div class="tab-panel" id="panel-training">
+                    <div class="card">
+                        <h2>Training Parameters</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Epochs</label>
+                                <input type="number" id="epochs" value="200" min="1" max="1000">
+                            </div>
+                            <div class="form-group">
+                                <label>Batch Size</label>
+                                <select id="batch-size">
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="4" selected>4</option>
+                                    <option value="8">8</option>
+                                    <option value="16">16</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Validation Split</label>
+                            <div class="slider-group">
+                                <input type="range" id="val-split" min="0.05" max="0.3" value="0.1" step="0.05">
+                                <span class="slider-value" id="val-split-value">10%</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Optimizer</h2>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Type</label>
+                                <select id="optimizer">
+                                    <option value="Adam" selected>Adam</option>
+                                    <option value="AdamW">AdamW</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Learning Rate</label>
+                                <select id="learning-rate">
+                                    <option value="0.0001" selected>1e-4</option>
+                                    <option value="0.0005">5e-4</option>
+                                    <option value="0.001">1e-3</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="toggle-row">
+                            <span class="toggle-label">AMSGrad</span>
+                            <label class="toggle"><input type="checkbox" id="amsgrad"><span class="toggle-slider"></span></label>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>LR Scheduler</h2>
+                        <div class="toggle-row">
+                            <span class="toggle-label">Reduce on Plateau</span>
+                            <label class="toggle"><input type="checkbox" id="lr-scheduler" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <div id="lr-scheduler-params">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Factor</label>
+                                    <input type="number" id="lr-factor" value="0.5" min="0.1" max="0.9" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Patience (epochs)</label>
+                                    <input type="number" id="lr-patience" value="5" min="1" max="20">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Early Stopping</h2>
+                        <div class="toggle-row">
+                            <span class="toggle-label">Enable</span>
+                            <label class="toggle"><input type="checkbox" id="early-stopping" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <div id="early-stopping-params">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Patience (epochs)</label>
+                                    <input type="number" id="early-patience" value="10" min="1" max="50">
+                                </div>
+                                <div class="form-group">
+                                    <label>Min Delta</label>
+                                    <input type="number" id="early-delta" value="0.00001" step="0.00001">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Augmentation</h2>
+                        <div class="toggle-row">
+                            <span class="toggle-label">Enable Augmentations</span>
+                            <label class="toggle"><input type="checkbox" id="use-augmentations" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <div id="augmentation-params">
+                            <h3>Geometric</h3>
+                            <div class="form-group">
+                                <label>Rotation (degrees)</label>
+                                <div class="slider-group">
+                                    <input type="range" id="rotation" min="0" max="180" value="15">
+                                    <span class="slider-value" id="rotation-value">+/-15</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Scale (%)</label>
+                                <div class="slider-group">
+                                    <input type="range" id="scale-aug" min="0" max="50" value="10">
+                                    <span class="slider-value" id="scale-aug-value">+/-10%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Checkpointing</h2>
+                        <div class="toggle-row">
+                            <span class="toggle-label">Save Checkpoints</span>
+                            <label class="toggle"><input type="checkbox" id="save-ckpt" checked><span class="toggle-slider"></span></label>
+                        </div>
+                        <div class="form-group">
+                            <label>Save Top K</label>
+                            <input type="number" id="save-top-k" value="3" min="1" max="10">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== EXPORT TAB ==================== -->
+                <div class="tab-panel" id="panel-export">
+                    <!-- Single Config (SI/BU) -->
+                    <div id="export-single">
+                        <div class="card">
+                            <h2>Generated Configuration</h2>
+                            <pre class="yaml-output" id="yaml-output">Loading...</pre>
+                            <div class="btn-group">
+                                <button class="btn btn-primary" id="copy-yaml-btn">Copy</button>
+                                <button class="btn btn-secondary" id="download-yaml-btn">Download YAML</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dual Config (Top-Down) -->
+                    <div id="export-topdown" style="display: none;">
+                        <div class="info-box" style="margin-bottom: 16px;">
+                            Top-Down pipeline requires <strong>TWO</strong> separate configs. Train the Centroid model first, then the Centered Instance model.
+                        </div>
+                        <div class="sub-tabs" id="export-sub-tabs">
+                            <button class="sub-tab active" data-config="centroid">Centroid Config</button>
+                            <button class="sub-tab" data-config="centered">Centered Instance Config</button>
+                        </div>
+                        <div class="sub-panel active" id="export-centroid">
+                            <div class="card">
+                                <h2>Centroid Model Configuration</h2>
+                                <pre class="yaml-output" id="yaml-output-centroid">Loading...</pre>
+                                <div class="btn-group">
+                                    <button class="btn btn-primary" onclick="copyYaml('centroid')">Copy</button>
+                                    <button class="btn btn-secondary" onclick="downloadYaml('centroid')">Download centroid_config.yaml</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sub-panel" id="export-centered">
+                            <div class="card">
+                                <h2>Centered Instance Configuration</h2>
+                                <pre class="yaml-output" id="yaml-output-ci">Loading...</pre>
+                                <div class="btn-group">
+                                    <button class="btn btn-primary" onclick="copyYaml('centeredInstance')">Copy</button>
+                                    <button class="btn btn-secondary" onclick="downloadYaml('centeredInstance')">Download centered_instance_config.yaml</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <button class="btn btn-primary" style="width: 100%;" onclick="downloadBothConfigs()">Download Both Configs</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Log Section -->
+        <div class="log-section" id="log-section">
+            <div class="log-entry"><span class="time">[--:--:--]</span> SLEAP-NN Config Helper ready</div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // State
+        // ============================================
+        let slpData = null;
+        let videoElement = null;
+        let currentFrame = 0;
+        let generatedYaml = { single: '', centroid: '', centeredInstance: '' };
+
+        // ============================================
+        // Logging
+        // ============================================
+        function log(msg, type = 'info') {
+            const logSection = document.getElementById('log-section');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="time">[${time}]</span> ${msg}`;
+            logSection.appendChild(entry);
+            logSection.scrollTop = logSection.scrollHeight;
+        }
+
+        // ============================================
+        // Tab Navigation
+        // ============================================
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
+            });
+        });
+
+        // Sub-tabs for model selector
+        document.querySelectorAll('#model-sub-tabs .sub-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#model-sub-tabs .sub-tab').forEach(t => {
+                    t.classList.remove('active');
+                    t.style.background = 'rgba(255,255,255,0.2)';
+                    t.style.color = 'white';
+                });
+                tab.classList.add('active');
+                tab.style.background = 'white';
+                tab.style.color = 'var(--accent)';
+                updateUIForModel(tab.dataset.model);
+            });
+        });
+
+        // Export sub-tabs
+        document.querySelectorAll('#export-sub-tabs .sub-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('#export-sub-tabs .sub-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('#export-topdown .sub-panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`export-${tab.dataset.config}`).classList.add('active');
+            });
+        });
+
+        function updateUIForModel(model) {
+            // Update crop card visibility - only show for centered instance
+            const cropCard = document.getElementById('crop-card');
+            if (model === 'centered') {
+                cropCard.style.display = 'block';
+            } else {
+                cropCard.style.display = 'none';
+            }
+            updateYamlOutput();
+        }
+
+        // ============================================
+        // Pipeline Selection
+        // ============================================
+        document.querySelectorAll('input[name="pipeline"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+                e.target.closest('.radio-option').classList.add('selected');
+                updatePipelineUI();
+            });
+        });
+
+        function updatePipelineUI() {
+            const pipeline = document.querySelector('input[name="pipeline"]:checked').value;
+            const topdownSelector = document.getElementById('topdown-selector');
+            const cropCard = document.getElementById('crop-card');
+            const pafSection = document.getElementById('paf-section');
+            const anchorSection = document.getElementById('anchor-section');
+            const exportSingle = document.getElementById('export-single');
+            const exportTopdown = document.getElementById('export-topdown');
+
+            if (pipeline === 'topdown') {
+                topdownSelector.style.display = 'block';
+                cropCard.style.display = 'block';
+                pafSection.style.display = 'none';
+                anchorSection.style.display = 'block';
+                exportSingle.style.display = 'none';
+                exportTopdown.style.display = 'block';
+            } else if (pipeline === 'bottomup') {
+                topdownSelector.style.display = 'none';
+                cropCard.style.display = 'none';
+                pafSection.style.display = 'block';
+                anchorSection.style.display = 'none';
+                exportSingle.style.display = 'block';
+                exportTopdown.style.display = 'none';
+            } else {
+                topdownSelector.style.display = 'none';
+                cropCard.style.display = 'none';
+                pafSection.style.display = 'none';
+                anchorSection.style.display = 'none';
+                exportSingle.style.display = 'block';
+                exportTopdown.style.display = 'none';
+            }
+            updateYamlOutput();
+        }
+
+        // ============================================
+        // Backbone Selection
+        // ============================================
+        document.getElementById('backbone-type').addEventListener('change', (e) => {
+            const unetParams = document.getElementById('unet-params');
+            const pretrainedParams = document.getElementById('pretrained-params');
+            if (e.target.value === 'unet') {
+                unetParams.style.display = 'block';
+                pretrainedParams.style.display = 'none';
+            } else {
+                unetParams.style.display = 'none';
+                pretrainedParams.style.display = 'block';
+            }
+            updateModelParams();
+            updateYamlOutput();
+        });
+
+        // ============================================
+        // Slider Updates
+        // ============================================
+        const sliders = {
+            'filters': { suffix: '', decimals: 0 },
+            'filters-rate': { suffix: '', decimals: 1 },
+            'sigma': { suffix: ' px', decimals: 1 },
+            'paf-sigma': { suffix: ' px', decimals: 0 },
+            'crop-size': { suffix: ' px', decimals: 0 },
+            'val-split': { suffix: '%', decimals: 0, multiply: 100 },
+            'rotation': { prefix: '+/-', decimals: 0 },
+            'scale-aug': { prefix: '+/-', suffix: '%', decimals: 0 }
+        };
+
+        Object.keys(sliders).forEach(id => {
+            const slider = document.getElementById(id);
+            if (slider) {
+                slider.addEventListener('input', () => {
+                    const config = sliders[id];
+                    let value = parseFloat(slider.value);
+                    if (config.multiply) value *= config.multiply;
+                    const display = (config.prefix || '') + value.toFixed(config.decimals) + (config.suffix || '');
+                    document.getElementById(`${id}-value`).textContent = display;
+                    updateYamlOutput();
+                    if (id === 'crop-size') updateCropViz();
+                });
+            }
+        });
+
+        // ============================================
+        // SLP File Loading
+        // ============================================
+        document.getElementById('slp-input').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('slp-status').textContent = 'Loading...';
+            document.getElementById('slp-status').classList.remove('loaded');
+            log(`Loading SLP file: ${file.name}`);
+
+            try {
+                // Use web worker for SLP parsing
+                const worker = new Worker('slp-worker.js');
+
+                worker.onmessage = (e) => {
+                    if (e.data.error) {
+                        log(`Error: ${e.data.error}`, 'error');
+                        document.getElementById('slp-status').textContent = 'Error loading file';
+                        return;
+                    }
+
+                    slpData = e.data;
+                    onSlpLoaded(file.name);
+                };
+
+                worker.onerror = (error) => {
+                    log(`Worker error: ${error.message}`, 'error');
+                    document.getElementById('slp-status').textContent = 'Error loading file';
+                };
+
+                const arrayBuffer = await file.arrayBuffer();
+                worker.postMessage({ type: 'parse', buffer: arrayBuffer }, [arrayBuffer]);
+            } catch (error) {
+                log(`Error: ${error.message}`, 'error');
+                document.getElementById('slp-status').textContent = 'Error loading file';
+            }
+        });
+
+        function onSlpLoaded(filename) {
+            document.getElementById('slp-status').textContent = `Loaded: ${filename}`;
+            document.getElementById('slp-status').classList.add('loaded');
+            log(`SLP loaded: ${slpData.frames.length} frames, ${slpData.skeleton.nodes.length} keypoints`, 'success');
+
+            // Update stats
+            document.getElementById('stat-frames').textContent = slpData.frames.length;
+            document.getElementById('stat-keypoints').textContent = slpData.skeleton.nodes.length;
+            document.getElementById('stat-instances').textContent = slpData.stats.avgInstancesPerFrame.toFixed(1);
+            document.getElementById('stat-maxsize').textContent = `${slpData.stats.maxInstanceSize}px`;
+            document.getElementById('stat-tracks').textContent = slpData.tracks.length || 'None';
+            document.getElementById('stat-overlap').textContent = `${(slpData.stats.overlapFrequency * 100).toFixed(0)}%`;
+            document.getElementById('skeleton-info').textContent = `${slpData.skeleton.nodes.length} nodes, ${slpData.skeleton.edges.length} edges`;
+
+            // Populate anchor dropdown
+            const anchorSelect = document.getElementById('anchor-part');
+            anchorSelect.innerHTML = '<option value="">Use bbox center</option>';
+            slpData.skeleton.nodes.forEach(node => {
+                const opt = document.createElement('option');
+                opt.value = node;
+                opt.textContent = node;
+                anchorSelect.appendChild(opt);
+            });
+
+            // Update crop size suggestion
+            const suggestedCrop = Math.ceil(slpData.stats.maxInstanceSize * 1.2 / 16) * 16;
+            document.getElementById('crop-size').value = Math.min(512, Math.max(64, suggestedCrop));
+            document.getElementById('crop-size-value').textContent = `${document.getElementById('crop-size').value} px`;
+
+            // Multi-class option
+            if (slpData.tracks.length > 0) {
+                document.getElementById('multi-class-option').classList.remove('disabled');
+                document.getElementById('multi-class-checkbox').disabled = false;
+                document.getElementById('track-info').textContent = `Detected ${slpData.tracks.length} tracks: ${slpData.tracks.slice(0, 3).join(', ')}${slpData.tracks.length > 3 ? '...' : ''}`;
+            }
+
+            // Show cards
+            document.getElementById('stats-card').style.display = 'block';
+            document.getElementById('rec-card').style.display = 'block';
+            document.getElementById('viewer-card').style.display = 'block';
+
+            // Update recommendation
+            updateRecommendation();
+
+            // Update frame slider
+            document.getElementById('frame-slider').max = slpData.frames.length - 1;
+            document.getElementById('frame-info').textContent = `1 / ${slpData.frames.length}`;
+
+            // Update visualizations
+            updateCropViz();
+            updateRFViz();
+            updateFrameViewer();
+            updateSizeInfo();
+            updateYamlOutput();
+        }
+
+        function updateRecommendation() {
+            if (!slpData) return;
+
+            let pipeline, reasons = [];
+            const stats = slpData.stats;
+
+            if (stats.maxInstancesPerFrame <= 1) {
+                pipeline = 'Single Instance';
+                reasons.push('Only one animal per frame detected');
+            } else {
+                const sizeRatio = stats.maxInstanceSize / Math.sqrt(stats.videoWidth**2 + stats.videoHeight**2);
+                if (sizeRatio > 0.35 && stats.overlapFrequency > 0.4) {
+                    pipeline = 'Bottom-Up';
+                    reasons.push(`Large animals (${(sizeRatio*100).toFixed(0)}% of image)`);
+                    reasons.push(`High overlap frequency (${(stats.overlapFrequency*100).toFixed(0)}%)`);
+                } else {
+                    pipeline = 'Top-Down';
+                    reasons.push(`${stats.avgInstancesPerFrame.toFixed(1)} animals per frame (avg)`);
+                    if (stats.overlapFrequency < 0.2) reasons.push('Low overlap - animals well-separated');
+                    else reasons.push('Moderate overlap');
+                }
+            }
+
+            document.getElementById('rec-pipeline').textContent = pipeline;
+            const detailsList = document.getElementById('rec-details');
+            detailsList.innerHTML = '';
+            reasons.forEach(r => {
+                const li = document.createElement('li');
+                li.textContent = r;
+                detailsList.appendChild(li);
+            });
+
+            // Auto-select recommended pipeline
+            const pipelineValue = pipeline.toLowerCase().replace(' ', '_').replace('-', '');
+            const pipelineMap = { 'single_instance': 'single_instance', 'topdown': 'topdown', 'bottomup': 'bottomup' };
+            const radioValue = pipeline === 'Single Instance' ? 'single_instance' : (pipeline === 'Top-Down' ? 'topdown' : 'bottomup');
+            const radio = document.querySelector(`input[name="pipeline"][value="${radioValue}"]`);
+            if (radio) {
+                radio.checked = true;
+                document.querySelectorAll('.radio-option').forEach(opt => opt.classList.remove('selected'));
+                radio.closest('.radio-option').classList.add('selected');
+                updatePipelineUI();
+            }
+        }
+
+        // ============================================
+        // Video Loading
+        // ============================================
+        document.getElementById('video-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const url = URL.createObjectURL(file);
+            videoElement = document.createElement('video');
+            videoElement.src = url;
+            videoElement.addEventListener('loadedmetadata', () => {
+                document.getElementById('video-status').textContent = `Loaded: ${file.name}`;
+                document.getElementById('video-status').classList.add('loaded');
+                log(`Video loaded: ${videoElement.videoWidth}x${videoElement.videoHeight}`, 'success');
+                updateFrameViewer();
+            });
+        });
+
+        // ============================================
+        // Frame Viewer
+        // ============================================
+        document.getElementById('frame-slider').addEventListener('input', (e) => {
+            currentFrame = parseInt(e.target.value);
+            document.getElementById('frame-info').textContent = `${currentFrame + 1} / ${slpData ? slpData.frames.length : 0}`;
+            updateFrameViewer();
+        });
+
+        function updateFrameViewer() {
+            const canvas = document.getElementById('frame-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 150;
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!slpData) return;
+
+            // Draw skeleton for current frame
+            const frame = slpData.frames[currentFrame];
+            if (!frame || !frame.instances.length) {
+                ctx.fillStyle = '#666';
+                ctx.font = '14px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('No instances in this frame', canvas.width/2, canvas.height/2);
+                return;
+            }
+
+            // Calculate scale to fit
+            const padding = 20;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            frame.instances.forEach(inst => {
+                inst.points.forEach(pt => {
+                    if (pt.x !== null && pt.y !== null) {
+                        minX = Math.min(minX, pt.x);
+                        minY = Math.min(minY, pt.y);
+                        maxX = Math.max(maxX, pt.x);
+                        maxY = Math.max(maxY, pt.y);
+                    }
+                });
+            });
+
+            const dataWidth = maxX - minX || 100;
+            const dataHeight = maxY - minY || 100;
+            const scale = Math.min((canvas.width - padding*2) / dataWidth, (canvas.height - padding*2) / dataHeight);
+            const offsetX = (canvas.width - dataWidth * scale) / 2 - minX * scale;
+            const offsetY = (canvas.height - dataHeight * scale) / 2 - minY * scale;
+
+            // Draw each instance
+            const colors = ['#4ade80', '#60a5fa', '#f472b6', '#fbbf24'];
+            frame.instances.forEach((inst, idx) => {
+                const color = colors[idx % colors.length];
+
+                // Draw edges
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                slpData.skeleton.edges.forEach(([src, dst]) => {
+                    const srcPt = inst.points[src];
+                    const dstPt = inst.points[dst];
+                    if (srcPt && dstPt && srcPt.x !== null && dstPt.x !== null) {
+                        ctx.beginPath();
+                        ctx.moveTo(srcPt.x * scale + offsetX, srcPt.y * scale + offsetY);
+                        ctx.lineTo(dstPt.x * scale + offsetX, dstPt.y * scale + offsetY);
+                        ctx.stroke();
+                    }
+                });
+
+                // Draw nodes
+                ctx.fillStyle = color;
+                inst.points.forEach(pt => {
+                    if (pt.x !== null && pt.y !== null) {
+                        ctx.beginPath();
+                        ctx.arc(pt.x * scale + offsetX, pt.y * scale + offsetY, 4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                });
+            });
+        }
+
+        // ============================================
+        // Visualizations
+        // ============================================
+        function updateCropViz() {
+            const canvas = document.getElementById('crop-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 120;
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cropSize = parseInt(document.getElementById('crop-size').value);
+            const maxInstance = slpData ? slpData.stats.maxInstanceSize : 100;
+
+            // Scale to fit
+            const scale = Math.min(canvas.width * 0.8, canvas.height * 0.8) / Math.max(cropSize, maxInstance);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw crop box (green)
+            const cropW = cropSize * scale;
+            ctx.strokeStyle = '#4ade80';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(centerX - cropW/2, centerY - cropW/2, cropW, cropW);
+
+            // Draw instance box (yellow dashed)
+            const instW = maxInstance * scale;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(centerX - instW/2, centerY - instW/2, instW, instW);
+            ctx.setLineDash([]);
+
+            // Labels
+            ctx.font = '11px system-ui';
+            ctx.fillStyle = '#4ade80';
+            ctx.fillText(`Crop: ${cropSize}px`, centerX - cropW/2, centerY - cropW/2 - 5);
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillText(`Instance: ${maxInstance}px`, centerX + instW/2 + 5, centerY);
+
+            // Update info
+            const coverage = (cropSize / maxInstance * 100).toFixed(0);
+            document.getElementById('crop-info').textContent = `Crop covers ${coverage}% of largest instance`;
+            if (cropSize < maxInstance) {
+                document.getElementById('crop-info').classList.add('warning-box');
+                document.getElementById('crop-info').classList.remove('info-box');
+            } else {
+                document.getElementById('crop-info').classList.remove('warning-box');
+                document.getElementById('crop-info').classList.add('info-box');
+            }
+        }
+
+        function updateRFViz() {
+            const canvas = document.getElementById('rf-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 120;
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const maxStride = parseInt(document.getElementById('max-stride').value);
+            const rf = calculateRF(maxStride);
+            const maxInstance = slpData ? slpData.stats.maxInstanceSize : 100;
+
+            // Scale to fit
+            const scale = Math.min(canvas.width * 0.8, canvas.height * 0.8) / Math.max(rf, maxInstance);
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            // Draw instance box (yellow dashed)
+            const instW = maxInstance * scale;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(centerX - instW/2, centerY - instW/2, instW, instW);
+            ctx.setLineDash([]);
+
+            // Draw RF box (red)
+            const rfW = rf * scale;
+            ctx.strokeStyle = '#f87171';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(centerX - rfW/2, centerY - rfW/2, rfW, rfW);
+
+            // Labels
+            ctx.font = '11px system-ui';
+            ctx.fillStyle = '#f87171';
+            ctx.fillText(`RF: ${rf}px`, centerX - rfW/2, centerY - rfW/2 - 5);
+
+            // Update info
+            const coverage = (rf / maxInstance * 100).toFixed(0);
+            document.getElementById('rf-info').textContent = `RF: ${rf}px | Max instance: ${maxInstance}px | Coverage: ${coverage}%`;
+        }
+
+        function calculateRF(maxStride) {
+            // Simplified RF calculation for UNet
+            // RF = 3 + 4 * (stride_levels) where each level adds 4 pixels
+            const levels = Math.log2(maxStride);
+            return 3 + 4 * (2 * levels + 1) * 2; // Encoder + decoder
+        }
+
+        // ============================================
+        // Model Parameters
+        // ============================================
+        function updateModelParams() {
+            const backbone = document.getElementById('backbone-type').value;
+            const filters = parseInt(document.getElementById('filters').value);
+            const filtersRate = parseFloat(document.getElementById('filters-rate').value);
+            const keypoints = slpData ? slpData.skeleton.nodes.length : 13;
+
+            let params;
+            if (backbone === 'unet') {
+                // Rough estimate for UNet
+                params = Math.round(filters * filters * 9 * 10 / 1000) / 1000; // Simplified
+            } else {
+                params = backbone === 'convnext' ? 28.6 : 27.5; // Tiny variants
+            }
+
+            document.getElementById('model-params').textContent =
+                `Parameters: ~${params < 1 ? (params * 1000).toFixed(0) + 'K' : params.toFixed(1) + 'M'} | Head output: ${filters} -> ${keypoints} channels`;
+        }
+
+        function updateSizeInfo() {
+            const scale = parseFloat(document.getElementById('input-scale').value);
+            const width = slpData ? slpData.stats.videoWidth : 1920;
+            const height = slpData ? slpData.stats.videoHeight : 1080;
+            const newWidth = Math.round(width * scale);
+            const newHeight = Math.round(height * scale);
+            document.getElementById('size-info').textContent =
+                `Original: ${width}x${height} | Processed: ${newWidth}x${newHeight}`;
+        }
+
+        // ============================================
+        // YAML Generation
+        // ============================================
+        function generateYaml() {
+            const pipeline = document.querySelector('input[name="pipeline"]:checked').value;
+            const backbone = document.getElementById('backbone-type').value;
+            const maxStride = parseInt(document.getElementById('max-stride').value);
+            const filters = parseInt(document.getElementById('filters').value);
+            const filtersRate = parseFloat(document.getElementById('filters-rate').value);
+            const sigma = parseFloat(document.getElementById('sigma').value);
+            const outputStride = parseInt(document.getElementById('output-stride').value);
+            const cropSize = parseInt(document.getElementById('crop-size').value);
+            const scale = parseFloat(document.getElementById('input-scale').value);
+            const channels = document.getElementById('channels').value;
+            const epochs = parseInt(document.getElementById('epochs').value);
+            const batchSize = parseInt(document.getElementById('batch-size').value);
+            const valSplit = parseFloat(document.getElementById('val-split').value);
+            const optimizer = document.getElementById('optimizer').value;
+            const lr = parseFloat(document.getElementById('learning-rate').value);
+            const amsgrad = document.getElementById('amsgrad').checked;
+            const useLrScheduler = document.getElementById('lr-scheduler').checked;
+            const lrFactor = parseFloat(document.getElementById('lr-factor').value);
+            const lrPatience = parseInt(document.getElementById('lr-patience').value);
+            const useEarlyStopping = document.getElementById('early-stopping').checked;
+            const earlyPatience = parseInt(document.getElementById('early-patience').value);
+            const earlyDelta = parseFloat(document.getElementById('early-delta').value);
+            const useAugmentations = document.getElementById('use-augmentations').checked;
+            const rotation = parseInt(document.getElementById('rotation').value);
+            const scaleAug = parseInt(document.getElementById('scale-aug').value);
+            const saveCkpt = document.getElementById('save-ckpt').checked;
+            const saveTopK = parseInt(document.getElementById('save-top-k').value);
+            const anchorPart = document.getElementById('anchor-part').value || null;
+
+            const baseBackbone = {
+                unet: backbone === 'unet' ? {
+                    in_channels: channels === 'rgb' ? 3 : 1,
+                    kernel_size: 3,
+                    filters: filters,
+                    filters_rate: filtersRate,
+                    max_stride: maxStride,
+                    stem_stride: null,
+                    middle_block: true,
+                    up_interpolate: true,
+                    stacks: 1,
+                    convs_per_block: 2,
+                    output_stride: 1
+                } : null,
+                convnext: backbone === 'convnext' ? {
+                    model_type: document.getElementById('model-size').value,
+                    in_channels: channels === 'rgb' ? 3 : 1,
+                    max_stride: 32
+                } : null,
+                swint: backbone === 'swint' ? {
+                    model_type: document.getElementById('model-size').value,
+                    in_channels: channels === 'rgb' ? 3 : 1,
+                    max_stride: 32
+                } : null
+            };
+
+            const baseTrainer = {
+                train_data_loader: { batch_size: batchSize, shuffle: true, num_workers: 0 },
+                val_data_loader: { batch_size: batchSize, shuffle: false, num_workers: 0 },
+                max_epochs: epochs,
+                optimizer_name: optimizer,
+                optimizer: { lr: lr, amsgrad: amsgrad },
+                lr_scheduler: useLrScheduler ? {
+                    reduce_lr_on_plateau: { threshold: 1e-6, patience: lrPatience, factor: lrFactor, min_lr: 1e-8 }
+                } : null,
+                early_stopping: useEarlyStopping ? {
+                    stop_training_on_plateau: true,
+                    min_delta: earlyDelta,
+                    patience: earlyPatience
+                } : { stop_training_on_plateau: false },
+                save_ckpt: saveCkpt,
+                model_ckpt: saveCkpt ? { save_top_k: saveTopK, save_last: true } : null
+            };
+
+            const baseAugmentation = useAugmentations ? {
+                use_augmentations_train: true,
+                intensity: { contrast_p: 0.3, brightness_p: 0.3 },
+                geometric: {
+                    rotation_min: -rotation,
+                    rotation_max: rotation,
+                    scale_min: 1 - scaleAug/100,
+                    scale_max: 1 + scaleAug/100,
+                    affine_p: 0.5
+                }
+            } : { use_augmentations_train: false };
+
+            if (pipeline === 'topdown') {
+                // Generate TWO configs
+                const centroidConfig = {
+                    name: 'centroid_training',
+                    description: 'Centroid detection for top-down pipeline',
+                    data_config: {
+                        provider: 'LabelsReader',
+                        train_labels_path: ['path/to/labels.slp'],
+                        val_labels_path: null,
+                        validation_fraction: valSplit,
+                        user_instances_only: true,
+                        preprocessing: {
+                            scale: scale,
+                            ensure_rgb: channels === 'rgb',
+                            ensure_grayscale: channels === 'grayscale'
+                        },
+                        augmentation_config: baseAugmentation
+                    },
+                    model_config: {
+                        init_weights: 'default',
+                        backbone_config: baseBackbone,
+                        head_configs: {
+                            centroid: {
+                                confmaps: {
+                                    anchor_part: anchorPart,
+                                    sigma: sigma,
+                                    output_stride: outputStride
+                                }
+                            }
+                        }
+                    },
+                    trainer_config: baseTrainer
+                };
+
+                const centeredInstanceConfig = {
+                    name: 'centered_instance_training',
+                    description: 'Pose estimation on crops for top-down pipeline',
+                    data_config: {
+                        provider: 'LabelsReader',
+                        train_labels_path: ['path/to/labels.slp'],
+                        val_labels_path: null,
+                        validation_fraction: valSplit,
+                        user_instances_only: true,
+                        preprocessing: {
+                            crop_size: cropSize,
+                            scale: scale,
+                            ensure_rgb: channels === 'rgb',
+                            ensure_grayscale: channels === 'grayscale'
+                        },
+                        augmentation_config: baseAugmentation
+                    },
+                    model_config: {
+                        init_weights: 'default',
+                        backbone_config: baseBackbone,
+                        head_configs: {
+                            centered_instance: {
+                                confmaps: {
+                                    anchor_part: anchorPart,
+                                    sigma: sigma,
+                                    output_stride: outputStride
+                                }
+                            }
+                        }
+                    },
+                    trainer_config: baseTrainer
+                };
+
+                return {
+                    isTopDown: true,
+                    centroid: jsyaml.dump(centroidConfig, { indent: 2, lineWidth: -1 }),
+                    centeredInstance: jsyaml.dump(centeredInstanceConfig, { indent: 2, lineWidth: -1 })
+                };
+            } else {
+                // Single config
+                const headConfigs = {};
+                if (pipeline === 'single_instance') {
+                    headConfigs.single_instance = {
+                        confmaps: { sigma: sigma, output_stride: outputStride }
+                    };
+                } else {
+                    headConfigs.bottomup = {
+                        confmaps: { sigma: sigma, output_stride: outputStride, loss_weight: 1.0 },
+                        pafs: {
+                            sigma: parseFloat(document.getElementById('paf-sigma').value),
+                            output_stride: parseInt(document.getElementById('paf-output-stride').value),
+                            loss_weight: 1.0
+                        }
+                    };
+                }
+
+                const config = {
+                    name: `${pipeline}_training`,
+                    description: pipeline === 'single_instance' ? 'Single animal pose estimation' : 'Bottom-up multi-animal pose estimation',
+                    data_config: {
+                        provider: 'LabelsReader',
+                        train_labels_path: ['path/to/labels.slp'],
+                        val_labels_path: null,
+                        validation_fraction: valSplit,
+                        user_instances_only: true,
+                        preprocessing: {
+                            scale: scale,
+                            ensure_rgb: channels === 'rgb',
+                            ensure_grayscale: channels === 'grayscale'
+                        },
+                        augmentation_config: baseAugmentation
+                    },
+                    model_config: {
+                        init_weights: 'default',
+                        backbone_config: baseBackbone,
+                        head_configs: headConfigs
+                    },
+                    trainer_config: baseTrainer
+                };
+
+                return jsyaml.dump(config, { indent: 2, lineWidth: -1 });
+            }
+        }
+
+        function updateYamlOutput() {
+            const result = generateYaml();
+            if (result && result.isTopDown) {
+                generatedYaml.centroid = result.centroid;
+                generatedYaml.centeredInstance = result.centeredInstance;
+                document.getElementById('yaml-output-centroid').textContent = result.centroid;
+                document.getElementById('yaml-output-ci').textContent = result.centeredInstance;
+            } else {
+                generatedYaml.single = result;
+                document.getElementById('yaml-output').textContent = result;
+            }
+        }
+
+        // ============================================
+        // Copy/Download
+        // ============================================
+        function copyYaml(type) {
+            const yaml = type === 'centroid' ? generatedYaml.centroid :
+                        (type === 'centeredInstance' ? generatedYaml.centeredInstance : generatedYaml.single);
+            navigator.clipboard.writeText(yaml).then(() => {
+                log('Config copied to clipboard', 'success');
+            }).catch(() => {
+                log('Failed to copy to clipboard', 'error');
+            });
+        }
+
+        function downloadYaml(type) {
+            const yaml = type === 'centroid' ? generatedYaml.centroid :
+                        (type === 'centeredInstance' ? generatedYaml.centeredInstance : generatedYaml.single);
+            const filename = type === 'centroid' ? 'centroid_config.yaml' :
+                            (type === 'centeredInstance' ? 'centered_instance_config.yaml' : 'config.yaml');
+            const blob = new Blob([yaml], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+            log(`Downloaded ${filename}`, 'success');
+        }
+
+        function downloadBothConfigs() {
+            downloadYaml('centroid');
+            setTimeout(() => downloadYaml('centeredInstance'), 500);
+        }
+
+        document.getElementById('copy-yaml-btn').addEventListener('click', () => copyYaml('single'));
+        document.getElementById('download-yaml-btn').addEventListener('click', () => downloadYaml('single'));
+
+        // ============================================
+        // Event Listeners for Updates
+        // ============================================
+        ['max-stride', 'input-scale', 'output-stride', 'backbone-type', 'epochs',
+         'batch-size', 'learning-rate', 'optimizer', 'channels', 'anchor-part',
+         'lr-factor', 'lr-patience', 'early-patience', 'early-delta', 'save-top-k',
+         'paf-output-stride', 'model-size', 'pretrained'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', updateYamlOutput);
+        });
+
+        ['amsgrad', 'lr-scheduler', 'early-stopping', 'use-augmentations', 'save-ckpt'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', updateYamlOutput);
+        });
+
+        document.getElementById('max-stride').addEventListener('change', updateRFViz);
+        document.getElementById('input-scale').addEventListener('change', updateSizeInfo);
+
+        // ============================================
+        // Initialize
+        // ============================================
+        updatePipelineUI();
+        updateModelParams();
+        updateYamlOutput();
+        updateCropViz();
+        updateRFViz();
+        log('SLEAP-NN Config Helper ready');
+    </script>
+</body>
+</html>

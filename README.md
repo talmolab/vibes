@@ -18,6 +18,7 @@ Self-contained HTML tools and applets for the web.
 - [Link Unfurl Preview](link-unfurl/) - Preview how links appear when shared on social media
 - [Video Event Annotator](event-annotator/) - Frame-accurate event segment annotation with multi-track timeline
 - [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay, track colors, and shareable links
+- [SLEAP-NN Config Helper](sleap-nn-config-helper/) - Generate training configurations for SLEAP-NN pose estimation
 
 ## About
 
