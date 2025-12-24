@@ -27,6 +27,10 @@ jobs:
         if: github.event.action != 'closed'
         uses: actions/jekyll-build-pages@v1
 
+      - name: Expose README files
+        if: github.event.action != 'closed'
+        run: .github/scripts/expose-readmes.sh _site
+
       - name: Deploy PR Preview
         uses: rossjrw/pr-preview-action@v1
         with:
