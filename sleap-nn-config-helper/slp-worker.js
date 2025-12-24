@@ -245,11 +245,16 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
     }
 
     // Build frame data structure
-    setLoading('Building pose data...');
+    const totalFrames = framesData.frame_id.length;
+    setLoading(`Building pose data (0/${totalFrames})...`);
     const frames = [];
     const numNodes = skeleton.nodes.length;
 
     for (let i = 0; i < framesData.frame_id.length; i++) {
+        // Progress update every 500 frames
+        if (i > 0 && i % 500 === 0) {
+            setLoading(`Building pose data (${i}/${totalFrames})...`);
+        }
         const frameIdx = Number(framesData.frame_idx[i]);
         const instStart = Number(framesData.instance_id_start[i]);
         const instEnd = Number(framesData.instance_id_end[i]);
