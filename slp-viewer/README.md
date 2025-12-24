@@ -7,11 +7,13 @@ Browser-based viewer for [SLEAP](https://sleap.ai) pose predictions overlaid on 
 ## Features
 
 - **Frame-accurate video playback** via WebCodecs API with intelligent caching
+- **Embedded video support** for pkg.slp package files with streaming via HTTP range requests
+- **Multi-video packages** with video selector and switching between embedded videos
 - **SLEAP file parsing** using h5wasm (Web Worker for non-blocking loading)
 - **Pose overlay rendering** with track-based coloring and configurable display
 - **Zoom/pan support** with mouse wheel, drag, and touch gestures
 - **Stutter-free playback** via OffscreenCanvas architecture (98% stutter reduction)
-- **URL streaming** with HTTP range requests for large videos
+- **URL streaming** with HTTP range requests for large videos (77MB+ files NOT fully downloaded)
 - **Shareable links** with URL state encoding for SLP and video files
 - **Responsive design** with resizable canvas and mobile-friendly controls
 
@@ -49,6 +51,37 @@ SLEAP `.slp` files are HDF5 format. We use [h5wasm](https://github.com/usnistgov
 - Reads frame and instance data
 - Builds efficient frame-indexed lookup for overlay rendering
 
+### Embedded Video (pkg.slp)
+
+Package files (`.pkg.slp`) contain embedded video frames stored as PNG bytestrings within HDF5 datasets. The embedded video system uses a separate worker architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Main Thread                             │
+│  ┌──────────────┐    ┌─────────────────────────────────┐    │
+│  │   Canvas     │───►│ HDF5VideoBackend                │    │
+│  │              │    │  - LRU cache (60 frames)        │    │
+│  │              │    │  - getFrame() → ImageBitmap     │    │
+│  └──────────────┘    └──────────────┬──────────────────┘    │
+│                                     │ postMessage           │
+├─────────────────────────────────────┼───────────────────────┤
+│                      Worker Thread  │                        │
+│                      ┌──────────────▼──────────────────┐    │
+│                      │ frame-worker.js                  │    │
+│                      │  └─► SLPPackageReader            │    │
+│                      │       - Streaming via lazy file  │    │
+│                      │       - frame_numbers mapping    │    │
+│                      │       - PNG byte extraction      │    │
+│                      └──────────────┬──────────────────┘    │
+│                                     │ Range Request (206)   │
+└─────────────────────────────────────┴───────────────────────┘
+```
+
+Key features:
+- **Streaming**: Large files (77MB+) are NOT fully downloaded; uses HTTP range requests
+- **Frame mapping**: Handles sparse embedded frames via `frame_numbers` dataset
+- **Zero-copy transfer**: PNG bytes sent to main thread via transferable ArrayBuffer
+
 ## Files
 
 | File | Description |
@@ -57,6 +90,10 @@ SLEAP `.slp` files are HDF5 format. We use [h5wasm](https://github.com/usnistgov
 | `video-player.js` | VideoPlayer class with OffscreenCanvas support |
 | `video-offscreen-worker.js` | Worker that owns canvas, decoding, and rendering |
 | `slp-worker.js` | Web Worker for parsing SLEAP HDF5 files |
+| `frame-worker.js` | Web Worker for extracting embedded video frames from pkg.slp |
+| `slp-package-reader.js` | HDF5 pkg.slp parser for embedded video extraction |
+| `video-backend.js` | VideoBackend abstraction for embedded (HDF5) and external (MP4) videos |
+| `lru-cache.js` | LRU cache utility for frame caching |
 | `mice.mp4` | Demo video (1410 frames @ 47fps) |
 | `mice.tracked.slp` | Demo SLEAP predictions |
 
