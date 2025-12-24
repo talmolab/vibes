@@ -55,7 +55,7 @@ jobs:
               if [ -n "$VIBES" ]; then
                 VIBES="$VIBES, "
               fi
-              VIBES="$VIBES[$dir](https://vibes.tlab.sh/pr/${{ github.event.number }}/$dir/)"
+              VIBES="$VIBES[$dir](https://vibes.tlab.sh/pr/pr-${{ github.event.number }}/$dir/)"
             fi
           done
 
@@ -75,7 +75,7 @@ jobs:
 
             | | |
             |---|---|
-            | **Preview URL** | https://vibes.tlab.sh/pr/${{ github.event.number }}/ |
+            | **Preview URL** | https://vibes.tlab.sh/pr/pr-${{ github.event.number }}/ |
             | **Changed Vibes** | ${{ steps.changed-vibes.outputs.vibes }} |
             | **Commit** | ${{ github.sha }} |
             | **Updated** | ${{ github.event.pull_request.updated_at }} |
