@@ -1472,6 +1472,9 @@
             // Update metrics
             document.getElementById('metricFrame').textContent = fallbackFrameIndex + 1;
             updateFallbackInstanceCount(frameData);
+
+            // Update URL with current frame
+            updateFrameInUrl();
         }
 
         function renderFallbackPoses(ctx, frameData, info) {
@@ -1670,20 +1673,50 @@
         // URL State Management
         // ============================================
 
+        // Debounce timer for frame URL updates
+        let frameUrlUpdateTimer = null;
+
         /**
          * Update browser URL with current SLP and video URLs
+         * @param {boolean} includeFrame - Whether to include frame in hash
          */
-        function updateUrlState() {
+        function updateUrlState(includeFrame = false) {
             const params = new URLSearchParams();
             if (currentSlpUrl) params.set('slp', currentSlpUrl);
             if (currentVideoUrl) params.set('video', currentVideoUrl);
 
-            const newUrl = params.toString()
+            let newUrl = params.toString()
                 ? `${window.location.pathname}?${params.toString()}`
                 : window.location.pathname;
 
+            // Add frame to hash if requested and we have a valid frame
+            if (includeFrame) {
+                let frameIdx = 0;
+                if (fallbackMode && sortedLabeledFrames.length > 0) {
+                    frameIdx = sortedLabeledFrames[fallbackFrameIndex] ?? 0;
+                } else if (player) {
+                    frameIdx = player.frame;
+                }
+                if (frameIdx > 0) {
+                    newUrl += `#frame=${frameIdx}`;
+                }
+            }
+
             // Use replaceState to avoid polluting history
             window.history.replaceState({}, '', newUrl);
+        }
+
+        /**
+         * Debounced update of frame in URL hash
+         * Called on every frame change, but only updates URL after 500ms of no changes
+         */
+        function updateFrameInUrl() {
+            if (!currentSlpUrl) return; // Only update URL if we have a shareable SLP URL
+
+            clearTimeout(frameUrlUpdateTimer);
+            frameUrlUpdateTimer = setTimeout(() => {
+                updateUrlState(true);
+            }, 500);
         }
 
         /**
@@ -1691,9 +1724,11 @@
          */
         function getUrlParams() {
             const params = new URLSearchParams(window.location.search);
+            const hashParams = new URLSearchParams(window.location.hash.slice(1));
             return {
                 slp: params.get('slp'),
-                video: params.get('video')
+                video: params.get('video'),
+                frame: parseInt(hashParams.get('frame')) || 0
             };
         }
 
@@ -1722,8 +1757,11 @@
 
         /**
          * Load both SLP and video from URLs
+         * @param {string} slpUrl - URL to SLP file
+         * @param {string} videoUrl - URL to video file (optional)
+         * @param {number} frame - Frame index to seek to after loading (optional)
          */
-        async function loadFromUrls(slpUrl, videoUrl) {
+        async function loadFromUrls(slpUrl, videoUrl, frame = 0) {
             hideError();
             log(`Loading from URLs...`, 'info');
 
@@ -1738,8 +1776,23 @@
                     currentVideoUrl = videoUrl;
                 }
 
-                // Update URL state for sharing
-                updateUrlState();
+                // Seek to frame if specified
+                if (frame > 0) {
+                    if (player) {
+                        player.seek(frame);
+                        log(`Seeked to frame ${frame}`, 'info');
+                    } else if (fallbackMode && sortedLabeledFrames.length > 0) {
+                        // In fallback mode, find the closest labeled frame
+                        const idx = sortedLabeledFrames.findIndex(f => f >= frame);
+                        if (idx >= 0) {
+                            fallbackSeek(idx);
+                            log(`Seeked to labeled frame ${sortedLabeledFrames[idx]} (index ${idx})`, 'info');
+                        }
+                    }
+                }
+
+                // Update URL state for sharing (include frame if specified)
+                updateUrlState(frame > 0);
                 log('Loaded from URL - shareable link updated', 'success');
 
             } catch (err) {
@@ -1753,14 +1806,17 @@
          * Check URL params on page load and auto-load if present
          */
         async function checkUrlParamsOnLoad() {
-            const { slp, video } = getUrlParams();
+            const { slp, video, frame } = getUrlParams();
 
             if (slp) {
                 log(`Found URL params - slp: ${slp}`, 'info');
                 if (video) {
                     log(`Found URL params - video: ${video}`, 'info');
                 }
-                await loadFromUrls(slp, video);
+                if (frame > 0) {
+                    log(`Found URL params - frame: ${frame}`, 'info');
+                }
+                await loadFromUrls(slp, video, frame);
             }
         }
 
@@ -1876,6 +1932,7 @@
                         seekbarController?.update(frameIndex, totalFrames);
                         updateInstanceCount();
                         renderCacheVisualization();
+                        updateFrameInUrl();
                     },
                     renderOverlay: renderAllOverlays,
                     onLog: log
