@@ -45,8 +45,8 @@ jobs:
           # Fetch the base branch for comparison
           git fetch origin ${{ github.base_ref }} --depth=1
 
-          # Get list of changed files compared to base branch
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          # Get list of changed files compared to base branch (use .. instead of ... for shallow clones)
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }} HEAD)
 
           # Extract unique top-level directories that look like vibes (have index.html)
           VIBES=""
