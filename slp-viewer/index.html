@@ -366,6 +366,66 @@
             min-width: 100px;
         }
         .hotkey-desc { color: #aaa; }
+        .status-banner {
+            background: #2a2a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+        }
+        .status-banner #statusType {
+            font-weight: bold;
+            color: #667eea;
+        }
+        .status-banner #statusDetails {
+            color: #888;
+        }
+        .video-selector {
+            background: #2a2a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .video-selector label {
+            color: #ccc;
+            font-size: 14px;
+        }
+        .video-selector select {
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            flex: 1;
+            max-width: 400px;
+        }
+        #videoInfo {
+            color: #888;
+            font-size: 12px;
+        }
+        .seekbar-marks {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .seekbar-mark {
+            position: absolute;
+            width: 2px;
+            height: 100%;
+            top: 0;
+        }
+        .mark-user { background: #4ade80; }
+        .mark-predicted { background: #667eea; }
+        .mark-both {
+            background: linear-gradient(to bottom, #4ade80 50%, #667eea 50%);
+        }
         @media (max-width: 600px) {
             body { padding: 10px; }
             .controls { padding: 8px 10px; }
@@ -393,6 +453,17 @@
 
         <div class="error-msg" id="errorMsg"></div>
 
+        <div class="status-banner" id="statusBanner" style="display: none;">
+            <span id="statusType"></span>
+            <span id="statusDetails"></span>
+        </div>
+
+        <div class="video-selector" id="videoSelectorContainer" style="display: none;">
+            <label>Video:</label>
+            <select id="videoSelect"></select>
+            <span id="videoInfo"></span>
+        </div>
+
         <div class="canvas-container" id="canvasContainer" style="display: none;">
             <canvas id="canvas"></canvas>
         </div>
@@ -400,6 +471,7 @@
 
         <div class="seekbar-container" id="seekbarContainer" style="display: none;">
             <div class="seekbar" id="seekbar">
+                <div class="seekbar-marks" id="seekbarMarks"></div>
                 <div class="seekbar-progress" id="seekbarProgress"></div>
                 <div class="seekbar-thumb" id="seekbarThumb"></div>
             </div>
@@ -559,7 +631,9 @@
         // State
         // ============================================
         let poseData = null;       // Loaded SLP data
-        let frameIndexMap = null;  // Map frameIdx -> frame data
+        let frameIndexMap = null;  // Map "videoIdx:frameIdx" -> frame data
+        let labeledFramesByVideo = null; // Map videoIdx -> Set of labeled frame indices
+        let currentVideoIdx = 0;   // Currently selected video index
         let player = null;         // VideoPlayer instance
         let seekbarController = null; // SeekbarController instance
 
@@ -624,16 +698,36 @@
         function handleSlpLoaded(data) {
             poseData = data;
 
-            // Build frame index map for fast lookup
+            // Reset video selection
+            currentVideoIdx = 0;
+
+            // Build composite frame index map: "videoIdx:frameIdx" -> frame
             frameIndexMap = new Map();
             for (const frame of data.frames) {
-                frameIndexMap.set(frame.frameIdx, frame);
+                const key = `${frame.videoIdx ?? 0}:${frame.frameIdx}`;
+                frameIndexMap.set(key, frame);
+            }
+
+            // Build per-video labeled frame sets for timeline marks
+            labeledFramesByVideo = new Map();
+            for (const frame of data.frames) {
+                const vidIdx = frame.videoIdx ?? 0;
+                if (!labeledFramesByVideo.has(vidIdx)) {
+                    labeledFramesByVideo.set(vidIdx, new Set());
+                }
+                labeledFramesByVideo.get(vidIdx).add(frame.frameIdx);
             }
 
             log(`Loaded ${data.frames.length} frames of pose data`, 'success');
 
             // Update track legend
             updateTrackLegend();
+
+            // Update video selector
+            updateVideoSelector();
+
+            // Update status banner
+            updateStatusBanner();
 
             // Enable video loading
             loadVideoBtn.disabled = false;
@@ -673,6 +767,146 @@
                 }
             }
         }
+
+        function updateVideoSelector() {
+            const container = document.getElementById('videoSelectorContainer');
+            const select = document.getElementById('videoSelect');
+            const videos = poseData?.videos || [];
+
+            if (videos.length <= 1) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'flex';
+            select.innerHTML = videos.map((v, i) => {
+                // For embedded videos, show "Video N" since filename is just "."
+                let name;
+                if (v.embedded || v.filename === '.') {
+                    name = `Video ${i}`;
+                } else {
+                    name = v.filename?.split(/[/\\]/).pop() || `Video ${i}`;
+                }
+                const labelCount = labeledFramesByVideo.get(i)?.size || 0;
+                return `<option value="${i}">${name} (${labelCount} labeled)</option>`;
+            }).join('');
+
+            select.value = currentVideoIdx;
+
+            // Update info
+            const currentVideo = videos[currentVideoIdx];
+            const info = document.getElementById('videoInfo');
+            if (currentVideo?.shape) {
+                const [frames, h, w] = currentVideo.shape;
+                info.textContent = `${w}×${h}, ${frames} frames`;
+            } else {
+                info.textContent = '';
+            }
+        }
+
+        function updateStatusBanner() {
+            const banner = document.getElementById('statusBanner');
+            const typeEl = document.getElementById('statusType');
+            const detailsEl = document.getElementById('statusDetails');
+
+            if (!poseData) {
+                banner.style.display = 'none';
+                return;
+            }
+
+            banner.style.display = 'flex';
+
+            // Detect type
+            const videos = poseData.videos || [];
+            const hasEmbedded = videos.some(v => v.embedded);
+            const frames = poseData.frames;
+            const hasUser = frames.some(f => f.instances.some(i => i.type === 'user'));
+            const hasPred = frames.some(f => f.instances.some(i => i.type === 'predicted'));
+
+            let type, icon;
+            if (hasEmbedded) {
+                type = 'Package';
+                icon = '📦';
+            } else if (!hasUser && hasPred) {
+                type = 'Predictions';
+                icon = '📊';
+            } else {
+                type = 'Labeling Project';
+                icon = '📁';
+            }
+
+            typeEl.textContent = `${icon} ${type}`;
+
+            // Build details
+            const parts = [];
+            parts.push(`${videos.length} video${videos.length !== 1 ? 's' : ''}`);
+            parts.push(`${frames.length} labeled frames`);
+            if (poseData.tracks.length > 0) {
+                parts.push(`${poseData.tracks.length} tracks`);
+            }
+
+            detailsEl.textContent = parts.join(' • ');
+        }
+
+        function renderTimelineMarks() {
+            const container = document.getElementById('seekbarMarks');
+            if (!container || !poseData) {
+                if (container) container.innerHTML = '';
+                return;
+            }
+
+            const totalFrames = player?.frames || 0;
+            if (totalFrames === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const fragments = [];
+            const labeledSet = labeledFramesByVideo.get(currentVideoIdx) || new Set();
+
+            for (const frameIdx of labeledSet) {
+                const key = `${currentVideoIdx}:${frameIdx}`;
+                const frame = frameIndexMap.get(key);
+                if (!frame) continue;
+
+                const left = (frameIdx / totalFrames) * 100;
+
+                // Determine mark type
+                const hasUser = frame.instances.some(i => i.type === 'user');
+                const hasPred = frame.instances.some(i => i.type === 'predicted');
+                const markClass = hasUser && hasPred ? 'mark-both' :
+                                  hasUser ? 'mark-user' : 'mark-predicted';
+
+                fragments.push(`<div class="seekbar-mark ${markClass}" style="left:${left}%"></div>`);
+            }
+
+            container.innerHTML = fragments.join('');
+        }
+
+        // Video selector change handler
+        document.getElementById('videoSelect').addEventListener('change', (e) => {
+            currentVideoIdx = parseInt(e.target.value);
+
+            // Update video info display
+            const videos = poseData?.videos || [];
+            const currentVideo = videos[currentVideoIdx];
+            const info = document.getElementById('videoInfo');
+            if (currentVideo?.shape) {
+                const [frames, h, w] = currentVideo.shape;
+                info.textContent = `${w}×${h}, ${frames} frames`;
+            } else {
+                info.textContent = '';
+            }
+
+            // Update timeline marks for new video
+            renderTimelineMarks();
+
+            // Re-render current frame with new video's poses
+            player?.render();
+            updateInstanceCount();
+
+            log(`Switched to video ${currentVideoIdx}: ${currentVideo?.filename?.split(/[/\\]/).pop() || 'Unknown'}`, 'info');
+        });
 
         // ============================================
         // UI Helpers
@@ -931,6 +1165,9 @@
                 cacheVizContainer.style.display = 'block';
                 renderCacheVisualization();
 
+                // Render timeline marks for labeled frames
+                renderTimelineMarks();
+
                 hideLoading();
 
             } catch (err) {
@@ -980,7 +1217,9 @@
             if (!poseData) return;
             if (!document.getElementById('showPoses').checked) return;
 
-            const frameData = frameIndexMap.get(info.frameIndex);
+            // Use composite key for multi-video support
+            const key = `${currentVideoIdx}:${info.frameIndex}`;
+            const frameData = frameIndexMap.get(key);
             if (!frameData) return;
 
             const skeleton = poseData.skeleton;
@@ -1067,9 +1306,12 @@
 
         function updateInstanceCount() {
             if (!player || !frameIndexMap) return;
-            const frameData = frameIndexMap.get(player.frame);
+            const key = `${currentVideoIdx}:${player.frame}`;
+            const frameData = frameIndexMap.get(key);
             if (frameData) {
                 document.getElementById('metricInstances').textContent = frameData.instances.length;
+            } else {
+                document.getElementById('metricInstances').textContent = '0';
             }
         }
 

@@ -81,6 +81,35 @@ function parseTracks(tracksData) {
     });
 }
 
+// Parse all videos from videos_json dataset
+function parseVideos(videosDataset) {
+    if (!videosDataset || videosDataset.shape[0] === 0) return [];
+
+    const videos = [];
+    for (let i = 0; i < videosDataset.shape[0]; i++) {
+        try {
+            const videoJson = JSON.parse(videosDataset.value[i]);
+            const backend = videoJson.backend || {};
+
+            // Embedded videos have a dataset path (e.g., 'video0/video') and filename '.'
+            const isEmbedded = !!backend.dataset || backend.filename === '.';
+
+            videos.push({
+                index: i,
+                filename: backend.filename || videoJson.filename || null,
+                backendType: isEmbedded ? 'HDF5Video' : 'MediaVideo',
+                shape: backend.shape || null,  // [frames, height, width, channels]
+                grayscale: backend.grayscale || false,
+                embedded: isEmbedded,
+                dataset: backend.dataset || null,  // HDF5 dataset path for embedded videos
+            });
+        } catch (e) {
+            log(`Failed to parse video ${i}: ${e.message}`, 'warn');
+        }
+    }
+    return videos;
+}
+
 // Load and parse SLP file
 async function loadSlpFile(h5file, filename, fileSize, source) {
     setLoading('Parsing SLP metadata...');
@@ -224,16 +253,17 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         throw new Error('No points data found in SLP file');
     }
 
-    // Read video path
+    // Read all videos
+    let videos = [];
     let videoPath = null;
     try {
         const videosDataset = h5file.get('videos_json');
-        if (videosDataset && videosDataset.shape[0] > 0) {
-            const videoJson = JSON.parse(videosDataset.value[0]);
-            videoPath = videoJson.backend?.filename || videoJson.filename;
-        }
+        videos = parseVideos(videosDataset);
+        // Keep videoPath for backward compatibility (first video)
+        videoPath = videos[0]?.filename || null;
+        log(`Videos: ${videos.length}`, 'info');
     } catch (e) {
-        log(`Could not read video path: ${e.message}`, 'warn');
+        log(`Could not read videos: ${e.message}`, 'warn');
     }
 
     // Build frame data structure
@@ -243,6 +273,7 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
 
     for (let i = 0; i < framesData.frame_id.length; i++) {
         const frameIdx = Number(framesData.frame_idx[i]);
+        const videoIdx = Number(framesData.video[i]);  // Video index for multi-video support
         const instStart = Number(framesData.instance_id_start[i]);
         const instEnd = Number(framesData.instance_id_end[i]);
 
@@ -288,6 +319,7 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         if (instances.length > 0) {
             frames.push({
                 frameIdx,
+                videoIdx,
                 instances
             });
         }
@@ -302,7 +334,8 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         skeleton,
         tracks,
         frames,
-        videoPath
+        videos,           // All video metadata
+        videoPath         // First video path for backward compatibility
     };
 }
 
