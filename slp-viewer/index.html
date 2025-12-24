@@ -685,6 +685,9 @@
     <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
     <!-- Video player module -->
     <script src="./video-player.js"></script>
+    <!-- Video backend abstraction for embedded videos -->
+    <script src="./lru-cache.js"></script>
+    <script src="./video-backend.js"></script>
 
     <script>
         // ============================================
@@ -754,12 +757,24 @@
         let fallbackVideoWidth = 640;       // Video dimensions from SLP metadata
         let fallbackVideoHeight = 480;
 
+        // Embedded video state (pkg.slp files)
+        let embeddedMode = false;           // True when viewing embedded video frames
+        let frameWorker = null;             // Web Worker for HDF5 frame extraction
+        let frameWorkerReady = false;       // Whether frame worker is initialized
+        let embeddedVideos = new Map();     // videoIdx -> EmbeddedVideoInfo from frame worker
+        let videoBackends = new Map();      // videoIdx -> HDF5VideoBackend instance
+        let currentBackend = null;          // Current active HDF5VideoBackend
+        let embeddedFrameIndex = 0;         // Current embedded frame index
+
         // URL state - track loaded URLs for sharing
         let currentSlpUrl = null;
         let currentVideoUrl = null;
 
         // Video resolution state - track resolved video files
         let videoSources = new Map();  // videoIndex -> { type: 'file'|'url', file?, url? }
+
+        // Track pending SLP source for embedded video loading
+        let pendingSlpSource = null;  // { type: 'url', url } or { type: 'file', file }
 
         // UI Elements
         let canvas = document.getElementById('canvas');
@@ -852,6 +867,22 @@
             // Show video resolution panel for files with external videos
             showVideoResolutionPanel();
 
+            // Check for embedded videos and load them
+            const hasEmbeddedVideos = (data.videos || []).some(v => v.embedded);
+            if (hasEmbeddedVideos && pendingSlpSource) {
+                // Initialize frame worker if not ready
+                if (!frameWorker) {
+                    initFrameWorker();
+                }
+
+                // Load embedded videos from the source
+                if (pendingSlpSource.type === 'url') {
+                    loadEmbeddedVideosFromSlp(pendingSlpSource.url);
+                } else if (pendingSlpSource.type === 'file') {
+                    loadEmbeddedVideosFromFile(pendingSlpSource.file);
+                }
+            }
+
             // Enable video loading and fallback mode
             loadVideoBtn.disabled = false;
             document.getElementById('viewPosesBtn').disabled = false;
@@ -864,6 +895,388 @@
             if (data.videoPath) {
                 log(`Video reference: ${data.videoPath}`, 'info');
             }
+        }
+
+        // ============================================
+        // Frame Worker (for embedded videos)
+        // ============================================
+        function initFrameWorker() {
+            if (frameWorker) {
+                frameWorker.terminate();
+            }
+
+            frameWorker = new Worker('./frame-worker.js');
+            frameWorkerReady = false;
+
+            frameWorker.onmessage = (e) => {
+                const { type, ...data } = e.data;
+
+                if (type === 'ready') {
+                    frameWorkerReady = true;
+                    log('Frame worker ready', 'success');
+                } else if (type === 'log') {
+                    log(data.message, data.level);
+                } else if (type === 'loaded') {
+                    handleFrameWorkerLoaded(data);
+                } else if (type === 'error') {
+                    log(`Frame worker error: ${data.error}`, 'error');
+                }
+            };
+
+            frameWorker.onerror = (e) => {
+                log(`Frame worker error: ${e.message}`, 'error');
+            };
+        }
+
+        function handleFrameWorkerLoaded(data) {
+            const { videos, filename, streaming } = data;
+
+            log(`Embedded videos: ${videos.length}`, 'info');
+            if (streaming) {
+                log('Streaming mode enabled (range requests)', 'success');
+            }
+
+            // Store embedded video info
+            embeddedVideos.clear();
+            videoBackends.clear();
+
+            for (const video of videos) {
+                embeddedVideos.set(video.idx, video);
+
+                // Create backend for each embedded video
+                const backend = new HDF5VideoBackend(frameWorker, video, {
+                    cacheSize: parseInt(document.getElementById('cacheSize').value) || 60
+                });
+                videoBackends.set(video.idx, backend);
+            }
+
+            // Check if current video is embedded and auto-start
+            if (embeddedVideos.has(currentVideoIdx)) {
+                enterEmbeddedMode();
+            }
+
+            // Update video selector to show embedded status
+            updateVideoSelector();
+        }
+
+        async function loadEmbeddedVideosFromSlp(slpUrl) {
+            if (!frameWorkerReady) {
+                // Wait for worker to be ready
+                await new Promise((resolve) => {
+                    const checkReady = () => {
+                        if (frameWorkerReady) resolve();
+                        else setTimeout(checkReady, 50);
+                    };
+                    checkReady();
+                });
+            }
+
+            frameWorker.postMessage({ type: 'loadUrl', url: slpUrl });
+        }
+
+        async function loadEmbeddedVideosFromFile(file) {
+            if (!frameWorkerReady) {
+                await new Promise((resolve) => {
+                    const checkReady = () => {
+                        if (frameWorkerReady) resolve();
+                        else setTimeout(checkReady, 50);
+                    };
+                    checkReady();
+                });
+            }
+
+            frameWorker.postMessage({ type: 'loadFile', file: file });
+        }
+
+        // ============================================
+        // Embedded Video Mode
+        // ============================================
+        function enterEmbeddedMode() {
+            const backend = videoBackends.get(currentVideoIdx);
+            if (!backend) {
+                log(`No embedded video backend for video ${currentVideoIdx}`, 'error');
+                return;
+            }
+
+            embeddedMode = true;
+            currentBackend = backend;
+            embeddedFrameIndex = 0;
+
+            // Clean up video player if active
+            if (player) {
+                player.destroy();
+                player = null;
+            }
+            if (seekbarController) {
+                seekbarController.destroy();
+                seekbarController = null;
+            }
+            exitFallbackMode();
+
+            // Replace canvas
+            const oldCanvas = document.getElementById('canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'canvas';
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            canvas = newCanvas;
+
+            // Get video dimensions
+            const videoInfo = embeddedVideos.get(currentVideoIdx);
+            if (videoInfo) {
+                fallbackVideoWidth = videoInfo.width || 640;
+                fallbackVideoHeight = videoInfo.height || 480;
+            }
+
+            // Show UI
+            canvasContainer.style.display = 'block';
+            resizeHandle.style.display = 'flex';
+            seekbarContainer.style.display = 'block';
+            document.getElementById('infoRow').style.display = 'flex';
+            document.getElementById('fallbackIndicator').style.display = 'flex';
+            document.getElementById('fallbackIndicator').innerHTML = '📦 Embedded video';
+            cacheVizContainer.style.display = 'none';
+
+            // Hide resolution panel
+            document.getElementById('videoResolutionPanel').style.display = 'none';
+
+            // Setup canvas
+            setupEmbeddedCanvas();
+
+            // Render first frame
+            renderEmbeddedFrame();
+
+            // Update metrics
+            document.getElementById('metricVideo').textContent = `Embedded (${videoInfo?.key || 'video' + currentVideoIdx})`;
+            document.getElementById('metricTotal').textContent = backend.frameCount;
+            document.getElementById('metricFrame').textContent = 1;
+
+            // Render timeline marks
+            renderEmbeddedTimelineMarks();
+
+            log(`Embedded mode: ${fallbackVideoWidth}x${fallbackVideoHeight}, ${backend.frameCount} frames`, 'success');
+        }
+
+        function exitEmbeddedMode() {
+            embeddedMode = false;
+            currentBackend = null;
+            document.getElementById('fallbackIndicator').style.display = 'none';
+        }
+
+        function setupEmbeddedCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const containerRect = canvasContainer.getBoundingClientRect();
+
+            const aspectRatio = fallbackVideoWidth / fallbackVideoHeight;
+            let displayWidth = containerRect.width;
+            let displayHeight = containerRect.height;
+
+            if (displayWidth / displayHeight > aspectRatio) {
+                displayWidth = displayHeight * aspectRatio;
+            } else {
+                displayHeight = displayWidth / aspectRatio;
+            }
+
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+        }
+
+        async function renderEmbeddedFrame() {
+            if (!embeddedMode || !currentBackend) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const ctx = canvas.getContext('2d');
+            const displayWidth = canvas.width / dpr;
+            const displayHeight = canvas.height / dpr;
+
+            // Clear canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Get frame from backend
+            const frameResult = await currentBackend.getFrame(embeddedFrameIndex);
+
+            if (frameResult && frameResult.bitmap) {
+                // Calculate scale and centering
+                const scale = Math.min(displayWidth / fallbackVideoWidth, displayHeight / fallbackVideoHeight);
+                const offsetX = (displayWidth - fallbackVideoWidth * scale) / 2;
+                const offsetY = (displayHeight - fallbackVideoHeight * scale) / 2;
+
+                // Draw frame
+                ctx.save();
+                ctx.scale(dpr, dpr);
+                ctx.imageSmoothingEnabled = scale < 2;
+                ctx.drawImage(
+                    frameResult.bitmap,
+                    offsetX, offsetY,
+                    fallbackVideoWidth * scale,
+                    fallbackVideoHeight * scale
+                );
+                ctx.restore();
+
+                // Create info object for overlays
+                const info = {
+                    frameIndex: frameResult.displayFrame,
+                    totalFrames: currentBackend.frameCount,
+                    drawX: 0,
+                    drawY: 0,
+                    offsetX: offsetX,
+                    offsetY: offsetY,
+                    effectiveScale: scale,
+                    dpr: dpr
+                };
+
+                // Render poses
+                const key = `${currentVideoIdx}:${frameResult.displayFrame}`;
+                const frameData = frameIndexMap.get(key);
+                if (frameData && document.getElementById('showPoses').checked) {
+                    renderEmbeddedPoses(ctx, frameData, info);
+                }
+
+                // Render frame index overlay
+                if (document.getElementById('showFrameIndex').checked) {
+                    renderEmbeddedFrameIndex(ctx, info);
+                }
+            }
+
+            // Update seekbar
+            updateEmbeddedSeekbar();
+
+            // Update metrics
+            document.getElementById('metricFrame').textContent = embeddedFrameIndex + 1;
+            if (frameResult) {
+                const key = `${currentVideoIdx}:${frameResult.displayFrame}`;
+                const frameData = frameIndexMap.get(key);
+                document.getElementById('metricInstances').textContent = frameData?.instances.length || 0;
+            }
+
+            // Update URL
+            updateFrameInUrl();
+        }
+
+        function renderEmbeddedPoses(ctx, frameData, info) {
+            const skeleton = poseData.skeleton;
+            const showEdges = document.getElementById('showEdges').checked;
+            const showNodes = document.getElementById('showNodes').checked;
+            const nodeSize = parseInt(document.getElementById('nodeSize').value);
+            const edgeWidth = parseInt(document.getElementById('edgeWidth').value);
+
+            const { offsetX, offsetY, effectiveScale, dpr } = info;
+
+            ctx.save();
+            ctx.scale(dpr, dpr);
+
+            for (const inst of frameData.instances) {
+                const color = getTrackColor(inst.trackIdx);
+                const points = inst.points;
+
+                if (showEdges) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = edgeWidth;
+                    ctx.lineCap = 'round';
+
+                    for (const [srcIdx, dstIdx] of skeleton.edges) {
+                        const srcPt = points[srcIdx];
+                        const dstPt = points[dstIdx];
+                        if (!srcPt || !dstPt) continue;
+
+                        const x1 = offsetX + srcPt[0] * effectiveScale;
+                        const y1 = offsetY + srcPt[1] * effectiveScale;
+                        const x2 = offsetX + dstPt[0] * effectiveScale;
+                        const y2 = offsetY + dstPt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+
+                if (showNodes) {
+                    ctx.fillStyle = color;
+
+                    for (const pt of points) {
+                        if (!pt) continue;
+
+                        const cx = offsetX + pt[0] * effectiveScale;
+                        const cy = offsetY + pt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, nodeSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function renderEmbeddedFrameIndex(ctx, info) {
+            const displayFrame = currentBackend ? currentBackend.getDisplayFrame(embeddedFrameIndex) : embeddedFrameIndex;
+            const text = `Frame ${displayFrame} (${embeddedFrameIndex + 1}/${currentBackend?.frameCount || 0})`;
+            const padding = 8;
+            const fontSize = 14;
+
+            ctx.save();
+            ctx.scale(info.dpr, info.dpr);
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, 10, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, 10 + padding + fontSize - 2);
+
+            ctx.restore();
+        }
+
+        function updateEmbeddedSeekbar() {
+            if (!currentBackend) return;
+            const progress = currentBackend.frameCount > 1
+                ? (embeddedFrameIndex / (currentBackend.frameCount - 1)) * 100
+                : 0;
+            seekbarProgress.style.width = progress + '%';
+            seekbarThumb.style.left = progress + '%';
+        }
+
+        function renderEmbeddedTimelineMarks() {
+            const container = document.getElementById('seekbarMarks');
+            if (!container || !poseData || !currentBackend) {
+                if (container) container.innerHTML = '';
+                return;
+            }
+
+            const fragments = [];
+            const totalFrames = currentBackend.frameCount;
+
+            for (let i = 0; i < totalFrames; i++) {
+                const displayFrame = currentBackend.getDisplayFrame(i);
+                const key = `${currentVideoIdx}:${displayFrame}`;
+                const frame = frameIndexMap.get(key);
+                if (!frame) continue;
+
+                const left = (i / (totalFrames - 1 || 1)) * 100;
+
+                const hasUser = frame.instances.some(inst => inst.type === 'user');
+                const hasPred = frame.instances.some(inst => inst.type === 'predicted');
+                const markClass = hasUser && hasPred ? 'mark-both' :
+                                  hasUser ? 'mark-user' : 'mark-predicted';
+
+                fragments.push(`<div class="seekbar-mark ${markClass}" style="left:${left}%"></div>`);
+            }
+
+            container.innerHTML = fragments.join('');
+        }
+
+        function embeddedSeek(index) {
+            if (!embeddedMode || !currentBackend) return;
+            embeddedFrameIndex = Math.max(0, Math.min(currentBackend.frameCount - 1, index));
+            renderEmbeddedFrame();
         }
 
         function updateTrackLegend() {
@@ -1046,9 +1459,11 @@
 
                 // Buttons
                 let buttons = '';
-                if (!isEmbedded && !isResolved) {
+                if (isEmbedded) {
+                    buttons = `<button class="play-embedded-btn" data-index="${i}" style="background:#60a5fa;">▶ Play</button>`;
+                } else if (!isResolved) {
                     buttons = `<button class="select-video-btn" data-index="${i}">Select</button>`;
-                } else if (!isEmbedded && isResolved) {
+                } else {
                     buttons = `<button class="play-video-btn" data-index="${i}" style="background:#4ade80;">▶ Play</button>`;
                 }
 
@@ -1076,6 +1491,18 @@
                         currentVideoIdx = index;
                         document.getElementById('videoResolutionPanel').style.display = 'none';
                         await initVideoPlayer(source.file, source.file.name);
+                    }
+                });
+            });
+
+            // Add click handlers for embedded play buttons
+            videoList.querySelectorAll('.play-embedded-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    if (videoBackends.has(index)) {
+                        currentVideoIdx = index;
+                        document.getElementById('videoResolutionPanel').style.display = 'none';
+                        enterEmbeddedMode();
                     }
                 });
             });
@@ -1266,55 +1693,54 @@
                 info.textContent = '';
             }
 
-            // Check if switching to a different video requires loading a new video file
+            // Determine target mode based on new video
             const source = videoSources.get(newVideoIdx);
+            const isNewVideoEmbedded = videoBackends.has(newVideoIdx);
 
-            if (fallbackMode) {
-                // If we have a resolved source for the new video, load it
-                if (source && source.type === 'file') {
-                    currentVideoIdx = newVideoIdx;
-                    exitFallbackMode();
-                    await initVideoPlayer(source.file, source.file.name);
-                    return;
-                }
+            // Exit current mode if needed
+            if (fallbackMode && (source || isNewVideoEmbedded)) {
+                exitFallbackMode();
+            }
+            if (embeddedMode && !isNewVideoEmbedded) {
+                exitEmbeddedMode();
+            }
 
-                // Otherwise stay in fallback mode with new video's poses
-                currentVideoIdx = newVideoIdx;
+            currentVideoIdx = newVideoIdx;
 
-                // Update video dimensions from new video
-                if (newVideo?.shape) {
-                    fallbackVideoHeight = newVideo.shape[1] || 480;
-                    fallbackVideoWidth = newVideo.shape[2] || 640;
-                }
+            // Enter appropriate mode for new video
+            if (isNewVideoEmbedded) {
+                // Switch to embedded video
+                if (embeddedMode) {
+                    // Already in embedded mode - just switch backends
+                    currentBackend = videoBackends.get(newVideoIdx);
+                    embeddedFrameIndex = 0;
 
-                // Update sorted labeled frames for new video
-                updateSortedLabeledFrames();
-                fallbackFrameIndex = 0;
+                    // Update video dimensions
+                    const videoInfo = embeddedVideos.get(newVideoIdx);
+                    if (videoInfo) {
+                        fallbackVideoWidth = videoInfo.width || 640;
+                        fallbackVideoHeight = videoInfo.height || 480;
+                    }
 
-                // Re-setup canvas and render
-                setupFallbackCanvas();
-                renderFallbackFrame();
-                renderFallbackTimelineMarks();
+                    // Re-setup and render
+                    setupEmbeddedCanvas();
+                    renderEmbeddedFrame();
+                    renderEmbeddedTimelineMarks();
 
-                // Update total frame count
-                document.getElementById('metricTotal').textContent = sortedLabeledFrames.length;
-            } else {
-                // In video playback mode
-                if (source && source.type === 'file' && newVideoIdx !== currentVideoIdx) {
-                    // Load the new video file
-                    currentVideoIdx = newVideoIdx;
-                    await initVideoPlayer(source.file, source.file.name);
-                } else if (!source && !newVideo?.embedded) {
-                    // No source for this video - enter fallback mode
-                    currentVideoIdx = newVideoIdx;
-                    enterFallbackMode();
+                    // Update metrics
+                    document.getElementById('metricVideo').textContent = `Embedded (${videoInfo?.key || 'video' + newVideoIdx})`;
+                    document.getElementById('metricTotal').textContent = currentBackend.frameCount;
+                    document.getElementById('metricFrame').textContent = 1;
                 } else {
-                    // Same video or embedded - just update the poses
-                    currentVideoIdx = newVideoIdx;
-                    renderTimelineMarks();
-                    player?.render();
-                    updateInstanceCount();
+                    // Enter embedded mode
+                    enterEmbeddedMode();
                 }
+            } else if (source && source.type === 'file') {
+                // Load resolved external video
+                await initVideoPlayer(source.file, source.file.name);
+            } else {
+                // No source available - enter fallback mode
+                enterFallbackMode();
             }
 
             const videoName = newVideo?.embedded ? `Video ${newVideoIdx}` :
@@ -1620,6 +2046,7 @@
 
         // Fallback seekbar interaction
         let fallbackSeeking = false;
+        let embeddedSeeking = false;
 
         function handleFallbackSeekbarClick(e) {
             if (!fallbackMode || sortedLabeledFrames.length === 0) return;
@@ -1631,21 +2058,37 @@
             fallbackSeek(idx);
         }
 
+        function handleEmbeddedSeekbarClick(e) {
+            if (!embeddedMode || !currentBackend) return;
+
+            const rect = seekbar.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, x / rect.width));
+            const idx = Math.round(pct * (currentBackend.frameCount - 1));
+            embeddedSeek(idx);
+        }
+
         seekbar.addEventListener('mousedown', (e) => {
             if (fallbackMode) {
                 fallbackSeeking = true;
                 handleFallbackSeekbarClick(e);
+            } else if (embeddedMode) {
+                embeddedSeeking = true;
+                handleEmbeddedSeekbarClick(e);
             }
         });
 
         document.addEventListener('mousemove', (e) => {
             if (fallbackSeeking && fallbackMode) {
                 handleFallbackSeekbarClick(e);
+            } else if (embeddedSeeking && embeddedMode) {
+                handleEmbeddedSeekbarClick(e);
             }
         });
 
         document.addEventListener('mouseup', () => {
             fallbackSeeking = false;
+            embeddedSeeking = false;
         });
 
         // ============================================
@@ -1737,6 +2180,7 @@
          */
         function loadSlpFromUrl(url) {
             return new Promise((resolve, reject) => {
+                pendingSlpSource = { type: 'url', url };
                 initSlpWorker();
                 showLoading('Loading SLP from URL...');
 
@@ -1831,6 +2275,9 @@
             currentSlpUrl = null;
             currentVideoUrl = null;
             updateUrlState();
+
+            // Track the pending source for embedded video loading
+            pendingSlpSource = { type: 'file', file };
 
             initSlpWorker();
             showLoading('Initializing h5wasm...');
@@ -2380,6 +2827,28 @@
                     const cb = document.getElementById('showPoses');
                     cb.checked = !cb.checked;
                     renderFallbackFrame();
+                }
+                return;
+            }
+
+            // Handle embedded video mode navigation
+            if (embeddedMode && currentBackend) {
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    embeddedSeek(embeddedFrameIndex - (e.ctrlKey ? 10 : 1));
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    embeddedSeek(embeddedFrameIndex + (e.ctrlKey ? 10 : 1));
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    embeddedSeek(0);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    embeddedSeek(currentBackend.frameCount - 1);
+                } else if (e.key === 'p' || e.key === 'P') {
+                    const cb = document.getElementById('showPoses');
+                    cb.checked = !cb.checked;
+                    renderEmbeddedFrame();
                 }
                 return;
             }
