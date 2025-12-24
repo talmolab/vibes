@@ -426,6 +426,28 @@
         .mark-both {
             background: linear-gradient(to bottom, #4ade80 50%, #667eea 50%);
         }
+        .fallback-indicator {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #fbbf24;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .view-poses-btn {
+            background: #4a4a4a;
+            color: #fbbf24;
+            border: 1px solid #fbbf24;
+        }
+        .view-poses-btn:hover {
+            background: #5a5a5a;
+        }
         @media (max-width: 600px) {
             body { padding: 10px; }
             .controls { padding: 8px 10px; }
@@ -444,6 +466,7 @@
             <button id="loadDemoBtn">Load Demo</button>
             <button id="loadSlpBtn">Load SLP File</button>
             <button id="loadVideoBtn" disabled>Load Video</button>
+            <button id="viewPosesBtn" class="view-poses-btn" disabled>View Poses Only</button>
         </div>
 
         <div class="loading" id="loading">
@@ -466,6 +489,9 @@
 
         <div class="canvas-container" id="canvasContainer" style="display: none;">
             <canvas id="canvas"></canvas>
+            <div class="fallback-indicator" id="fallbackIndicator" style="display: none;">
+                📷 Poses only (no video)
+            </div>
         </div>
         <div class="resize-handle" id="resizeHandle" style="display: none;"></div>
 
@@ -637,12 +663,19 @@
         let player = null;         // VideoPlayer instance
         let seekbarController = null; // SeekbarController instance
 
+        // Fallback mode state (view poses without video)
+        let fallbackMode = false;           // True when viewing without video
+        let fallbackFrameIndex = 0;         // Current index in sortedLabeledFrames
+        let sortedLabeledFrames = [];       // Sorted array of labeled frame indices for current video
+        let fallbackVideoWidth = 640;       // Video dimensions from SLP metadata
+        let fallbackVideoHeight = 480;
+
         // URL state - track loaded URLs for sharing
         let currentSlpUrl = null;
         let currentVideoUrl = null;
 
         // UI Elements
-        const canvas = document.getElementById('canvas');
+        let canvas = document.getElementById('canvas');
         const canvasContainer = document.getElementById('canvasContainer');
         const resizeHandle = document.getElementById('resizeHandle');
         const seekbar = document.getElementById('seekbar');
@@ -729,8 +762,9 @@
             // Update status banner
             updateStatusBanner();
 
-            // Enable video loading
+            // Enable video loading and fallback mode
             loadVideoBtn.disabled = false;
+            document.getElementById('viewPosesBtn').disabled = false;
 
             // Update metrics
             document.getElementById('metricSlp').textContent = data.filename;
@@ -898,14 +932,357 @@
                 info.textContent = '';
             }
 
-            // Update timeline marks for new video
-            renderTimelineMarks();
+            if (fallbackMode) {
+                // Update video dimensions from new video
+                if (currentVideo?.shape) {
+                    fallbackVideoHeight = currentVideo.shape[1] || 480;
+                    fallbackVideoWidth = currentVideo.shape[2] || 640;
+                }
 
-            // Re-render current frame with new video's poses
-            player?.render();
-            updateInstanceCount();
+                // Update sorted labeled frames for new video
+                updateSortedLabeledFrames();
+                fallbackFrameIndex = 0;
+
+                // Re-setup canvas and render
+                setupFallbackCanvas();
+                renderFallbackFrame();
+                renderFallbackTimelineMarks();
+
+                // Update total frame count
+                document.getElementById('metricTotal').textContent = sortedLabeledFrames.length;
+            } else {
+                // Update timeline marks for new video
+                renderTimelineMarks();
+
+                // Re-render current frame with new video's poses
+                player?.render();
+                updateInstanceCount();
+            }
 
             log(`Switched to video ${currentVideoIdx}: ${currentVideo?.filename?.split(/[/\\]/).pop() || 'Unknown'}`, 'info');
+        });
+
+        // ============================================
+        // Fallback Mode (View Poses Only)
+        // ============================================
+
+        function enterFallbackMode() {
+            if (!poseData) return;
+
+            fallbackMode = true;
+            fallbackFrameIndex = 0;
+
+            // Get video dimensions from SLP metadata
+            const videos = poseData.videos || [];
+            const currentVideo = videos[currentVideoIdx];
+            if (currentVideo?.shape) {
+                // shape is [frames, height, width, channels]
+                fallbackVideoHeight = currentVideo.shape[1] || 480;
+                fallbackVideoWidth = currentVideo.shape[2] || 640;
+            } else {
+                // Default dimensions
+                fallbackVideoWidth = 640;
+                fallbackVideoHeight = 480;
+            }
+
+            // Build sorted list of labeled frames for current video
+            updateSortedLabeledFrames();
+
+            // Clean up any existing video player
+            if (player) {
+                player.destroy();
+                player = null;
+            }
+            if (seekbarController) {
+                seekbarController.destroy();
+                seekbarController = null;
+            }
+
+            // Replace canvas with a fresh one (the old one may have been transferred to OffscreenCanvas)
+            const oldCanvas = document.getElementById('canvas');
+            const newCanvas = document.createElement('canvas');
+            newCanvas.id = 'canvas';
+            oldCanvas.parentNode.replaceChild(newCanvas, oldCanvas);
+            // Update the canvas reference
+            canvas = newCanvas;
+
+            // Show UI elements
+            canvasContainer.style.display = 'block';
+            resizeHandle.style.display = 'flex';
+            seekbarContainer.style.display = 'block';
+            document.getElementById('infoRow').style.display = 'flex';
+            document.getElementById('fallbackIndicator').style.display = 'flex';
+            cacheVizContainer.style.display = 'none'; // No cache in fallback mode
+
+            // Setup canvas
+            setupFallbackCanvas();
+
+            // Initial render
+            renderFallbackFrame();
+
+            // Update metrics
+            document.getElementById('metricVideo').textContent = 'None (poses only)';
+            document.getElementById('metricTotal').textContent = sortedLabeledFrames.length;
+            document.getElementById('metricFrame').textContent = 1;
+
+            // Render timeline marks
+            renderFallbackTimelineMarks();
+
+            log(`Fallback mode: ${fallbackVideoWidth}x${fallbackVideoHeight}, ${sortedLabeledFrames.length} labeled frames`, 'success');
+        }
+
+        function exitFallbackMode() {
+            fallbackMode = false;
+            document.getElementById('fallbackIndicator').style.display = 'none';
+        }
+
+        function updateSortedLabeledFrames() {
+            const labeledSet = labeledFramesByVideo.get(currentVideoIdx) || new Set();
+            sortedLabeledFrames = Array.from(labeledSet).sort((a, b) => a - b);
+        }
+
+        function setupFallbackCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const containerRect = canvasContainer.getBoundingClientRect();
+
+            // Calculate aspect ratio to fit canvas
+            const aspectRatio = fallbackVideoWidth / fallbackVideoHeight;
+            let displayWidth = containerRect.width;
+            let displayHeight = containerRect.height;
+
+            if (displayWidth / displayHeight > aspectRatio) {
+                displayWidth = displayHeight * aspectRatio;
+            } else {
+                displayHeight = displayWidth / aspectRatio;
+            }
+
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            canvas.width = displayWidth * dpr;
+            canvas.height = displayHeight * dpr;
+        }
+
+        function renderFallbackFrame() {
+            if (!fallbackMode || !poseData) return;
+
+            const dpr = window.devicePixelRatio || 1;
+            const ctx = canvas.getContext('2d');
+            const displayWidth = canvas.width / dpr;
+            const displayHeight = canvas.height / dpr;
+
+            // Clear and fill with black
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Get current labeled frame index
+            const frameIdx = sortedLabeledFrames[fallbackFrameIndex] ?? 0;
+            const key = `${currentVideoIdx}:${frameIdx}`;
+            const frameData = frameIndexMap.get(key);
+
+            // Calculate scale and centering
+            const scale = Math.min(displayWidth / fallbackVideoWidth, displayHeight / fallbackVideoHeight);
+            const offsetX = (displayWidth - fallbackVideoWidth * scale) / 2;
+            const offsetY = (displayHeight - fallbackVideoHeight * scale) / 2;
+
+            // Create info object similar to VideoPlayer's renderOverlay
+            const info = {
+                frameIndex: frameIdx,
+                totalFrames: sortedLabeledFrames.length,
+                drawX: 0,
+                drawY: 0,
+                offsetX: offsetX,
+                offsetY: offsetY,
+                effectiveScale: scale,
+                dpr: dpr
+            };
+
+            // Render poses
+            if (frameData && document.getElementById('showPoses').checked) {
+                renderFallbackPoses(ctx, frameData, info);
+            }
+
+            // Render frame index overlay
+            if (document.getElementById('showFrameIndex').checked) {
+                renderFallbackFrameIndex(ctx, info);
+            }
+
+            // Update seekbar
+            updateFallbackSeekbar();
+
+            // Update metrics
+            document.getElementById('metricFrame').textContent = fallbackFrameIndex + 1;
+            updateFallbackInstanceCount(frameData);
+        }
+
+        function renderFallbackPoses(ctx, frameData, info) {
+            const skeleton = poseData.skeleton;
+            const showEdges = document.getElementById('showEdges').checked;
+            const showNodes = document.getElementById('showNodes').checked;
+            const nodeSize = parseInt(document.getElementById('nodeSize').value);
+            const edgeWidth = parseInt(document.getElementById('edgeWidth').value);
+
+            const { offsetX, offsetY, effectiveScale, dpr } = info;
+
+            ctx.save();
+            ctx.scale(dpr, dpr);
+
+            for (const inst of frameData.instances) {
+                const color = getTrackColor(inst.trackIdx);
+                const points = inst.points;
+
+                // Draw edges
+                if (showEdges) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = edgeWidth;
+                    ctx.lineCap = 'round';
+
+                    for (const [srcIdx, dstIdx] of skeleton.edges) {
+                        const srcPt = points[srcIdx];
+                        const dstPt = points[dstIdx];
+                        if (!srcPt || !dstPt) continue;
+
+                        const x1 = offsetX + srcPt[0] * effectiveScale;
+                        const y1 = offsetY + srcPt[1] * effectiveScale;
+                        const x2 = offsetX + dstPt[0] * effectiveScale;
+                        const y2 = offsetY + dstPt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw nodes
+                if (showNodes) {
+                    ctx.fillStyle = color;
+
+                    for (const pt of points) {
+                        if (!pt) continue;
+
+                        const cx = offsetX + pt[0] * effectiveScale;
+                        const cy = offsetY + pt[1] * effectiveScale;
+
+                        ctx.beginPath();
+                        ctx.arc(cx, cy, nodeSize, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                }
+            }
+
+            ctx.restore();
+        }
+
+        function renderFallbackFrameIndex(ctx, info) {
+            const frameIdx = sortedLabeledFrames[fallbackFrameIndex] ?? 0;
+            const text = `Frame ${frameIdx} (${fallbackFrameIndex + 1}/${sortedLabeledFrames.length})`;
+            const padding = 8;
+            const fontSize = 14;
+
+            ctx.save();
+            ctx.scale(info.dpr, info.dpr);
+
+            ctx.font = `bold ${fontSize}px monospace`;
+            const metrics = ctx.measureText(text);
+            const boxWidth = metrics.width + padding * 2;
+            const boxHeight = fontSize + padding * 2;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.fillRect(10, 10, boxWidth, boxHeight);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(text, 10 + padding, 10 + padding + fontSize - 2);
+
+            ctx.restore();
+        }
+
+        function updateFallbackSeekbar() {
+            const progress = sortedLabeledFrames.length > 1
+                ? (fallbackFrameIndex / (sortedLabeledFrames.length - 1)) * 100
+                : 0;
+            seekbarProgress.style.width = progress + '%';
+            seekbarThumb.style.left = progress + '%';
+        }
+
+        function updateFallbackInstanceCount(frameData) {
+            if (frameData) {
+                document.getElementById('metricInstances').textContent = frameData.instances.length;
+            } else {
+                document.getElementById('metricInstances').textContent = '0';
+            }
+        }
+
+        function renderFallbackTimelineMarks() {
+            const container = document.getElementById('seekbarMarks');
+            if (!container || !poseData || sortedLabeledFrames.length === 0) {
+                if (container) container.innerHTML = '';
+                return;
+            }
+
+            // In fallback mode, all frames are labeled, so show marks evenly distributed
+            const fragments = [];
+            for (let i = 0; i < sortedLabeledFrames.length; i++) {
+                const frameIdx = sortedLabeledFrames[i];
+                const key = `${currentVideoIdx}:${frameIdx}`;
+                const frame = frameIndexMap.get(key);
+                if (!frame) continue;
+
+                const left = (i / (sortedLabeledFrames.length - 1 || 1)) * 100;
+
+                const hasUser = frame.instances.some(inst => inst.type === 'user');
+                const hasPred = frame.instances.some(inst => inst.type === 'predicted');
+                const markClass = hasUser && hasPred ? 'mark-both' :
+                                  hasUser ? 'mark-user' : 'mark-predicted';
+
+                fragments.push(`<div class="seekbar-mark ${markClass}" style="left:${left}%"></div>`);
+            }
+
+            container.innerHTML = fragments.join('');
+        }
+
+        function fallbackSeek(index) {
+            if (!fallbackMode) return;
+            fallbackFrameIndex = Math.max(0, Math.min(sortedLabeledFrames.length - 1, index));
+            renderFallbackFrame();
+        }
+
+        function fallbackSeekByFrameIdx(frameIdx) {
+            if (!fallbackMode) return;
+            const idx = sortedLabeledFrames.indexOf(frameIdx);
+            if (idx >= 0) {
+                fallbackFrameIndex = idx;
+                renderFallbackFrame();
+            }
+        }
+
+        // Fallback seekbar interaction
+        let fallbackSeeking = false;
+
+        function handleFallbackSeekbarClick(e) {
+            if (!fallbackMode || sortedLabeledFrames.length === 0) return;
+
+            const rect = seekbar.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, x / rect.width));
+            const idx = Math.round(pct * (sortedLabeledFrames.length - 1));
+            fallbackSeek(idx);
+        }
+
+        seekbar.addEventListener('mousedown', (e) => {
+            if (fallbackMode) {
+                fallbackSeeking = true;
+                handleFallbackSeekbarClick(e);
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (fallbackSeeking && fallbackMode) {
+                handleFallbackSeekbarClick(e);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            fallbackSeeking = false;
         });
 
         // ============================================
@@ -1116,6 +1493,9 @@
             log(`Loading video: ${name}`, 'info');
             showLoading('Loading video...');
 
+            // Exit fallback mode when loading a video
+            exitFallbackMode();
+
             try {
                 // Clean up previous player
                 if (player) player.destroy();
@@ -1197,6 +1577,15 @@
 
             log('Loading demo data...', 'info');
             await loadFromUrls(slpUrl, videoUrl);
+        });
+
+        // ============================================
+        // View Poses Only (Fallback Mode)
+        // ============================================
+        document.getElementById('viewPosesBtn').addEventListener('click', () => {
+            if (!poseData) return;
+            exitFallbackMode(); // Clean up if already in fallback mode
+            enterFallbackMode();
         });
 
         // ============================================
@@ -1428,28 +1817,71 @@
         // ============================================
         // Controls
         // ============================================
-        document.getElementById('firstFrameBtn').addEventListener('click', () => player?.seek(0));
-        document.getElementById('prevFrameBtn').addEventListener('click', () => player?.seek(player.frame - 1));
-        document.getElementById('nextFrameBtn').addEventListener('click', () => player?.seek(player.frame + 1));
-        document.getElementById('lastFrameBtn').addEventListener('click', () => player?.seek(player.frames - 1));
+        document.getElementById('firstFrameBtn').addEventListener('click', () => {
+            if (fallbackMode) {
+                fallbackSeek(0);
+            } else {
+                player?.seek(0);
+            }
+        });
+        document.getElementById('prevFrameBtn').addEventListener('click', () => {
+            if (fallbackMode) {
+                fallbackSeek(fallbackFrameIndex - 1);
+            } else {
+                player?.seek(player.frame - 1);
+            }
+        });
+        document.getElementById('nextFrameBtn').addEventListener('click', () => {
+            if (fallbackMode) {
+                fallbackSeek(fallbackFrameIndex + 1);
+            } else {
+                player?.seek(player.frame + 1);
+            }
+        });
+        document.getElementById('lastFrameBtn').addEventListener('click', () => {
+            if (fallbackMode) {
+                fallbackSeek(sortedLabeledFrames.length - 1);
+            } else {
+                player?.seek(player.frames - 1);
+            }
+        });
 
         document.getElementById('zoomInBtn').addEventListener('click', () => {
+            if (fallbackMode) return; // No zoom in fallback mode (for now)
             if (!player) return;
             player.setZoom(player.zoom * 1.25);
         });
         document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            if (fallbackMode) return; // No zoom in fallback mode (for now)
             if (!player) return;
             player.setZoom(player.zoom * 0.8);
         });
         document.getElementById('resetZoomBtn').addEventListener('click', () => {
-            player?.resetView();
+            if (fallbackMode) {
+                setupFallbackCanvas();
+                renderFallbackFrame();
+            } else {
+                player?.resetView();
+            }
         });
 
         // Overlay toggles - re-render when changed
-        document.getElementById('showPoses').addEventListener('change', () => player?.render());
-        document.getElementById('showEdges').addEventListener('change', () => player?.render());
-        document.getElementById('showNodes').addEventListener('change', () => player?.render());
-        document.getElementById('showFrameIndex').addEventListener('change', () => player?.render());
+        document.getElementById('showPoses').addEventListener('change', () => {
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
+        });
+        document.getElementById('showEdges').addEventListener('change', () => {
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
+        });
+        document.getElementById('showNodes').addEventListener('change', () => {
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
+        });
+        document.getElementById('showFrameIndex').addEventListener('change', () => {
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
+        });
         document.getElementById('showTiming').addEventListener('change', (e) => {
             if (player) {
                 player.showTimingOverlay = e.target.checked;
@@ -1460,11 +1892,13 @@
         // Sliders
         document.getElementById('nodeSize').addEventListener('input', (e) => {
             document.getElementById('nodeSizeValue').textContent = e.target.value;
-            player?.render();
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
         });
         document.getElementById('edgeWidth').addEventListener('input', (e) => {
             document.getElementById('edgeWidthValue').textContent = e.target.value;
-            player?.render();
+            if (fallbackMode) renderFallbackFrame();
+            else player?.render();
         });
 
         // Cache settings (apply immediately)
@@ -1493,6 +1927,29 @@
 
         // Keyboard
         document.addEventListener('keydown', (e) => {
+            // Handle fallback mode navigation
+            if (fallbackMode) {
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    fallbackSeek(fallbackFrameIndex - (e.ctrlKey ? 10 : 1));
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    fallbackSeek(fallbackFrameIndex + (e.ctrlKey ? 10 : 1));
+                } else if (e.key === 'Home') {
+                    e.preventDefault();
+                    fallbackSeek(0);
+                } else if (e.key === 'End') {
+                    e.preventDefault();
+                    fallbackSeek(sortedLabeledFrames.length - 1);
+                } else if (e.key === 'p' || e.key === 'P') {
+                    const cb = document.getElementById('showPoses');
+                    cb.checked = !cb.checked;
+                    renderFallbackFrame();
+                }
+                return;
+            }
+
+            // Handle video player navigation
             if (!player) return;
 
             if (e.key === 'ArrowLeft') {
@@ -1536,7 +1993,12 @@
                 const delta = e.clientY - resizeStartY;
                 const newHeight = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartHeight + delta));
                 canvasContainer.style.height = newHeight + 'px';
-                player?.render();
+                if (fallbackMode) {
+                    setupFallbackCanvas();
+                    renderFallbackFrame();
+                } else {
+                    player?.render();
+                }
             }
         });
 
