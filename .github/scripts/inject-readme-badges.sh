@@ -4,7 +4,8 @@
 # Transforms lines like:
 #   - [Vibe Name](vibe-dir/) - description
 # Into:
-#   - [Vibe Name](vibe-dir/) - description <a href="vibe-dir/README" class="readme-badge"><code>README</code></a>
+#   - [Vibe Name](vibe-dir/) [README](vibe-dir/README)
+#     <span class="vibe-desc">description</span>
 #
 # Only adds badge if vibe-dir/README.md exists.
 
@@ -18,18 +19,20 @@ echo "Injecting README badges into $README_FILE..."
 while IFS= read -r line || [ -n "$line" ]; do
     # Check if line looks like a vibe list item: - [Name](dir/) - description
     if echo "$line" | grep -qE '^\s*-\s*\[.+\]\([a-z0-9-]+/\)\s*-\s*.+$'; then
-        # Extract the vibe directory using sed
+        # Extract parts using sed
         vibe_dir=$(echo "$line" | sed -E 's/.*\]\(([a-z0-9-]+)\/\).*/\1/')
+        vibe_link=$(echo "$line" | sed -E 's/^(- \[[^]]+\]\([^)]+\)).*/\1/')
+        description=$(echo "$line" | sed -E 's/.*\]\([^)]+\) - //')
 
         # Check if README.md exists for this vibe
         if [ -f "$vibe_dir/README.md" ]; then
-            # Append badge to the line
-            echo "${line} <a href=\"${vibe_dir}/README\" class=\"readme-badge\"><code>README</code></a>" >> "$TEMP_FILE"
+            # Format: name + readme badge on first line, description as caption below
+            echo "${vibe_link} <a href=\"${vibe_dir}/README\" class=\"readme-badge\">[README]</a><br><span class=\"vibe-desc\">${description}</span>" >> "$TEMP_FILE"
             echo "  $vibe_dir: added README badge"
         else
-            # No README, keep original line
-            echo "$line" >> "$TEMP_FILE"
-            echo "  $vibe_dir: no README.md, skipping"
+            # No README - still reformat with description as caption
+            echo "${vibe_link}<br><span class=\"vibe-desc\">${description}</span>" >> "$TEMP_FILE"
+            echo "  $vibe_dir: no README.md, skipping badge"
         fi
     else
         # Not a vibe line, keep as-is
