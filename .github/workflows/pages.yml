@@ -31,6 +31,9 @@ jobs:
       - name: Expose README files
         run: .github/scripts/expose-readmes.sh _site
 
+      - name: Fix _site permissions
+        run: sudo chown -R $(whoami) _site
+
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
