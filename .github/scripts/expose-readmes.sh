@@ -95,10 +95,18 @@ EOF
 echo "Exposing README.md files..."
 echo "Site directory: $SITE_DIR"
 
+# Debug: show _site permissions and contents
+echo "Debug: _site directory info:"
+ls -la "$SITE_DIR" 2>&1 | head -20 || echo "Cannot list $SITE_DIR"
+
 # Ensure site directory is writable (Jekyll may create with restrictive permissions)
+# Use sudo if available, otherwise try regular chmod
 if [ -d "$SITE_DIR" ]; then
-    chmod -R u+w "$SITE_DIR" 2>/dev/null || true
+    chmod -R u+w "$SITE_DIR" 2>/dev/null || sudo chmod -R u+w "$SITE_DIR" 2>/dev/null || true
 fi
+
+echo "Debug: after chmod:"
+ls -la "$SITE_DIR" 2>&1 | head -5 || true
 
 # Find all vibe directories (have index.html but aren't the root)
 for vibe_dir in */; do
@@ -124,7 +132,11 @@ for vibe_dir in */; do
 
     # Copy README.md to _site
     if [ -d "$SITE_DIR/$vibe" ]; then
-        cp "$vibe/README.md" "$SITE_DIR/$vibe/README.md"
+        # Remove existing README.md if present (may be read-only from Jekyll)
+        rm -f "$SITE_DIR/$vibe/README.md" 2>/dev/null || true
+
+        # Copy with force
+        cp -f "$vibe/README.md" "$SITE_DIR/$vibe/README.md"
         echo "  $vibe: copied README.md"
 
         # Create README/index.html for rendered view
