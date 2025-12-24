@@ -3,20 +3,17 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: true
+  group: pages-production
+  cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,16 +25,14 @@ jobs:
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Expose README files
+        run: .github/scripts/expose-readmes.sh _site
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: _site
+          clean-exclude: pr/
+          force: false
+          commit-message: "Deploy ${{ github.sha }}"
