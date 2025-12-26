@@ -32,7 +32,9 @@
         .timeline-header h3 { margin: 0; font-size: 13px; color: #fff; }
         .timeline-header-right { display: flex; align-items: center; gap: 10px; font-size: 11px; }
         .timeline-header-right label { display: flex; align-items: center; gap: 4px; color: #888; cursor: pointer; }
-        .timeline-track { position: relative; height: 28px; background: #333; border-radius: 4px; margin: 6px 0; cursor: crosshair; border-left: 3px solid transparent; }
+        .timeline-track { position: relative; height: 28px; background: #333; border-radius: 4px; margin: 6px 0; cursor: crosshair; border-left: 3px solid transparent; transition: opacity 0.15s, background 0.15s; }
+        .timeline-track.deemphasized { opacity: 0.4; background: #2a2a2a; }
+        .timeline-track.deemphasized:hover { opacity: 0.7; }
         .timeline-track-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #888; z-index: 10; pointer-events: none; white-space: nowrap; overflow: hidden; max-width: 150px; text-overflow: ellipsis; }
         .timeline-playhead { position: absolute; width: 2px; height: 100%; background: #fff; top: 0; pointer-events: none; z-index: 20; }
         .timeline-segment { position: absolute; height: 100%; border-radius: 4px; opacity: 0.8; cursor: pointer; transition: opacity 0.15s; }
@@ -203,10 +205,13 @@
                 <div class="hotkey"><span class="hotkey-key">Ctrl+&#8592;/&#8594;</span><span class="hotkey-desc">&#177;30 frames</span></div>
                 <div class="hotkey"><span class="hotkey-key">Home/End</span><span class="hotkey-desc">First/Last</span></div>
                 <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
-                <div class="hotkey"><span class="hotkey-key">&#8593;/&#8595;</span><span class="hotkey-desc">Zoom</span></div>
+                <div class="hotkey"><span class="hotkey-key">+/-</span><span class="hotkey-desc">Zoom</span></div>
+                <div class="hotkey"><span class="hotkey-key">&#8593;/&#8595;/Tab</span><span class="hotkey-desc">Cycle rows</span></div>
                 <div class="hotkey"><span class="hotkey-key">0-9</span><span class="hotkey-desc">Select track</span></div>
                 <div class="hotkey"><span class="hotkey-key">F</span><span class="hotkey-desc">Focus track</span></div>
                 <div class="hotkey"><span class="hotkey-key">W R E</span><span class="hotkey-desc">Events</span></div>
+                <div class="hotkey"><span class="hotkey-key">Z</span><span class="hotkey-desc">Paint row</span></div>
+                <div class="hotkey"><span class="hotkey-key">X</span><span class="hotkey-desc">Erase row</span></div>
                 <div class="hotkey"><span class="hotkey-key">Escape</span><span class="hotkey-desc">Cancel</span></div>
                 <div class="hotkey"><span class="hotkey-key">Delete</span><span class="hotkey-desc">Remove</span></div>
             </div>
@@ -233,8 +238,10 @@
             // Pose data from SLP
             poseData: null, hasPoseData: false, slpFileName: '',
             tracks: [], selectedTrackIdx: null, // null = frame-level, 0+ = specific track
+            selectedEventTypeId: null, // Which event type is selected for targeted erasing
             showPoses: true, showAllTracks: true, // UI toggles
             eventTypes: [
+                { id: '_none', name: 'None', hotkey: 'x', color: '#666666', isEraser: true },
                 { id: 'walking', name: 'Walking', hotkey: 'w', color: '#4ade80' },
                 { id: 'running', name: 'Running', hotkey: 'r', color: '#60a5fa' },
                 { id: 'eating', name: 'Eating', hotkey: 'e', color: '#f472b6' },
@@ -490,9 +497,16 @@
             if (state.mode === 'painting' && state.activeAnnotation) {
                 const et = getEventType(state.activeAnnotation.eventTypeId);
                 const trackLabel = state.activeAnnotation.trackIdx !== null ? ` (${state.tracks[state.activeAnnotation.trackIdx]})` : '';
-                const lbl = `${et.name}${trackLabel}: ${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1}`;
                 const y = Math.abs(scale - 1) > 0.01 ? 52 : 30;
-                ctx.fillStyle = et.color; ctx.fillRect(8, y, ctx.measureText(lbl).width + 10, 18); ctx.fillStyle = '#000'; ctx.fillText(lbl, 13, y + 13);
+                if (et.isEraser) {
+                    const targetEt = state.activeAnnotation.eraseEventTypeId ? getEventType(state.activeAnnotation.eraseEventTypeId) : null;
+                    const lbl = `ERASE ${targetEt ? targetEt.name : 'all'}${trackLabel}: ${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1}`;
+                    ctx.fillStyle = 'rgba(50, 0, 0, 0.85)'; ctx.fillRect(8, y, ctx.measureText(lbl).width + 10, 18);
+                    ctx.fillStyle = '#ff6b6b'; ctx.fillText(lbl, 13, y + 13);
+                } else {
+                    const lbl = `${et.name}${trackLabel}: ${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1}`;
+                    ctx.fillStyle = et.color; ctx.fillRect(8, y, ctx.measureText(lbl).width + 10, 18); ctx.fillStyle = '#000'; ctx.fillText(lbl, 13, y + 13);
+                }
             }
             ctx.restore();
         }
@@ -628,6 +642,42 @@
             log(`Selected track: ${trackName}`);
         }
 
+        // Select both track and event type (for timeline row selection)
+        function selectRow(eventTypeId, trackIdx) {
+            state.selectedTrackIdx = trackIdx;
+            state.selectedEventTypeId = eventTypeId;
+            renderTrackList();
+            updateStatusDisplay();
+            renderTimelineTracks();
+            renderFrame();
+            const trackName = trackIdx !== null && trackIdx >= 0 ? state.tracks[trackIdx] : '(frame-level)';
+            const et = getEventType(eventTypeId);
+            log(`Selected row: ${et ? et.name : 'None'} on ${trackName}`);
+        }
+
+        function cycleRow(direction) {
+            // Get visible timeline rows - same logic as getTimelineRows but simplified
+            const rows = getTimelineRows();
+            if (rows.length === 0) return;
+
+            // Find current row index
+            let currentIdx = rows.findIndex(r =>
+                r.eventType.id === state.selectedEventTypeId && r.trackIdx === state.selectedTrackIdx
+            );
+
+            // If no match, start at first row
+            if (currentIdx === -1) currentIdx = direction > 0 ? -1 : rows.length;
+
+            // Calculate new index with wrapping
+            let newIdx = currentIdx + direction;
+            if (newIdx < 0) newIdx = rows.length - 1;
+            if (newIdx >= rows.length) newIdx = 0;
+
+            // Select the new row
+            const row = rows[newIdx];
+            selectRow(row.eventType.id, row.trackIdx);
+        }
+
         function renderTrackList() {
             const container = document.getElementById('trackList');
             container.innerHTML = '';
@@ -653,22 +703,46 @@
         function startPainting(etId) {
             const et = getEventType(etId);
             state.mode = 'painting';
-            state.activeAnnotation = { eventTypeId: etId, startFrame: state.currentFrame, trackIdx: state.selectedTrackIdx };
+            // For eraser, remember which event type to erase (the previously selected one)
+            const eraseEventTypeId = et.isEraser ? state.selectedEventTypeId : null;
+            state.activeAnnotation = {
+                eventTypeId: etId,
+                startFrame: state.currentFrame,
+                trackIdx: state.selectedTrackIdx,
+                eraseEventTypeId: eraseEventTypeId // Only set for eraser
+            };
+            // Select this event type (unless it's the eraser - keep current selection)
+            if (!et.isEraser) {
+                state.selectedEventTypeId = etId;
+            }
             state.selectedSegmentId = null;
             const trackName = state.selectedTrackIdx !== null ? state.tracks[state.selectedTrackIdx] : '(frame-level)';
-            log(`Start painting: ${et.name} on ${trackName} @ frame ${state.currentFrame + 1}`);
+            const targetEvent = et.isEraser && eraseEventTypeId ? getEventType(eraseEventTypeId)?.name : null;
+            const modeText = et.isEraser ? `Erasing${targetEvent ? ` ${targetEvent}` : ''}` : et.name;
+            log(`Start painting: ${modeText} on ${trackName} @ frame ${state.currentFrame + 1}`);
             updateStatusDisplay(); renderTimelineTracks(); renderFrame();
         }
 
         function commitAnnotation() {
             if (!state.activeAnnotation) return;
-            const { eventTypeId, startFrame, trackIdx } = state.activeAnnotation;
+            const { eventTypeId, startFrame, trackIdx, eraseEventTypeId } = state.activeAnnotation;
             const endFrame = state.currentFrame;
             const et = getEventType(eventTypeId);
             const ss = Math.min(startFrame, endFrame), se = Math.max(startFrame, endFrame);
-            addSegment(eventTypeId, ss, se, trackIdx);
             const trackName = trackIdx !== null ? state.tracks[trackIdx] : '(frame-level)';
-            log(`Committed: ${et.name} on ${trackName} [${ss + 1}-${se + 1}]`);
+
+            if (et.isEraser) {
+                // Eraser mode - remove/trim overlapping segments of the targeted event type
+                const targetEt = eraseEventTypeId ? getEventType(eraseEventTypeId) : null;
+                const targetName = targetEt ? targetEt.name : 'all events';
+                const erased = eraseSegments(ss, se, trackIdx, eraseEventTypeId);
+                log(`Erased: ${erased} ${targetName} segment(s) on ${trackName} [${ss + 1}-${se + 1}]`);
+            } else {
+                // Normal mode - add segment
+                addSegment(eventTypeId, ss, se, trackIdx);
+                log(`Committed: ${et.name} on ${trackName} [${ss + 1}-${se + 1}]`);
+            }
+
             state.mode = 'idle'; state.activeAnnotation = null;
             updateStatusDisplay(); renderTimelineTracks(); renderFrame(); updateMetrics();
         }
@@ -687,6 +761,46 @@
             const ovs = state.segments.filter(sg => sg.eventTypeId === etId && sg.trackIdx === trackIdx && !(sg.endFrame < s || sg.startFrame > e));
             for (const o of ovs) { state.segments.splice(state.segments.indexOf(o), 1); s = Math.min(s, o.startFrame); e = Math.max(e, o.endFrame); }
             state.segments.push({ id: crypto.randomUUID(), eventTypeId: etId, startFrame: s, endFrame: e, trackIdx });
+        }
+
+        function eraseSegments(s, e, trackIdx = null, eventTypeId = null) {
+            // Find all overlapping segments on the same track and event type, and erase/trim them
+            const toRemove = [];
+            const toAdd = [];
+            for (const seg of state.segments) {
+                if (seg.trackIdx !== trackIdx) continue;
+                // If eventTypeId specified, only erase that event type
+                if (eventTypeId !== null && seg.eventTypeId !== eventTypeId) continue;
+                // Check if segment overlaps with erase range [s, e]
+                if (seg.endFrame < s || seg.startFrame > e) continue; // No overlap
+
+                if (seg.startFrame >= s && seg.endFrame <= e) {
+                    // Fully contained - delete entire segment
+                    toRemove.push(seg);
+                } else if (seg.startFrame < s && seg.endFrame > e) {
+                    // Erase range is in the middle - split into two segments
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: seg.startFrame, endFrame: s - 1, trackIdx });
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: e + 1, endFrame: seg.endFrame, trackIdx });
+                } else if (seg.startFrame < s) {
+                    // Overlaps on the left - trim the right side
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: seg.startFrame, endFrame: s - 1, trackIdx });
+                } else {
+                    // Overlaps on the right - trim the left side
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: e + 1, endFrame: seg.endFrame, trackIdx });
+                }
+            }
+            // Apply changes
+            for (const seg of toRemove) {
+                const i = state.segments.indexOf(seg);
+                if (i !== -1) state.segments.splice(i, 1);
+            }
+            for (const seg of toAdd) {
+                state.segments.push(seg);
+            }
+            return toRemove.length;
         }
 
         function deleteSelectedSegment() {
@@ -806,6 +920,8 @@
             const rows = [];
             const showAll = state.showAllTracks;
             for (const et of state.eventTypes) {
+                // Skip eraser types - they don't get timeline rows
+                if (et.isEraser) continue;
                 if (!state.hasPoseData || state.tracks.length === 0) {
                     // No tracking data - single row per event type
                     rows.push({ eventType: et, trackIdx: null, label: et.name, segments: state.segments.filter(s => s.eventTypeId === et.id) });
@@ -833,7 +949,13 @@
             const c = document.getElementById('timelineTracks'); c.innerHTML = '';
             const rows = getTimelineRows();
             for (const row of rows) {
-                const t = document.createElement('div'); t.className = 'timeline-track';
+                const t = document.createElement('div');
+                // Highlight the selected row (matching both event type and track)
+                const isSelectedRow = row.eventType.id === state.selectedEventTypeId && row.trackIdx === state.selectedTrackIdx;
+                const isSelectedTrack = row.trackIdx === state.selectedTrackIdx;
+                // Deemphasize rows that don't match the selected row
+                t.className = 'timeline-track' + (!isSelectedRow && state.selectedEventTypeId ? ' deemphasized' : '');
+                if (isSelectedRow) t.style.boxShadow = 'inset 0 0 0 2px #667eea';
                 if (row.trackColor) t.style.borderLeftColor = row.trackColor;
                 t.innerHTML = `<span class="timeline-track-label">${row.label}</span>`;
                 // Render segments
@@ -845,21 +967,44 @@
                     s.addEventListener('click', ev => {
                         ev.stopPropagation();
                         state.selectedSegmentId = seg.id;
+                        // Also select this row when clicking a segment
+                        state.selectedEventTypeId = row.eventType.id;
+                        state.selectedTrackIdx = row.trackIdx;
                         const trackName = seg.trackIdx !== null ? state.tracks[seg.trackIdx] : '(frame-level)';
                         document.getElementById('selectedSegmentInfo').textContent = `${row.eventType.name} on ${trackName} (${seg.startFrame + 1}-${seg.endFrame + 1}) - Delete to remove`;
                         log(`Selected: ${row.eventType.name} on ${trackName} [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
+                        renderTrackList();
                         renderTimelineTracks();
                     });
                     t.appendChild(s);
                 }
-                // Show active painting on matching row
-                if (state.mode === 'painting' && state.activeAnnotation && state.activeAnnotation.eventTypeId === row.eventType.id && state.activeAnnotation.trackIdx === row.trackIdx) {
-                    const ss = Math.min(state.activeAnnotation.startFrame, state.currentFrame), se = Math.max(state.activeAnnotation.startFrame, state.currentFrame);
+                // Show active painting on matching row (for eraser, show on the target event type's row)
+                const activeAnn = state.activeAnnotation;
+                const isEraserRow = activeAnn && getEventType(activeAnn.eventTypeId)?.isEraser &&
+                    activeAnn.eraseEventTypeId === row.eventType.id && activeAnn.trackIdx === row.trackIdx;
+                const isPaintingRow = activeAnn && !getEventType(activeAnn.eventTypeId)?.isEraser &&
+                    activeAnn.eventTypeId === row.eventType.id && activeAnn.trackIdx === row.trackIdx;
+
+                if (state.mode === 'painting' && (isPaintingRow || isEraserRow)) {
+                    const ss = Math.min(activeAnn.startFrame, state.currentFrame), se = Math.max(activeAnn.startFrame, state.currentFrame);
                     const l = (ss / state.totalFrames) * 100, w = ((se - ss + 1) / state.totalFrames) * 100;
-                    const p = document.createElement('div'); p.className = 'timeline-segment active'; p.style.cssText = `left:${l}%;width:${w}%;background:${row.eventType.color};`; t.appendChild(p);
+                    const isErasing = getEventType(activeAnn.eventTypeId)?.isEraser;
+                    const p = document.createElement('div');
+                    p.className = 'timeline-segment active';
+                    // Eraser uses dark semi-transparent background, regular painting uses event color
+                    const bgColor = isErasing ? 'rgba(0, 0, 0, 0.6)' : row.eventType.color;
+                    const borderStyle = isErasing ? '2px dashed rgba(255,100,100,0.8)' : '2px dashed rgba(255,255,255,0.8)';
+                    p.style.cssText = `left:${l}%;width:${w}%;background:${bgColor};border:${borderStyle};`;
+                    t.appendChild(p);
                 }
                 const ph = document.createElement('div'); ph.className = 'timeline-playhead'; ph.style.left = (state.currentFrame / state.totalFrames) * 100 + '%'; t.appendChild(ph);
-                t.addEventListener('click', () => { state.selectedSegmentId = null; document.getElementById('selectedSegmentInfo').textContent = ''; renderTimelineTracks(); });
+                // Click on timeline track to select that row (track + event type)
+                t.addEventListener('click', () => {
+                    state.selectedSegmentId = null;
+                    document.getElementById('selectedSegmentInfo').textContent = '';
+                    // Select the row (both track and event type)
+                    selectRow(row.eventType.id, row.trackIdx);
+                });
                 c.appendChild(t);
             }
         }
@@ -874,20 +1019,29 @@
             const m = document.getElementById('modeDisplay'), f = document.getElementById('frameDisplay'), td = document.getElementById('trackDisplay');
             const pi = document.getElementById('paintingInfo'), pd = document.getElementById('paintingDisplay');
             f.textContent = `${state.currentFrame + 1} / ${state.totalFrames}`;
-            // Track display
-            if (state.hasPoseData && state.tracks.length > 0) {
-                const trackName = state.selectedTrackIdx !== null ? state.tracks[state.selectedTrackIdx] : '(frame-level)';
-                const trackColor = state.selectedTrackIdx !== null ? getTrackColor(state.selectedTrackIdx) : '#888';
-                td.textContent = trackName; td.style.color = trackColor;
-            } else {
-                td.textContent = '(none)'; td.style.color = '#888';
-            }
+            // Track + event type display
+            const trackName = state.selectedTrackIdx !== null && state.tracks.length > 0
+                ? state.tracks[state.selectedTrackIdx]
+                : (state.hasPoseData ? '(frame-level)' : '(none)');
+            const trackColor = state.selectedTrackIdx !== null ? getTrackColor(state.selectedTrackIdx) : '#888';
+            const selectedEt = state.selectedEventTypeId ? getEventType(state.selectedEventTypeId) : null;
+            const eventLabel = selectedEt ? ` / ${selectedEt.name}` : '';
+            td.innerHTML = `<span style="color:${trackColor}">${trackName}</span>${selectedEt ? `<span style="color:${selectedEt.color}">${eventLabel}</span>` : ''}`;
+
             if (state.mode === 'painting' && state.activeAnnotation) {
                 const et = getEventType(state.activeAnnotation.eventTypeId);
-                const trackName = state.activeAnnotation.trackIdx !== null ? state.tracks[state.activeAnnotation.trackIdx] : '(frame-level)';
-                m.textContent = 'PAINTING'; m.className = 'status-value status-painting';
-                pi.style.display = 'inline'; pd.textContent = `${et.name} on ${trackName} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`; pd.style.color = et.color;
-            } else { m.textContent = 'IDLE'; m.className = 'status-value status-idle'; pi.style.display = 'none'; }
+                const annTrackName = state.activeAnnotation.trackIdx !== null ? state.tracks[state.activeAnnotation.trackIdx] : '(frame-level)';
+                if (et.isEraser) {
+                    const targetEt = state.activeAnnotation.eraseEventTypeId ? getEventType(state.activeAnnotation.eraseEventTypeId) : null;
+                    m.textContent = 'ERASING'; m.className = 'status-value'; m.style.color = '#ff6b6b';
+                    pi.style.display = 'inline';
+                    pd.textContent = `${targetEt ? targetEt.name : 'all'} on ${annTrackName} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`;
+                    pd.style.color = targetEt ? targetEt.color : '#888';
+                } else {
+                    m.textContent = 'PAINTING'; m.className = 'status-value status-painting'; m.style.color = '';
+                    pi.style.display = 'inline'; pd.textContent = `${et.name} on ${annTrackName} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`; pd.style.color = et.color;
+                }
+            } else { m.textContent = 'IDLE'; m.className = 'status-value status-idle'; m.style.color = ''; pi.style.display = 'none'; }
         }
 
         function updateMetrics() {
@@ -907,8 +1061,14 @@
             if (!state.videoDecoder || eventTypeModal.style.display === 'flex') return;
             if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); }
             else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * (e.ctrlKey ? 1.5 : 1.1))); renderFrame(); }
-            else if (e.key === 'ArrowDown') { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * (e.ctrlKey ? 0.67 : 0.9))); renderFrame(); }
+            // Zoom with +/- keys
+            else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * 1.25)); renderFrame(); }
+            else if (e.key === '-' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * 0.8)); renderFrame(); }
+            // Cycle through timeline rows with Up/Down arrows
+            else if (e.key === 'ArrowUp') { e.preventDefault(); cycleRow(-1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); cycleRow(1); }
+            // Cycle through timeline rows with Tab
+            else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); cycleRow(e.shiftKey ? -1 : 1); }
             else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); }
             else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); }
             else if (e.key === ' ') { e.preventDefault(); togglePlayback(); }
@@ -928,6 +1088,18 @@
                 checkbox.checked = !checkbox.checked;
                 state.showAllTracks = !checkbox.checked;
                 renderTimelineTracks();
+            }
+            // Paint selected row (Z key) - opposite of X (erase)
+            else if (e.key.toLowerCase() === 'z' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                if (state.selectedEventTypeId) {
+                    const selectedEt = getEventType(state.selectedEventTypeId);
+                    if (selectedEt && !selectedEt.isEraser) {
+                        handleEventTypeClick(state.selectedEventTypeId);
+                    }
+                } else {
+                    log('No event type selected - use ↑/↓ or click a timeline row first');
+                }
             }
             // Event type hotkeys
             const et = getEventTypeByHotkey(e.key);
