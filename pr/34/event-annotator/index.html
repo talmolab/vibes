@@ -206,7 +206,8 @@
                 <div class="hotkey"><span class="hotkey-key">Home/End</span><span class="hotkey-desc">First/Last</span></div>
                 <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
                 <div class="hotkey"><span class="hotkey-key">+/-</span><span class="hotkey-desc">Zoom</span></div>
-                <div class="hotkey"><span class="hotkey-key">&#8593;/&#8595;/Tab</span><span class="hotkey-desc">Cycle rows</span></div>
+                <div class="hotkey"><span class="hotkey-key">&#8593;/&#8595;</span><span class="hotkey-desc">Cycle rows</span></div>
+                <div class="hotkey"><span class="hotkey-key">Tab</span><span class="hotkey-desc">Cycle tracks</span></div>
                 <div class="hotkey"><span class="hotkey-key">0-9</span><span class="hotkey-desc">Select track</span></div>
                 <div class="hotkey"><span class="hotkey-key">F</span><span class="hotkey-desc">Focus track</span></div>
                 <div class="hotkey"><span class="hotkey-key">W R E</span><span class="hotkey-desc">Events</span></div>
@@ -678,6 +679,27 @@
             selectRow(row.eventType.id, row.trackIdx);
         }
 
+        // Cycle through tracks while keeping the same event type (for Tab key)
+        function cycleTrackKeepEventType(direction) {
+            // Build list of available tracks: null (frame-level), then 0, 1, 2, ...
+            const availableTracks = [null];
+            for (let i = 0; i < state.tracks.length; i++) availableTracks.push(i);
+
+            // Find current track index in the list
+            let currentIdx = state.selectedTrackIdx === null ? 0 : availableTracks.indexOf(state.selectedTrackIdx);
+            if (currentIdx === -1) currentIdx = 0;
+
+            // Calculate new index with wrapping
+            let newIdx = currentIdx + direction;
+            if (newIdx < 0) newIdx = availableTracks.length - 1;
+            if (newIdx >= availableTracks.length) newIdx = 0;
+
+            const newTrackIdx = availableTracks[newIdx];
+
+            // Keep the same event type, just change the track
+            selectRow(state.selectedEventTypeId, newTrackIdx);
+        }
+
         function renderTrackList() {
             const container = document.getElementById('trackList');
             container.innerHTML = '';
@@ -1067,8 +1089,8 @@
             // Cycle through timeline rows with Up/Down arrows
             else if (e.key === 'ArrowUp') { e.preventDefault(); cycleRow(-1); }
             else if (e.key === 'ArrowDown') { e.preventDefault(); cycleRow(1); }
-            // Cycle through timeline rows with Tab
-            else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); cycleRow(e.shiftKey ? -1 : 1); }
+            // Cycle through tracks with Tab (keeps same event type, useful for Focus Track mode)
+            else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); cycleTrackKeepEventType(e.shiftKey ? -1 : 1); }
             else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); }
             else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); }
             else if (e.key === ' ') { e.preventDefault(); togglePlayback(); }
