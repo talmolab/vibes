@@ -30,7 +30,8 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 | Home/End | First/Last frame |
 | Space | Play/Pause |
 | +/- | Zoom in/out |
-| Up/Down/Tab | Cycle through timeline rows |
+| Up/Down | Cycle through timeline rows (event type × track) |
+| Tab/Shift+Tab | Cycle through tracks (keeps same event type) |
 | 0-9 | Select track (0=frame-level, 1-9=tracks) |
 | F | Toggle Focus Track mode |
 | W, R, E | Event hotkeys (start/commit painting) |
