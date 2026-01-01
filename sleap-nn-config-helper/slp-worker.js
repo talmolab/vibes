@@ -34,15 +34,52 @@ function setLoading(message) {
 
 // Parse the skeleton from metadata JSON
 function parseSkeleton(metadataJson) {
-    // Nodes are at the top level
-    const nodes = metadataJson.nodes.map(n => n.name || n);
-
-    // Parse edges from skeleton links
+    let nodes = [];
     const edges = [];
+
+    // Top-level nodes array contains actual node definitions with names
+    const topLevelNodes = metadataJson.nodes || [];
+
+    // Helper to get node name from a reference
+    function getNodeName(nodeRef) {
+        // If it's a py_state object (SLEAP format)
+        if (nodeRef?.py_state?.values) {
+            return nodeRef.py_state.values[0];
+        }
+        // If it has a name property directly
+        if (nodeRef?.name) {
+            return nodeRef.name;
+        }
+        // If it's a string, return as-is
+        if (typeof nodeRef === 'string') {
+            return nodeRef;
+        }
+        // If it has an id that references top-level nodes
+        if (nodeRef?.id !== undefined) {
+            const idx = parseInt(nodeRef.id, 10);
+            if (!isNaN(idx) && topLevelNodes[idx]) {
+                return getNodeName(topLevelNodes[idx]);
+            }
+        }
+        // If it's a number (index into top-level nodes)
+        if (typeof nodeRef === 'number') {
+            if (topLevelNodes[nodeRef]) {
+                return getNodeName(topLevelNodes[nodeRef]);
+            }
+        }
+        return String(nodeRef);
+    }
+
     if (metadataJson.skeletons && metadataJson.skeletons.length > 0) {
+        // Always use first skeleton only
         const skel = metadataJson.skeletons[0];
 
-        // Links have source/target format
+        // Get node names from skeleton.nodes
+        if (skel.nodes && Array.isArray(skel.nodes)) {
+            nodes = skel.nodes.map(nodeRef => getNodeName(nodeRef));
+        }
+
+        // Parse edges from skeleton links
         if (skel.links) {
             for (const link of skel.links) {
                 const srcIdx = link.source;
@@ -54,13 +91,19 @@ function parseSkeleton(metadataJson) {
         }
     }
 
+    // Fallback: if no nodes from skeleton, try top-level
+    if (nodes.length === 0 && topLevelNodes.length > 0) {
+        nodes = topLevelNodes.map(n => getNodeName(n));
+    }
+
     log(`Parsed ${nodes.length} nodes, ${edges.length} edges`, 'info');
+    log(`Node names: ${nodes.join(', ')}`, 'info');
 
     return {
         name: metadataJson.skeletons?.[0]?.graph?.name || 'skeleton',
         nodes,
         edges,
-        symmetries: []  // Symmetries are complex to parse, skip for now
+        symmetries: []
     };
 }
 
@@ -72,7 +115,15 @@ function parseTracks(tracksData) {
         if (typeof t === 'string') {
             try {
                 const parsed = JSON.parse(t);
-                return parsed.name || parsed.py_state?.values?.[0] || parsed;
+                // Handle different track formats:
+                // 1. Object with name property: { name: "F", ... }
+                if (parsed.name) return parsed.name;
+                // 2. py_state format: { py_state: { values: ["F", ...] } }
+                if (parsed.py_state?.values?.[0]) return parsed.py_state.values[0];
+                // 3. Array format [spawned_on, name]: [0, "F"]
+                if (Array.isArray(parsed) && parsed.length >= 2) return String(parsed[1]);
+                // 4. Simple string or other
+                return typeof parsed === 'string' ? parsed : JSON.stringify(parsed);
             } catch {
                 return t;
             }
@@ -204,7 +255,16 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         const pointsDataset = h5file.get('points');
         if (pointsDataset && pointsDataset.shape[0] > 0) {
             pointsData = normalizePoints(pointsDataset.value, ['x', 'y', 'visible', 'complete']);
-            if (pointsData) log(`User points: ${pointsData.x.length}`, 'info');
+            if (pointsData) {
+                log(`User points: ${pointsData.x.length}`, 'info');
+                // Debug: check visible field
+                if (pointsData.visible) {
+                    const visibleSample = Array.from(pointsData.visible.slice(0, 10));
+                    log(`User points visible sample: ${JSON.stringify(visibleSample)}`, 'info');
+                } else {
+                    log(`User points: NO visible field!`, 'warn');
+                }
+            }
         }
     } catch (e) {
         // No user points
@@ -224,20 +284,30 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         throw new Error('No points data found in SLP file');
     }
 
-    // Read video info (path, dimensions)
+    // Read video info (path, dimensions, channels)
     let videoPath = null;
     let videoWidth = 0;
     let videoHeight = 0;
+    let videoChannels = 0;  // 0 = unknown, 1 = grayscale, 3 = RGB
     try {
         const videosDataset = h5file.get('videos_json');
         if (videosDataset && videosDataset.shape[0] > 0) {
             const videoJson = JSON.parse(videosDataset.value[0]);
             videoPath = videoJson.backend?.filename || videoJson.filename;
             // Try to get dimensions from video metadata
-            videoWidth = videoJson.backend?.shape?.[2] || videoJson.shape?.[2] || 0;
-            videoHeight = videoJson.backend?.shape?.[1] || videoJson.shape?.[1] || 0;
+            // Shape is typically [frames, height, width] or [frames, height, width, channels]
+            const shape = videoJson.backend?.shape || videoJson.shape || [];
+            videoHeight = shape[1] || 0;
+            videoWidth = shape[2] || 0;
+            // Channels: if shape has 4 elements, 4th is channels; otherwise assume grayscale
+            if (shape.length >= 4) {
+                videoChannels = shape[3];
+            } else if (shape.length === 3) {
+                // [frames, height, width] - grayscale
+                videoChannels = 1;
+            }
             if (videoWidth > 0 && videoHeight > 0) {
-                log(`Video dimensions from metadata: ${videoWidth}x${videoHeight}`, 'info');
+                log(`Video: ${videoWidth}x${videoHeight}, ${videoChannels === 1 ? 'grayscale' : videoChannels === 3 ? 'RGB' : 'unknown channels'}`, 'info');
             }
         }
     } catch (e) {
@@ -249,6 +319,12 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
     setLoading(`Building pose data (0/${totalFrames})...`);
     const frames = [];
     const numNodes = skeleton.nodes.length;
+
+    // Debug counters
+    let debugUserInstances = 0;
+    let debugPredInstances = 0;
+    let debugNullPoints = 0;
+    let debugValidPoints = 0;
 
     for (let i = 0; i < framesData.frame_id.length; i++) {
         // Progress update every 500 frames
@@ -276,11 +352,23 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
             for (let k = ptStart; k < ptEnd && k < ptStart + numNodes; k++) {
                 const x = pts.x[k];
                 const y = pts.y[k];
-                const visible = pts.visible ? pts.visible[k] : true;
 
-                // Check visible flag AND valid coordinates
-                // visible=false means point wasn't labeled
-                if (visible && !isNaN(x) && !isNaN(y)) {
+                // Check visible flag (0 = not visible/not labeled)
+                // In HDF5, visible is typically stored as 0 or 1 (or true/false)
+                let isVisible = true;  // Default to visible
+                if (pts.visible) {
+                    const visibleVal = pts.visible[k];
+                    // Explicitly check for falsy values: 0, false, null, undefined
+                    isVisible = visibleVal === 1 || visibleVal === true || visibleVal > 0;
+                }
+
+                // Check if coordinates are valid (not NaN, not Inf, and within reasonable bounds)
+                const hasValidCoords = !isNaN(x) && !isNaN(y) &&
+                                       isFinite(x) && isFinite(y) &&
+                                       Math.abs(x) < 1e6 && Math.abs(y) < 1e6;  // Sanity check
+
+                // Point is valid only if visible AND has valid coordinates
+                if (isVisible && hasValidCoords) {
                     points.push([x, y]);
                 } else {
                     points.push(null);
@@ -292,10 +380,21 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
                 points.push(null);
             }
 
+            const instType = instanceType === 1 ? 'predicted' : 'user';
+            if (instType === 'user') {
+                debugUserInstances++;
+                points.forEach(p => {
+                    if (p === null) debugNullPoints++;
+                    else debugValidPoints++;
+                });
+            } else {
+                debugPredInstances++;
+            }
+
             instances.push({
                 trackIdx: trackIdx,
                 score: score,
-                type: instanceType === 1 ? 'predicted' : 'user',
+                type: instType,
                 points: points
             });
         }
@@ -309,6 +408,8 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
     }
 
     log(`Built ${frames.length} frames with pose data`, 'success');
+    log(`DEBUG: ${debugUserInstances} user instances, ${debugPredInstances} predicted instances`, 'info');
+    log(`DEBUG: User instance points: ${debugValidPoints} valid, ${debugNullPoints} null (${(debugNullPoints / (debugValidPoints + debugNullPoints) * 100).toFixed(1)}% null)`, 'info');
 
     return {
         filename,
@@ -319,7 +420,8 @@ async function loadSlpFile(h5file, filename, fileSize, source) {
         frames,
         videoPath,
         videoWidth,
-        videoHeight
+        videoHeight,
+        videoChannels
     };
 }
 
