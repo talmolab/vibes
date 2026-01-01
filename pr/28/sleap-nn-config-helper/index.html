@@ -509,7 +509,7 @@
                             <div class="stat-detail" id="stat-instances-detail"></div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Max Size</div>
+                            <div class="stat-label">Max Instance Size</div>
                             <div class="stat-value" id="stat-size">-</div>
                             <div class="stat-detail" id="stat-size-detail"></div>
                         </div>
@@ -550,11 +550,12 @@
                     <div class="card">
                         <h2>Pipeline Type</h2>
                         <div class="radio-group" id="pipeline-options">
-                            <label class="radio-option">
-                                <input type="radio" name="pipeline" value="single_instance">
+                            <label class="radio-option" id="pipeline-single-instance-label">
+                                <input type="radio" name="pipeline" value="single_instance" id="pipeline-single-instance">
                                 <div>
                                     <strong>Single Instance</strong>
                                     <div class="desc">Best for videos with exactly one animal per frame</div>
+                                    <div class="desc" id="single-instance-disabled-msg" style="display: none; color: var(--warning); margin-top: 4px; font-weight: 500;"></div>
                                 </div>
                             </label>
                             <label class="radio-option selected">
@@ -579,7 +580,7 @@
                                 <div>
                                     <strong>Enable Multi-Class (Identity Tracking)</strong>
                                     <div class="desc" style="font-size: 0.85rem; color: var(--text-dim); margin-top: 4px;">
-                                        Adds identity classification heads to predict which track each instance belongs to.
+                                        Adds identity classification heads to assign IDs (labels) to each instance.
                                         <span id="multi-class-tracks-info" style="color: var(--warning);">Requires identity tracks in your SLP file.</span>
                                     </div>
                                 </div>
@@ -601,7 +602,7 @@
                                     </select>
                                 </div>
                                 <div class="form-group" id="shared-max-stride-group">
-                                    <label>Max Stride <span class="tooltip-icon">?<span class="tooltip-text">Controls receptive field size. Higher values capture more context but produce lower resolution feature maps. Common: 16 for small animals, 32 for larger ones.</span></span></label>
+                                    <label>Max Stride <span class="tooltip-icon">?<span class="tooltip-text">Maximum stride which determines the number of encoder blocks (log₂(max_stride)). Higher values = larger receptive field but lower resolution features. Use 16 for small animals, 32-64 for larger ones.</span></span></label>
                                     <select id="config-max-stride">
                                         <option value="8">8</option>
                                         <option value="16" selected>16</option>
@@ -625,26 +626,21 @@
                             </div>
                             <div class="form-row" id="shared-unet-params">
                                 <div class="form-group">
-                                    <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Must match backbone. Grayscale (1) for most cases. RGB (3) if color information is important.</span></span></label>
+                                    <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Auto-detected from video. Use grayscale (1) unless color is essential for distinguishing body parts.</span></span></label>
                                     <select id="config-in-channels">
                                         <option value="1" selected>1 (Grayscale)</option>
                                         <option value="3">3 (RGB)</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
-                                    <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base number of feature channels in the first encoder block. More filters = more capacity but slower training. Default: 24-32.</span></span></label>
-                                    <input type="number" id="config-filters" value="24" min="8" max="64">
+                                    <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base number of filters in the first encoder block. Channels per block = filters × rate^block. More filters = more capacity but slower training and more memory. Default: 16-32.</span></span></label>
+                                    <input type="number" id="config-filters" value="32" min="8" max="64">
                                 </div>
                                 <div class="form-group">
-                                    <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Channel multiplier per block. With rate=2.0 and filters=24: 24→48→96→... Higher rates increase capacity but also memory.</span></span></label>
-                                    <input type="number" id="config-filters-rate" value="2.0" min="1.0" max="3.0" step="0.5">
+                                    <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Factor to multiply filters per encoder block (filters × rate^block). With rate=1.5 and filters=32: 32→48→72→108. Default: 1.5 for UNet, 2.0 for ConvNeXt/SwinT.</span></span></label>
+                                    <input type="number" id="config-filters-rate" value="1.5" min="1.0" max="3.0" step="0.5">
                                 </div>
                             </div>
-                            <!-- UNet Architecture Diagram -->
-                            <details id="shared-unet-diagram" style="margin-top: 12px;">
-                                <summary style="cursor: pointer; font-size: 0.85rem; color: var(--accent);">View UNet Architecture</summary>
-                                <div id="shared-unet-arch" style="margin-top: 8px; padding: 12px; background: var(--bg); border-radius: 6px; font-family: monospace; font-size: 0.75rem; overflow-x: auto;"></div>
-                            </details>
                         </div>
 
                         <div class="card">
@@ -653,11 +649,11 @@
                             <div id="head-single-instance" class="head-config" style="display: none;">
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of Gaussian blobs in confidence maps (pixels). Should be less than 1/4 of minimum keypoint distance to avoid overlap.</span></span></label>
-                                        <input type="number" id="config-si-sigma" value="5.0" min="1.0" max="15.0" step="0.5">
+                                        <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of the Gaussian distribution of confidence maps (pixels at model input resolution). Each keypoint has its own channel, so overlap is not a concern. Smaller values are more precise but harder to learn. Default: 2.5</span></span></label>
+                                        <input type="number" id="config-si-sigma" value="2.5" min="1.0" max="15.0" step="0.5">
                                     </div>
                                     <div class="form-group">
-                                        <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Downsampling factor for confidence maps. 1=full resolution (precise), 2+=faster but less precise localization.</span></span></label>
+                                        <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Stride of output confidence maps relative to input. Stride of 2 = 0.5× resolution. Higher values speed up training and reduce memory, but decrease spatial precision. Must be ≤ max_stride.</span></span></label>
                                         <select id="config-si-stride">
                                             <option value="1" selected>1</option>
                                             <option value="2">2</option>
@@ -670,7 +666,7 @@
                                     </div>
                                 </div>
                                 <div id="si-sigma-info" style="font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;">
-                                    Suggested: <span id="si-sigma-suggest">3-5 (load SLP for auto)</span>
+                                    <span id="si-sigma-suggest">Default: 2.5 (each keypoint has its own channel)</span>
                                 </div>
                             </div>
 
@@ -679,11 +675,11 @@
                                 <h3 style="margin-top: 0; color: var(--accent);">Confidence Maps</h3>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of Gaussian blobs in confidence maps (pixels). Should be less than 1/4 of minimum keypoint distance to avoid overlap.</span></span></label>
-                                        <input type="number" id="config-bu-sigma" value="5.0" min="1.0" max="15.0" step="0.5">
+                                        <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of the Gaussian distribution of confidence maps (pixels at model input resolution). Each keypoint has its own channel, so overlap is not a concern. Smaller values are more precise but harder to learn. Default: 2.5</span></span></label>
+                                        <input type="number" id="config-bu-sigma" value="2.5" min="1.0" max="15.0" step="0.5">
                                     </div>
                                     <div class="form-group">
-                                        <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Downsampling factor for confidence maps. 1=full resolution (precise), 2+=faster but less precise localization.</span></span></label>
+                                        <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Stride of output confidence maps relative to input. Stride of 2 = 0.5× resolution. Higher values speed up training and reduce memory, but decrease spatial precision.</span></span></label>
                                         <select id="config-bu-stride">
                                             <option value="1" selected>1</option>
                                             <option value="2">2</option>
@@ -695,18 +691,18 @@
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label>Loss Weight <span class="tooltip-icon">?<span class="tooltip-text">Relative weight of confidence map loss. Increase if keypoint detection is poor relative to grouping.</span></span></label>
+                                        <label>Loss Weight <span class="tooltip-icon">?<span class="tooltip-text">Scalar to weigh this head's loss during training. Increase to focus optimization on this output in multi-head models. Default: 1.0</span></span></label>
                                         <input type="number" id="config-bu-confmap-weight" value="1.0" min="0.1" max="10.0" step="0.1">
                                     </div>
                                 </div>
                                 <h3 style="color: var(--accent);">Part Affinity Fields (PAFs)</h3>
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label>PAF Sigma <span class="tooltip-icon">?<span class="tooltip-text">Width of the part affinity field vectors connecting keypoints. Larger values are more tolerant of localization errors.</span></span></label>
+                                        <label>PAF Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of PAF vector fields connecting keypoints. Higher sigma (15+) is typical for PAFs since they benefit from broader spatial spread. Default: 15.0</span></span></label>
                                         <input type="number" id="config-paf-sigma" value="15.0" min="5.0" max="50.0" step="1.0">
                                     </div>
                                     <div class="form-group">
-                                        <label>PAF Stride <span class="tooltip-icon">?<span class="tooltip-text">Downsampling for PAF output. Usually matches confidence map stride.</span></span></label>
+                                        <label>PAF Stride <span class="tooltip-icon">?<span class="tooltip-text">Stride of output PAF maps relative to input. Usually matches confidence map output stride. Default: 1</span></span></label>
                                         <select id="config-paf-stride">
                                             <option value="1" selected>1</option>
                                             <option value="2">2</option>
@@ -718,7 +714,7 @@
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label>PAF Weight <span class="tooltip-icon">?<span class="tooltip-text">Loss weight for PAF head. Adjust if grouping performance differs from detection.</span></span></label>
+                                        <label>PAF Weight <span class="tooltip-icon">?<span class="tooltip-text">Scalar to weigh PAF head loss during training. Increase to focus on grouping if detection is good but grouping is poor. Default: 1.0</span></span></label>
                                         <input type="number" id="config-paf-weight" value="1.0" min="0.1" max="10.0" step="0.1">
                                     </div>
                                 </div>
@@ -803,31 +799,26 @@
                                 </div>
                                 <div class="form-row" id="centroid-unet-params">
                                     <div class="form-group">
-                                        <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Must match preprocessing. Grayscale (1) for most cases.</span></span></label>
+                                        <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Auto-detected from video. Use grayscale (1) unless color is essential.</span></span></label>
                                         <select id="config-centroid-in-channels">
                                             <option value="1" selected>1 (Grayscale)</option>
                                             <option value="3">3 (RGB)</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base feature channels. More = more capacity but slower. Default: 24.</span></span></label>
-                                        <input type="number" id="config-centroid-filters" value="24" min="8" max="64">
+                                        <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base feature channels. More = more capacity but slower. Default: 16 for centroid.</span></span></label>
+                                        <input type="number" id="config-centroid-filters" value="16" min="8" max="64">
                                     </div>
                                     <div class="form-group">
-                                        <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Channel multiplier per block. 2.0 means doubling each level.</span></span></label>
-                                        <input type="number" id="config-centroid-filters-rate" value="2.0" min="1.0" max="3.0" step="0.5">
+                                        <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Channel multiplier per block. Default: 1.5 for UNet.</span></span></label>
+                                        <input type="number" id="config-centroid-filters-rate" value="1.5" min="1.0" max="3.0" step="0.5">
                                     </div>
                                 </div>
-                                <!-- UNet Architecture Diagram for Centroid -->
-                                <details id="centroid-unet-diagram" style="margin-top: 12px;">
-                                    <summary style="cursor: pointer; font-size: 0.85rem; color: var(--accent);">View UNet Architecture</summary>
-                                    <div id="centroid-unet-arch" style="margin-top: 8px; padding: 12px; background: var(--bg); border-radius: 6px; font-family: monospace; font-size: 0.75rem; overflow-x: auto;"></div>
-                                </details>
                                 <h3 style="color: var(--accent);">Head Config</h3>
                                 <!-- Anchor Part with Visual Picker -->
                                 <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px;">
                                     <div style="flex: 1;">
-                                        <label style="display: block; margin-bottom: 4px;">Anchor Part <span class="tooltip-icon">?<span class="tooltip-text">Keypoint used as the instance center. Choose a reliably visible node (e.g., thorax, nose). If "None", uses bounding box center.</span></span></label>
+                                        <label style="display: block; margin-bottom: 4px;">Anchor Part <span class="tooltip-icon">?<span class="tooltip-text">Node name to use as anchor point. If None, uses midpoint of bounding box of all visible instance points. Choose a reliably visible node (e.g., thorax, nose). Missing values are noted next to each option.</span></span></label>
                                         <select id="config-centroid-anchor" style="width: 100%;">
                                             <option value="">None (use bounding box center)</option>
                                         </select>
@@ -845,11 +836,11 @@
                                     <div style="flex: 1;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of centroid Gaussians. Use larger sigma (5-10) since centroids are spaced further apart than keypoints.</span></span></label>
+                                                <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of the Gaussian for centroid confidence maps (pixels at model input resolution). Can use larger sigma (5-10) for centroids since they're spaced further apart than keypoints. Default: 5.0</span></span></label>
                                                 <input type="number" id="config-centroid-sigma" value="5.0" min="1.0" max="20.0" step="0.5">
                                             </div>
                                             <div class="form-group">
-                                                <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Downsampling for centroid maps. Can use higher strides (2-4) since centroid localization is less precise.</span></span></label>
+                                                <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Stride of centroid maps relative to input. Higher strides (2-4) are acceptable for centroids since precise localization is less critical. Speeds up training and reduces memory.</span></span></label>
                                                 <select id="config-centroid-stride">
                                                     <option value="1" selected>1</option>
                                                     <option value="2">2</option>
@@ -909,31 +900,26 @@
                                 </div>
                                 <div class="form-row" id="ci-unet-params">
                                     <div class="form-group">
-                                        <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Must match preprocessing. Grayscale (1) for most cases.</span></span></label>
+                                        <label>Input Channels <span class="tooltip-icon">?<span class="tooltip-text">Auto-detected from video. Use grayscale (1) unless color is essential.</span></span></label>
                                         <select id="config-ci-in-channels">
                                             <option value="1" selected>1 (Grayscale)</option>
                                             <option value="3">3 (RGB)</option>
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base feature channels. More = more capacity but slower. Default: 24.</span></span></label>
-                                        <input type="number" id="config-ci-filters" value="24" min="8" max="64">
+                                        <label>Filters <span class="tooltip-icon">?<span class="tooltip-text">Base feature channels. More = more capacity but slower. Default: 32.</span></span></label>
+                                        <input type="number" id="config-ci-filters" value="32" min="8" max="64">
                                     </div>
                                     <div class="form-group">
-                                        <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Channel multiplier per block. 2.0 means doubling each level.</span></span></label>
-                                        <input type="number" id="config-ci-filters-rate" value="2.0" min="1.0" max="3.0" step="0.5">
+                                        <label>Filters Rate <span class="tooltip-icon">?<span class="tooltip-text">Channel multiplier per block. Default: 1.5 for UNet.</span></span></label>
+                                        <input type="number" id="config-ci-filters-rate" value="1.5" min="1.0" max="3.0" step="0.5">
                                     </div>
                                 </div>
-                                <!-- UNet Architecture Diagram for Centered Instance -->
-                                <details id="ci-unet-diagram" style="margin-top: 12px;">
-                                    <summary style="cursor: pointer; font-size: 0.85rem; color: var(--accent);">View UNet Architecture</summary>
-                                    <div id="ci-unet-arch" style="margin-top: 8px; padding: 12px; background: var(--bg); border-radius: 6px; font-family: monospace; font-size: 0.75rem; overflow-x: auto;"></div>
-                                </details>
                                 <h3 style="color: var(--accent);">Head Config</h3>
                                 <!-- Anchor Part with Visual Picker -->
                                 <div style="display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px;">
                                     <div style="flex: 1;">
-                                        <label style="display: block; margin-bottom: 4px;">Anchor Part <span class="tooltip-icon">?<span class="tooltip-text">Keypoint used to center crops. Should match the centroid model's anchor for consistent cropping.</span></span></label>
+                                        <label style="display: block; margin-bottom: 4px;">Anchor Part <span class="tooltip-icon">?<span class="tooltip-text">Node name to center instance crops on. Should match centroid model anchor for consistent geometry. If None, uses bounding box midpoint. A reliable anchor improves accuracy by keeping body parts at consistent positions in crops.</span></span></label>
                                         <select id="config-ci-anchor" style="width: 100%;">
                                             <option value="">None (use bounding box center)</option>
                                         </select>
@@ -951,11 +937,11 @@
                                     <div style="flex: 1;">
                                         <div class="form-row">
                                             <div class="form-group">
-                                                <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of keypoint Gaussians. Use smaller sigma (3-5) for precise keypoint localization in crops.</span></span></label>
-                                                <input type="number" id="config-ci-sigma" value="5.0" min="1.0" max="15.0" step="0.5">
+                                                <label>Sigma <span class="tooltip-icon">?<span class="tooltip-text">Spread of the Gaussian for keypoint confidence maps (pixels at model input resolution). Each keypoint has its own channel, so overlap is not a concern. Default: 2.5</span></span></label>
+                                                <input type="number" id="config-ci-sigma" value="2.5" min="1.0" max="15.0" step="0.5">
                                             </div>
                                             <div class="form-group">
-                                                <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Downsampling for keypoint maps. Use stride=1 for precise localization in crops.</span></span></label>
+                                                <label>Output Stride <span class="tooltip-icon">?<span class="tooltip-text">Stride of keypoint maps relative to crop input. Use stride=1-2 for precise keypoint localization in cropped instances. Higher strides trade precision for speed.</span></span></label>
                                                 <select id="config-ci-stride">
                                                     <option value="1" selected>1</option>
                                                     <option value="2">2</option>
@@ -967,7 +953,7 @@
                                         </div>
                                         <div id="ci-sigma-info" style="font-size: 0.75rem; color: var(--text-dim); margin-top: 8px;">
                                             <div>Gaussian spread: <span id="ci-sigma-radius">10</span>px (2σ covers 95%)</div>
-                                            <div style="margin-top: 2px;">Suggested: <span id="ci-sigma-suggest">3-5</span> for keypoints</div>
+                                            <div style="margin-top: 2px;"><span id="ci-sigma-suggest">Default: 2.5 (each keypoint has its own channel)</span></div>
                                         </div>
                                     </div>
                                     <div style="flex-shrink: 0;">
@@ -982,7 +968,7 @@
                     </div>
 
                     <div class="card">
-                        <h2>Model Parameters</h2>
+                        <h2>Model architecture</h2>
                         <div class="stats-grid">
                             <div class="stat-card">
                                 <div class="stat-label">Parameters</div>
@@ -994,6 +980,11 @@
                                 <div class="stat-detail" id="model-head-stride">at stride 1</div>
                             </div>
                         </div>
+                        <!-- UNet Architecture Diagram -->
+                        <details id="shared-unet-diagram" style="margin-top: 12px;">
+                            <summary style="cursor: pointer; font-size: 0.85rem; color: var(--accent);">View UNet Architecture</summary>
+                            <div id="shared-unet-arch" style="margin-top: 8px; padding: 12px; background: var(--bg); border-radius: 6px; font-family: monospace; font-size: 0.75rem; overflow-x: auto;"></div>
+                        </details>
                     </div>
 
                     <div class="card">
@@ -1025,15 +1016,16 @@
                             <div style="flex: 1; min-width: 200px;">
                                 <div class="stats-grid" style="margin-bottom: 12px;">
                                     <div class="stat-card">
-                                        <div class="stat-label">Receptive Field</div>
+                                        <div class="stat-label">Receptive Field <span class="tooltip-icon">?<span class="tooltip-text">RF size at model resolution (after scaling). This is what the model "sees" in processed pixels. The value in parentheses shows RF mapped to original image coordinates.</span></span></div>
                                         <div class="stat-value" id="rf-value">76 px</div>
+                                        <div class="stat-detail" id="rf-base" style="font-size: 0.65rem;">(152 px in original)</div>
                                     </div>
-                                    <div class="stat-card">
-                                        <div class="stat-label">Max Instance</div>
+                                    <div class="stat-card" id="rf-instance-card">
+                                        <div class="stat-label">Instance Size <span class="tooltip-icon">?<span class="tooltip-text">Max instance bounding box dimension at model resolution (after scaling). Compare to RF to see coverage.</span></span></div>
                                         <div class="stat-value" id="rf-instance-size">- px</div>
-                                        <div class="stat-detail" id="rf-instance-scaled" style="font-size: 0.65rem;">(at scale)</div>
+                                        <div class="stat-detail" id="rf-instance-scaled" style="font-size: 0.65rem;">(original)</div>
                                     </div>
-                                    <div class="stat-card">
+                                    <div class="stat-card" id="rf-coverage-card">
                                         <div class="stat-label">Coverage</div>
                                         <div class="stat-value" id="rf-ratio">-</div>
                                     </div>
@@ -1057,7 +1049,7 @@
                             <div style="flex: 1; min-width: 200px;">
                                 <div class="form-row">
                                     <div class="form-group">
-                                        <label>Input Scale <span class="tooltip-icon">?<span class="tooltip-text">Resize factor applied before training. Lower values speed up training but reduce precision. Also increases effective receptive field.</span></span></label>
+                                        <label>Input Scale <span class="tooltip-icon">?<span class="tooltip-text">Factor to resize image dimensions by. Scale=0.5 halves width/height. Lower values speed up training but reduce precision. Effective receptive field increases proportionally. Default: 1.0</span></span></label>
                                         <select id="config-scale">
                                             <option value="1.0">1.0 (original)</option>
                                             <option value="0.75">0.75</option>
@@ -1066,12 +1058,22 @@
                                         </select>
                                     </div>
                                     <div class="form-group">
-                                        <label>Channels <span class="tooltip-icon">?<span class="tooltip-text">Number of input channels. Grayscale (1) is faster and often works well. RGB (3) preserves color information.</span></span></label>
+                                        <label>Channels <span class="tooltip-icon">?<span class="tooltip-text">Input channel handling. Auto-detect uses source format. Grayscale converts RGB→gray. RGB replicates single-channel→3 channels. Use grayscale unless color is essential.</span></span></label>
                                         <select id="config-channels">
                                             <option value="auto">Auto-detect</option>
                                             <option value="grayscale">Grayscale</option>
                                             <option value="rgb">RGB</option>
                                         </select>
+                                    </div>
+                                </div>
+                                <div class="form-row" style="margin-top: 8px;">
+                                    <div class="form-group">
+                                        <label>Max Height <span class="tooltip-icon">?<span class="tooltip-text">Maximum height to resize image to before scaling. Leave empty for no limit. Useful for very large images to reduce memory usage. Applied before scale factor.</span></span></label>
+                                        <input type="number" id="config-max-height" placeholder="None" min="32" step="16" style="width: 100px;">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Max Width <span class="tooltip-icon">?<span class="tooltip-text">Maximum width to resize image to before scaling. Leave empty for no limit. Useful for very large images to reduce memory usage. Applied before scale factor.</span></span></label>
+                                        <input type="number" id="config-max-width" placeholder="None" min="32" step="16" style="width: 100px;">
                                     </div>
                                 </div>
                                 <div class="stats-grid" style="margin-top: 12px;">
@@ -1080,8 +1082,12 @@
                                         <div class="stat-value" id="orig-size">-</div>
                                     </div>
                                     <div class="stat-card">
-                                        <div class="stat-label">Processed Size</div>
+                                        <div class="stat-label">Scaled Size</div>
                                         <div class="stat-value" id="proc-size">-</div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-label">Final Processed Image (After padding) <span class="tooltip-icon" style="font-size: 0.7rem;">?<span class="tooltip-text">Final size after padding to max_stride. Images are padded to be divisible by the backbone's max stride for proper convolution alignment.</span></span></div>
+                                        <div class="stat-value" id="padded-size">-</div>
                                     </div>
                                 </div>
                             </div>
@@ -1093,7 +1099,7 @@
                     </div>
 
                     <div class="card" id="crop-size-card">
-                        <h2>Crop Size <span style="font-size: 0.75rem; color: var(--text-dim);">(Top-Down only)</span> <span class="tooltip-icon">?<span class="tooltip-text">Size of cropped regions around detected centroids. Should be large enough to contain the full instance with some padding.</span></span></h2>
+                        <h2>Crop Size <span style="font-size: 0.75rem; color: var(--text-dim);">(Top-Down only)</span> <span class="tooltip-icon">?<span class="tooltip-text">Crop size for centered-instance model. If null, auto-computed from largest instance in labels. Should contain full instance with padding. Visualizer shows recommended size from your data.</span></span></h2>
                         <div style="display: flex; gap: 16px; flex-wrap: wrap;">
                             <div style="flex: 1; min-width: 200px;">
                                 <div class="slider-group">
@@ -1102,6 +1108,9 @@
                                         <span class="slider-value" id="crop-size-value">256 px</span>
                                     </div>
                                     <input type="range" id="config-crop-size" min="64" max="512" step="16" value="256">
+                                </div>
+                                <div id="crop-instance-size" style="font-size: 0.85rem; color: var(--text-dim); margin: 8px 0;">
+                                    Max instance: <span id="crop-max-instance">- px</span>
                                 </div>
                                 <div id="crop-status" class="status-box">Load SLP to see recommendations</div>
                             </div>
@@ -1135,7 +1144,7 @@
                         <h2>Data Pipeline</h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Pipeline Framework <span class="tooltip-icon">?<span class="tooltip-text">How images are loaded. Memory cache is fastest but uses RAM. Disk cache is slower but saves memory. Stream has no cache.</span></span></label>
+                                <label>Pipeline Framework <span class="tooltip-icon">?<span class="tooltip-text">Data loading framework. Stream: no caching, requires num_workers=0. Memory cache: fastest, uses RAM, allows workers>0. Disk cache: saves memory but slower I/O.</span></span></label>
                                 <select id="config-data-pipeline">
                                     <option value="torch_dataset">Stream (no caching)</option>
                                     <option value="torch_dataset_cache_img_memory" selected>Cache in Memory (recommended)</option>
@@ -1146,7 +1155,7 @@
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label>User Instances Only <span class="tooltip-icon">?<span class="tooltip-text">If Yes, only human-labeled instances are used. If No, predicted instances are also included (useful for semi-supervised learning).</span></span></label>
+                                <label>User Instances Only <span class="tooltip-icon">?<span class="tooltip-text">If Yes (default), only human-labeled instances are used for training. If No, predicted instances are also included - useful for semi-supervised learning with model predictions.</span></span></label>
                                 <select id="config-user-instances">
                                     <option value="true">Yes (recommended)</option>
                                     <option value="false">No (include predicted)</option>
@@ -1211,17 +1220,23 @@
                         <h2>Training Parameters</h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Batch Size <span class="tooltip-icon">?<span class="tooltip-text">Samples per training step. Larger batches train faster but use more GPU memory. Start with 4-8 and increase if memory allows.</span></span></label>
+                                <label>Batch Size <span class="tooltip-icon">?<span class="tooltip-text">Number of samples per training step. Larger batches = faster training but more GPU memory. Start with 4-8 and increase if memory allows. Default: 4</span></span></label>
                                 <input type="number" id="config-batch-size" value="4" min="1" max="64">
                             </div>
                             <div class="form-group">
-                                <label>Max Epochs <span class="tooltip-icon">?<span class="tooltip-text">Maximum training iterations over the full dataset. Early stopping will halt training if no improvement.</span></span></label>
+                                <label>Max Epochs <span class="tooltip-icon">?<span class="tooltip-text">Maximum number of epochs to run. Early stopping will halt training before this if validation loss plateaus. Default: 200</span></span></label>
                                 <input type="number" id="config-epochs" value="200" min="10" max="1000">
                             </div>
                             <div class="form-group">
-                                <label>Num Workers <span class="tooltip-icon">?<span class="tooltip-text">Parallel data loading processes. Set to 0 for Stream pipeline. Use 2-4 for Cache pipelines.</span></span></label>
+                                <label>Num Workers <span class="tooltip-icon">?<span class="tooltip-text">Number of subprocesses for data loading. Must be 0 for Stream pipeline (no caching). Can use 2-4 for Cache pipelines. Default: 0</span></span></label>
                                 <input type="number" id="config-num-workers" value="0" min="0" max="16">
                             </div>
+                        </div>
+                        <div class="form-row" style="margin-top: 12px;">
+                            <label class="checkbox-group" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="config-same-data-val">
+                                <span>Use same data for train & validation <span class="tooltip-icon">?<span class="tooltip-text">When enabled, uses identical data for training and validation. Useful for intentional overfitting on very small datasets to verify the model can learn. NOT recommended for normal training.</span></span></span>
+                            </label>
                         </div>
                     </div>
 
@@ -1229,18 +1244,18 @@
                         <h2>Optimizer</h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Optimizer <span class="tooltip-icon">?<span class="tooltip-text">Adam is standard. AdamW adds weight decay (L2 regularization) which can improve generalization.</span></span></label>
+                                <label>Optimizer <span class="tooltip-icon">?<span class="tooltip-text">Optimizer algorithm. Adam is the standard default. AdamW adds decoupled weight decay (L2 regularization) which can improve generalization.</span></span></label>
                                 <select id="config-optimizer">
                                     <option value="Adam" selected>Adam</option>
                                     <option value="AdamW">AdamW</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Learning Rate <span class="tooltip-icon">?<span class="tooltip-text">Step size for weight updates. Default 1e-4 works well. Reduce if training is unstable.</span></span></label>
+                                <label>Learning Rate <span class="tooltip-icon">?<span class="tooltip-text">Step size for weight updates. Default 1e-4 (0.0001) works well for most cases. Reduce if training is unstable or loss spikes.</span></span></label>
                                 <input type="number" id="config-lr" value="0.0001" min="0.00001" max="0.01" step="0.0001">
                             </div>
                             <div class="form-group">
-                                <label>AMSGrad <span class="tooltip-icon">?<span class="tooltip-text">Variant of Adam with guaranteed convergence. Can help if training is unstable.</span></span></label>
+                                <label>AMSGrad <span class="tooltip-icon">?<span class="tooltip-text">Enable AMSGrad variant of Adam with guaranteed convergence properties. Can help stabilize training in some cases. Default: No</span></span></label>
                                 <select id="config-amsgrad">
                                     <option value="false" selected>No</option>
                                     <option value="true">Yes</option>
@@ -1250,25 +1265,25 @@
                     </div>
 
                     <div class="card">
-                        <h2>LR Scheduler <span class="tooltip-icon">?<span class="tooltip-text">Reduces learning rate when validation loss stops improving. Helps fine-tune the model in later epochs.</span></span></h2>
+                        <h2>LR Scheduler <span class="tooltip-icon">?<span class="tooltip-text">ReduceLROnPlateau: reduces learning rate when validation loss stops improving. Helps the model fine-tune in later training epochs when progress stalls.</span></span></h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Factor <span class="tooltip-icon">?<span class="tooltip-text">Multiply LR by this value when reducing. 0.5 means halving the learning rate.</span></span></label>
+                                <label>Factor <span class="tooltip-icon">?<span class="tooltip-text">Factor to multiply learning rate by when reducing. new_lr = lr × factor. 0.5 means halving. Default: 0.5</span></span></label>
                                 <input type="number" id="config-lr-factor" value="0.5" min="0.1" max="1.0" step="0.1">
                             </div>
                             <div class="form-group">
-                                <label>Patience <span class="tooltip-icon">?<span class="tooltip-text">Epochs to wait before reducing LR if no improvement.</span></span></label>
+                                <label>Patience <span class="tooltip-icon">?<span class="tooltip-text">Number of epochs with no improvement after which learning rate will be reduced. Default: 5</span></span></label>
                                 <input type="number" id="config-lr-patience" value="5" min="1" max="50">
                             </div>
                             <div class="form-group">
-                                <label>Min LR <span class="tooltip-icon">?<span class="tooltip-text">Learning rate floor. LR won't be reduced below this value.</span></span></label>
+                                <label>Min LR <span class="tooltip-icon">?<span class="tooltip-text">Lower bound on learning rate. LR won't be reduced below this value. Default: 1e-8</span></span></label>
                                 <input type="number" id="config-min-lr" value="0.00000001" min="0" max="0.001" step="0.00000001">
                             </div>
                         </div>
                     </div>
 
                     <div class="card">
-                        <h2>Early Stopping <span class="tooltip-icon">?<span class="tooltip-text">Stops training when validation loss stops improving. Prevents overfitting and saves time.</span></span></h2>
+                        <h2>Early Stopping <span class="tooltip-icon">?<span class="tooltip-text">Stops training when validation loss stops improving for patience epochs. Prevents overfitting and saves compute time. Recommended to keep enabled.</span></span></h2>
                         <div class="form-row">
                             <div class="form-group">
                                 <label>Enable <span class="tooltip-icon">?<span class="tooltip-text">Turn early stopping on/off. Recommended to leave enabled.</span></span></label>
@@ -1278,12 +1293,44 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Patience <span class="tooltip-icon">?<span class="tooltip-text">Epochs to wait without improvement before stopping. Higher values allow more exploration.</span></span></label>
+                                <label>Patience <span class="tooltip-icon">?<span class="tooltip-text">Number of epochs with no improvement after which training will be stopped. Default: 10</span></span></label>
                                 <input type="number" id="config-early-patience" value="10" min="1" max="100">
                             </div>
                             <div class="form-group">
-                                <label>Min Delta <span class="tooltip-icon">?<span class="tooltip-text">Minimum change to qualify as improvement. Small values are more sensitive.</span></span></label>
+                                <label>Min Delta <span class="tooltip-icon">?<span class="tooltip-text">Minimum change in validation loss to qualify as improvement. Changes smaller than this are ignored. Default: 1e-8</span></span></label>
                                 <input type="number" id="config-early-delta" value="0.00000001" min="0" step="0.00000001">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>Online Hard Keypoint Mining <span class="tooltip-icon">?<span class="tooltip-text">OHKM focuses training on difficult keypoints by scaling up losses for hard-to-learn body parts. Can improve accuracy on tricky keypoints but may slow convergence.</span></span></h2>
+                        <div class="form-row">
+                            <label class="checkbox-group" style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="config-ohkm-enable">
+                                <span>Enable OHKM</span>
+                            </label>
+                        </div>
+                        <div id="ohkm-options" style="display: none; margin-top: 12px;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Hard-to-Easy Ratio <span class="tooltip-icon">?<span class="tooltip-text">Minimum ratio of keypoint loss to lowest loss to be considered "hard". Higher = fewer keypoints marked as hard. Default: 2.0</span></span></label>
+                                    <input type="number" id="config-ohkm-ratio" value="2.0" min="1.0" max="10.0" step="0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label>Min Hard Keypoints <span class="tooltip-icon">?<span class="tooltip-text">Minimum number of keypoints always considered "hard", even if below the ratio threshold. Default: 2</span></span></label>
+                                    <input type="number" id="config-ohkm-min" value="2" min="1" max="20">
+                                </div>
+                                <div class="form-group">
+                                    <label>Max Hard Keypoints <span class="tooltip-icon">?<span class="tooltip-text">Maximum number of hard keypoints to apply scaling to. Leave empty for no limit. Helps prevent over-scaling when many keypoints are difficult.</span></span></label>
+                                    <input type="number" id="config-ohkm-max" placeholder="None" min="1" max="50">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Loss Scale <span class="tooltip-icon">?<span class="tooltip-text">Factor to scale hard keypoint losses by. Higher = more focus on hard keypoints. Default: 5.0</span></span></label>
+                                    <input type="number" id="config-ohkm-scale" value="5.0" min="1.0" max="20.0" step="0.5">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1292,22 +1339,32 @@
                         <h2>Checkpointing & Logging</h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Save Checkpoints <span class="tooltip-icon">?<span class="tooltip-text">Save model weights during training. Required to resume or use the trained model.</span></span></label>
+                                <label>Save Checkpoints <span class="tooltip-icon">?<span class="tooltip-text">Save model weights during training. Required to use the trained model for inference or resume training.</span></span></label>
                                 <select id="config-save-ckpt">
                                     <option value="true" selected>Yes</option>
                                     <option value="false">No</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Save Top K <span class="tooltip-icon">?<span class="tooltip-text">Keep the K best checkpoints by validation loss. -1 keeps all, 1 keeps only the best.</span></span></label>
+                                <label>Save Top K <span class="tooltip-icon">?<span class="tooltip-text">Save the K best checkpoints by validation loss. -1 = keep all, 0 = save none, 1 = keep only the best (recommended). Default: 1</span></span></label>
                                 <input type="number" id="config-save-top-k" value="1" min="-1" max="10">
                             </div>
                             <div class="form-group">
-                                <label>Use WandB <span class="tooltip-icon">?<span class="tooltip-text">Log metrics to Weights & Biases for experiment tracking and visualization.</span></span></label>
+                                <label>Use WandB <span class="tooltip-icon">?<span class="tooltip-text">Enable Weights & Biases integration for experiment tracking, metric visualization, and run comparison. Requires wandb account.</span></span></label>
                                 <select id="config-use-wandb">
                                     <option value="false" selected>No</option>
                                     <option value="true">Yes</option>
                                 </select>
+                            </div>
+                        </div>
+                        <div class="form-row" style="margin-top: 12px;">
+                            <div class="form-group" style="flex: 2;">
+                                <label>Checkpoint Directory <span class="tooltip-icon">?<span class="tooltip-text">Directory path where the run folder is created. Checkpoints saved to &lt;ckpt_dir&gt;/&lt;run_name&gt;/. Default: "models"</span></span></label>
+                                <input type="text" id="config-ckpt-dir" value="models" placeholder="models">
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label>Run Name <span class="tooltip-icon">?<span class="tooltip-text">Name of the current run. Checkpoints saved to &lt;ckpt_dir&gt;/&lt;run_name&gt;/. Auto-generated with timestamp if left blank.</span></span></label>
+                                <input type="text" id="config-run-name" placeholder="auto-generated">
                             </div>
                         </div>
                     </div>
@@ -1316,25 +1373,25 @@
                         <h2>Weights & Biases Options</h2>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Entity <span class="tooltip-icon">?<span class="tooltip-text">Your WandB username or team name.</span></span></label>
+                                <label>Entity <span class="tooltip-icon">?<span class="tooltip-text">Your WandB username or team name. Required for logging runs to your account.</span></span></label>
                                 <input type="text" id="config-wandb-entity" placeholder="your-entity">
                             </div>
                             <div class="form-group">
-                                <label>Project <span class="tooltip-icon">?<span class="tooltip-text">WandB project to log runs to. Created if it doesn't exist.</span></span></label>
+                                <label>Project <span class="tooltip-icon">?<span class="tooltip-text">WandB project name. Runs will be logged here. Created automatically if it doesn't exist.</span></span></label>
                                 <input type="text" id="config-wandb-project" placeholder="sleap-nn">
                             </div>
                             <div class="form-group">
-                                <label>Run Name <span class="tooltip-icon">?<span class="tooltip-text">Display name for this run. Auto-generated if blank.</span></span></label>
+                                <label>Run Name <span class="tooltip-icon">?<span class="tooltip-text">Display name for this run in WandB. Auto-generated with timestamp if left blank.</span></span></label>
                                 <input type="text" id="config-wandb-name" placeholder="auto-generated">
                             </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Group <span class="tooltip-icon">?<span class="tooltip-text">Optional group to organize related runs (e.g., hyperparameter sweeps).</span></span></label>
+                                <label>Group <span class="tooltip-icon">?<span class="tooltip-text">Optional group name to organize related runs together (e.g., for hyperparameter sweeps or experiment variants).</span></span></label>
                                 <input type="text" id="config-wandb-group" placeholder="optional group">
                             </div>
                             <div class="form-group">
-                                <label>Save Viz <span class="tooltip-icon">?<span class="tooltip-text">Log prediction visualizations to WandB during training.</span></span></label>
+                                <label>Save Viz <span class="tooltip-icon">?<span class="tooltip-text">Upload prediction visualizations (keypoints + confidence maps) saved to viz folder to WandB during training.</span></span></label>
                                 <select id="config-wandb-save-viz">
                                     <option value="false" selected>No</option>
                                     <option value="true">Yes</option>
@@ -1344,10 +1401,23 @@
                     </div>
 
                     <div class="card">
-                        <h2>Memory Estimate</h2>
+                        <h2>Memory Estimate <span class="tooltip-icon">?<span class="tooltip-text">Estimates based on model architecture, batch size, and image dimensions. Actual usage may vary.</span></span></h2>
+
+                        <!-- CPU Memory (Caching) -->
+                        <h3 style="margin-top: 0;">CPU Memory (Image Cache)</h3>
                         <div class="stats-grid" style="margin-bottom: 12px;">
                             <div class="stat-card">
-                                <div class="stat-label">Est. GPU Memory</div>
+                                <div class="stat-label">Cache Size</div>
+                                <div class="stat-value" id="mem-cache">- GB</div>
+                                <div class="stat-detail" id="mem-cache-detail">Load SLP</div>
+                            </div>
+                        </div>
+
+                        <!-- GPU Memory Breakdown -->
+                        <h3>GPU Memory (Training)</h3>
+                        <div class="stats-grid" style="margin-bottom: 8px;">
+                            <div class="stat-card">
+                                <div class="stat-label">Total GPU</div>
                                 <div class="stat-value" id="mem-total">~2.1 GB</div>
                             </div>
                             <div class="stat-card">
@@ -1355,14 +1425,17 @@
                                 <div class="stat-value" id="mem-params">~1.2M</div>
                             </div>
                         </div>
+                        <details style="margin-bottom: 12px; font-size: 0.85rem;">
+                            <summary style="cursor: pointer; color: var(--text-dim);">GPU Memory Breakdown</summary>
+                            <div style="padding: 8px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px;">
+                                <div>Model weights:</div><div id="mem-weights">-</div>
+                                <div>Batch images:</div><div id="mem-batch-img">-</div>
+                                <div>Batch confmaps:</div><div id="mem-batch-conf">-</div>
+                                <div>Activations:</div><div id="mem-activations">-</div>
+                                <div>Gradients + Optimizer:</div><div id="mem-gradients">-</div>
+                            </div>
+                        </details>
                         <div id="mem-status" class="status-box">Adjust batch/crop size if memory is too high.</div>
-                        <h3>GPU Compatibility</h3>
-                        <div class="gpu-cards">
-                            <div class="gpu-card"><div class="name">GTX 1650</div><div class="mem">4 GB</div><div class="status" id="gpu-4">-</div></div>
-                            <div class="gpu-card"><div class="name">RTX 3070</div><div class="mem">8 GB</div><div class="status" id="gpu-8">-</div></div>
-                            <div class="gpu-card"><div class="name">RTX 3080</div><div class="mem">12 GB</div><div class="status" id="gpu-12">-</div></div>
-                            <div class="gpu-card"><div class="name">RTX 3090</div><div class="mem">24 GB</div><div class="status" id="gpu-24">-</div></div>
-                        </div>
                     </div>
                 </div>
 
@@ -1433,23 +1506,27 @@
         let configState = {
             // Data config
             dataPipelineFw: 'torch_dataset_cache_img_memory', userInstancesOnly: true,
+            useSameDataForVal: false, // Use same data for train and val (intentional overfitting)
             scale: 1.0, channels: 'auto',
+            maxHeight: null, maxWidth: null, // SizeMatcher: limit image size before scaling (null = no limit)
+            cropPadding: null, // Padding around instance bbox for crop_size auto-calculation
             pipeline: 'topdown',
             multiClass: false, // Identity tracking (requires tracks in SLP)
             cropSize: 256,
             rotation: 15, scaleAug: 10, brightness: 0, contrast: 0,
             // Shared backbone for single_instance and bottomup
-            backbone: 'unet', maxStride: 16, filters: 24, filtersRate: 2.0, modelType: 'tiny', pretrained: false, inChannels: 1,
+            backbone: 'unet', maxStride: 16, filters: 32, filtersRate: 1.5, modelType: 'default', pretrained: false, inChannels: 1,
             // Single Instance config
-            singleInstance: { sigma: 5.0, outputStride: 1 },
+            singleInstance: { sigma: 2.5, outputStride: 1 },
             // Top-Down: Centroid model (full config)
             centroid: {
                 // Backbone (modelType for ConvNeXt/SwinT, maxStride fixed at 32 for those)
-                backbone: 'unet', maxStride: 16, filters: 24, filtersRate: 2.0, modelType: 'tiny', pretrained: false, inChannels: 1,
-                // Head
+                backbone: 'unet', maxStride: 16, filters: 16, filtersRate: 1.5, modelType: 'default', pretrained: false, inChannels: 1,
+                // Head (sigma=5.0 for centroid since it detects instance centers, not precise keypoints)
                 sigma: 5.0, outputStride: 1, anchorPart: '',
                 // Data
-                scale: 1.0, channels: 'auto', dataPipelineFw: 'torch_dataset_cache_img_memory',
+                scale: 1.0, channels: 'auto', maxHeight: null, maxWidth: null,
+                dataPipelineFw: 'torch_dataset_cache_img_memory',
                 rotation: 15, scaleAug: 10, brightness: 0, contrast: 0,
                 // Trainer
                 batchSize: 4, numWorkers: 2, epochs: 200,
@@ -1461,11 +1538,12 @@
             // Top-Down: Centered Instance model (full config)
             centeredInstance: {
                 // Backbone (modelType for ConvNeXt/SwinT, maxStride fixed at 32 for those)
-                backbone: 'unet', maxStride: 16, filters: 24, filtersRate: 2.0, modelType: 'tiny', pretrained: false, inChannels: 1,
-                // Head
-                sigma: 5.0, outputStride: 1, anchorPart: '',
+                backbone: 'unet', maxStride: 16, filters: 32, filtersRate: 1.5, modelType: 'default', pretrained: false, inChannels: 1,
+                // Head (sigma=2.5 for precise keypoint localization)
+                sigma: 2.5, outputStride: 1, anchorPart: '',
                 // Data
-                scale: 1.0, channels: 'auto', dataPipelineFw: 'torch_dataset_cache_img_memory',
+                scale: 1.0, channels: 'auto', maxHeight: null, maxWidth: null,
+                dataPipelineFw: 'torch_dataset_cache_img_memory',
                 rotation: 15, scaleAug: 10, brightness: 0, contrast: 0,
                 // Trainer
                 batchSize: 4, numWorkers: 2, epochs: 200,
@@ -1476,7 +1554,7 @@
             },
             // Bottom-Up config
             bottomup: {
-                confmaps: { sigma: 5.0, outputStride: 1, lossWeight: 1.0 },
+                confmaps: { sigma: 2.5, outputStride: 1, lossWeight: 1.0 },
                 pafs: { sigma: 15.0, outputStride: 1, lossWeight: 1.0 }
             },
             // Trainer config
@@ -1485,6 +1563,9 @@
             lrFactor: 0.5, lrPatience: 5, minLr: 1e-8,
             earlyStop: true, earlyPatience: 10, earlyDelta: 1e-8,
             saveCkpt: true, saveTopK: 1, useWandb: false,
+            ckptDir: 'models', runName: '',  // Checkpoint directory and run name
+            // Online Hard Keypoint Mining
+            ohkm: { enabled: false, hardToEasyRatio: 2.0, minHardKeypoints: 2, maxHardKeypoints: null, lossScale: 5.0 },
             // WandB config
             wandb: { entity: '', project: '', name: '', group: '', saveViz: false },
             // Track active Top-Down sub-tab
@@ -1523,7 +1604,17 @@
                 document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
                 tab.classList.add('active');
                 document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
-                if (tab.dataset.tab === 'export') updateYamlOutput();
+
+                // Update visualizations when switching tabs (canvases need refresh when visible)
+                if (tab.dataset.tab === 'model') {
+                    updateVisualizations();
+                    updatePreprocessingPreview();
+                    updateAugmentationPreview(true);
+                } else if (tab.dataset.tab === 'training') {
+                    updateMemoryDisplay();
+                } else if (tab.dataset.tab === 'export') {
+                    updateYamlOutput();
+                }
             });
         });
 
@@ -1752,10 +1843,42 @@
             document.getElementById('stat-keypoints').textContent = data.skeleton.nodes.length;
             document.getElementById('stat-instances').textContent = computedStats.instancesPerFrame.avg.toFixed(1);
             document.getElementById('stat-instances-detail').textContent = `max: ${computedStats.instancesPerFrame.max}`;
-            document.getElementById('stat-size').textContent = `${Math.round(computedStats.instanceSizes.maxDim)} px`;
-            document.getElementById('stat-size-detail').textContent = `${Math.round(computedStats.instanceSizes.maxWidth)}x${Math.round(computedStats.instanceSizes.maxHeight)}`;
+            // stat-size and stat-size-detail are updated by updateInstanceSizeDisplays() with scale
             document.getElementById('stat-tracks').textContent = computedStats.numTracks || 'None';
             document.getElementById('stat-overlap').textContent = `${(computedStats.overlapFrequency * 100).toFixed(0)}%`;
+
+            // Set default filters based on number of keypoints
+            const numKeypoints = data.skeleton.nodes.length;
+            let defaultFilters;
+            if (numKeypoints <= 10) {
+                defaultFilters = 24;
+            } else {
+                defaultFilters = 32;
+            }
+
+            // Update filter inputs - centroid always uses 16 (simpler detection task)
+            document.getElementById('config-filters').value = defaultFilters;
+            document.getElementById('config-centroid-filters').value = 16;  // Centroid always 16
+            document.getElementById('config-ci-filters').value = defaultFilters;
+            configState.filters = defaultFilters;
+            configState.centroid.filters = 16;  // Centroid always 16
+            configState.centeredInstance.filters = defaultFilters;
+            log(`Set default filters: ${defaultFilters} (centroid: 16) based on ${numKeypoints} keypoints`, 'info');
+
+            // Set input channels based on video metadata
+            if (data.videoChannels === 1 || data.videoChannels === 3) {
+                const channelValue = String(data.videoChannels);
+                document.getElementById('config-in-channels').value = channelValue;
+                document.getElementById('config-centroid-in-channels').value = channelValue;
+                document.getElementById('config-ci-in-channels').value = channelValue;
+                configState.inChannels = data.videoChannels;
+                configState.centroid.inChannels = data.videoChannels;
+                configState.centeredInstance.inChannels = data.videoChannels;
+                log(`Set input channels to ${data.videoChannels} (${data.videoChannels === 1 ? 'grayscale' : 'RGB'}) from video metadata`, 'info');
+            }
+
+            // Update model params display with new defaults
+            updateModelParams();
 
             // Update multi-class checkbox based on tracks
             const multiClassCheckbox = document.getElementById('config-multi-class');
@@ -1770,6 +1893,36 @@
                 configState.multiClass = false;
                 multiClassInfo.style.color = 'var(--warning)';
                 multiClassInfo.textContent = 'Requires identity tracks in your SLP file.';
+            }
+
+            // Disable Single Instance pipeline if multiple instances detected in any frame
+            const singleInstanceRadio = document.getElementById('pipeline-single-instance');
+            const singleInstanceLabel = document.getElementById('pipeline-single-instance-label');
+            const singleInstanceMsg = document.getElementById('single-instance-disabled-msg');
+            const hasMultipleInstances = computedStats.instancesPerFrame.max > 1;
+
+            if (hasMultipleInstances) {
+                singleInstanceRadio.disabled = true;
+                singleInstanceLabel.style.opacity = '0.5';
+                singleInstanceLabel.style.cursor = 'not-allowed';
+                singleInstanceMsg.style.display = 'block';
+                singleInstanceMsg.textContent = `Not available: SLP contains multiple instances (max ${computedStats.instancesPerFrame.max} per frame)`;
+
+                // If Single Instance was selected, switch to recommended pipeline
+                if (configState.pipeline === 'single_instance') {
+                    const rec = recommendPipeline(computedStats);
+                    const newPipeline = rec.pipeline === 'Top-Down' ? 'topdown' : 'bottomup';
+                    configState.pipeline = newPipeline;
+                    document.querySelector(`input[name="pipeline"][value="${newPipeline}"]`).checked = true;
+                    document.querySelectorAll('#pipeline-options .radio-option').forEach(o =>
+                        o.classList.toggle('selected', o.querySelector('input').checked));
+                    log(`Switched to ${rec.pipeline} (Single Instance not available for multi-instance data)`, 'warn');
+                }
+            } else {
+                singleInstanceRadio.disabled = false;
+                singleInstanceLabel.style.opacity = '1';
+                singleInstanceLabel.style.cursor = 'pointer';
+                singleInstanceMsg.style.display = 'none';
             }
 
             // Skeleton nodes
@@ -1822,6 +1975,10 @@
             // Update sigma info with computed suggestions
             updateCentroidSigmaViz();
             updateCISigmaViz();
+            // Update preprocessing preview with SLP dimensions
+            updatePreprocessingPreview();
+            // Update instance size displays (crop card and stats) with scale
+            updateInstanceSizeDisplays();
             drawViewerFrame();
             log(`Recommended: ${rec.pipeline}`, 'success');
         }
@@ -1978,7 +2135,40 @@
         const rfVizCanvas = document.getElementById('rf-viz-canvas');
         const rfVizCtx = rfVizCanvas.getContext('2d');
 
-        const RF_VALUES = { 8: 36, 16: 76, 32: 156, 64: 316, 128: 636 };
+        // Compute receptive field using SLEAP's formula from receptivefield.py
+        // Ref: https://distill.pub/2019/computing-receptive-fields/ (Eq. 2)
+        function computeRF(downBlocks, convsPerBlock = 2, kernelSize = 3) {
+            // convs have stride 1, pooling has stride 2
+            const blockStrides = Array(convsPerBlock).fill(1).concat([2]);
+            // convs have kernelSize kernels, pooling has 2x2 kernels
+            const blockKernels = Array(convsPerBlock).fill(kernelSize).concat([2]);
+
+            // Repeat block parameters by total number of down blocks
+            const strides = [];
+            const kernels = [];
+            for (let i = 0; i < downBlocks; i++) {
+                strides.push(...blockStrides);
+                kernels.push(...blockKernels);
+            }
+
+            // Compute RF using the product term formula
+            let rf = 1;
+            for (let l = 0; l < strides.length; l++) {
+                const prodTerm = strides.slice(0, l).reduce((a, b) => a * b, 1);
+                rf += (kernels[l] - 1) * prodTerm;
+            }
+            return rf;
+        }
+
+        // Pre-compute RF values for common max_stride values
+        // down_blocks = log2(max_stride)
+        const RF_VALUES = {
+            8: computeRF(3),   // log2(8) = 3 down blocks
+            16: computeRF(4),  // log2(16) = 4 down blocks
+            32: computeRF(5),  // log2(32) = 5 down blocks
+            64: computeRF(6),  // log2(64) = 6 down blocks
+            128: computeRF(7)  // log2(128) = 7 down blocks
+        };
 
         function updateVisualizations() {
             const w = vizCanvas.width, h = vizCanvas.height;
@@ -1992,8 +2182,9 @@
             // Effective RF in original image coordinates = base RF / scale
             // When scale < 1.0, each processed pixel covers more original pixels
             const rfEffective = rfBase / scale;
-            // Instance size is measured in original image coordinates
-            const instanceSize = computedStats ? computedStats.instanceSizes.maxDim : 150;
+            // Instance size in original and processed coordinates
+            const instanceSizeOrig = computedStats ? computedStats.instanceSizes.maxDim : 150;
+            const instanceSizeAtScale = instanceSizeOrig * scale;  // Size in processed image
             // For visualization comparisons, use effective RF
             const rf = rfEffective;
 
@@ -2086,11 +2277,11 @@
                 // Fallback: synthetic visualization (no video)
                 const padding = 20;
                 const maxDisplay = w - padding * 2;
-                const scale = maxDisplay / Math.max(cropSize, instanceSize * 1.3, rf * 1.2);
+                const displayScale = maxDisplay / Math.max(cropSize, instanceSizeOrig * 1.3, rf * 1.2);
 
-                const cropD = cropSize * scale;
-                const rfD = rf * scale;
-                const instD = instanceSize * scale;
+                const cropD = cropSize * displayScale;
+                const rfD = rf * displayScale;
+                const instD = instanceSizeOrig * displayScale;
 
                 // Draw crop box (green)
                 vizCtx.strokeStyle = '#4ade80';
@@ -2129,31 +2320,51 @@
                 vizCtx.fill();
             }
 
-            // Update RF display (show effective RF which accounts for scale)
-            document.getElementById('rf-value').textContent = `${Math.round(rfEffective)} px`;
+            // Update RF display - show base RF like SLEAP GUI does
+            // rfBase = RF at model resolution (what SLEAP GUI shows in text)
+            // rfEffective = rfBase / scale = RF mapped to original image for visualization
+            document.getElementById('rf-value').textContent = `${rfBase} px`;
+            document.getElementById('rf-base').textContent = `(${Math.round(rfEffective)} px in original)`;
 
-            // Show max instance size from labels (original and scaled)
-            if (computedStats) {
-                const maxInstOrig = Math.round(computedStats.instanceSizes.maxDim);
-                const maxInstScaled = Math.round(computedStats.instanceSizes.maxDim * scale);
-                document.getElementById('rf-instance-size').textContent = `${maxInstOrig} px`;
-                document.getElementById('rf-instance-scaled').textContent = `(${maxInstScaled} px at scale)`;
-                document.getElementById('rf-ratio').textContent = `${((rfEffective / instanceSize) * 100).toFixed(0)}%`;
+            // Determine model type for display logic
+            const isTopDown = configState.pipeline === 'topdown';
+            const isCentroid = isTopDown && configState.activeTopDownTab === 'centroid';
+            const isCenteredInstance = isTopDown && configState.activeTopDownTab === 'centeredInstance';
+            const isSingleInstance = configState.pipeline === 'single_instance';
+            const isBottomUp = configState.pipeline === 'bottomup';
+
+            // Hide instance size and coverage for Single Instance (not relevant)
+            const instanceCard = document.getElementById('rf-instance-card');
+            const coverageCard = document.getElementById('rf-coverage-card');
+            if (isSingleInstance) {
+                instanceCard.style.display = 'none';
+                coverageCard.style.display = 'none';
             } else {
+                instanceCard.style.display = '';
+                coverageCard.style.display = '';
+            }
+
+            // Show max instance size from labels (at scale to match RF display)
+            if (computedStats && !isSingleInstance) {
+                const maxInstOrig = Math.round(instanceSizeOrig);
+                const maxInstScaled = Math.round(instanceSizeAtScale);
+                // Show instance at scale as main value (matches RF which is at model resolution)
+                document.getElementById('rf-instance-size').textContent = `${maxInstScaled} px`;
+                document.getElementById('rf-instance-scaled').textContent = `(${maxInstOrig} px original)`;
+                // Coverage: RF base / instance at scale (both in model/processed coordinates)
+                document.getElementById('rf-ratio').textContent = `${((rfBase / instanceSizeAtScale) * 100).toFixed(0)}%`;
+            } else if (!isSingleInstance) {
                 document.getElementById('rf-instance-size').textContent = '- px';
                 document.getElementById('rf-instance-scaled').textContent = '(load SLP)';
                 document.getElementById('rf-ratio').textContent = '-';
             }
 
-            // Update RF status with effective RF (pipeline-specific guidance)
+            // Update RF status with coverage (pipeline-specific guidance)
             const rfStatusEl = document.getElementById('rf-status');
-            const rfCoverage = instanceSize > 0 ? (rfEffective / instanceSize) * 100 : 0;
+            // RF coverage in model/processed space: RF base / instance at scale
+            // Note: rfBase / instanceSizeAtScale == rfEffective / instanceSizeOrig (mathematically equivalent)
+            const rfCoverage = instanceSizeAtScale > 0 ? (rfBase / instanceSizeAtScale) * 100 : 0;
             let rfStatus, rfColor;
-
-            // Different thresholds for different model types
-            const isTopDown = configState.pipeline === 'topdown';
-            const isCentroid = isTopDown && configState.activeTopDownTab === 'centroid';
-            const isCenteredInstance = isTopDown && configState.activeTopDownTab === 'centeredInstance';
 
             if (isCentroid) {
                 // Centroid benefits from broader context to identify instances
@@ -2182,8 +2393,12 @@
                     rfStatus = `RF large for centered instance (${rfCoverage.toFixed(0)}%). Smaller RF can preserve finer keypoint detail.`;
                     rfColor = 'var(--warning)';
                 }
+            } else if (isSingleInstance) {
+                // Single instance: just show RF info, no coverage comparison
+                rfStatus = `Receptive field: ${rfBase} px at model resolution (${Math.round(rfEffective)} px in original image).`;
+                rfColor = 'var(--accent)';
             } else {
-                // Single instance or bottom-up
+                // Bottom-up
                 if (rfCoverage < 40) {
                     rfStatus = `RF too small (${rfCoverage.toFixed(0)}% of instance). Increase max_stride or decrease scale.`;
                     rfColor = 'var(--error)';
@@ -2202,11 +2417,11 @@
             rfStatusEl.style.borderLeftColor = rfColor;
 
             // Crop status
-            updateCropStatus(cropSize, instanceSize);
+            updateCropStatus(cropSize, instanceSizeOrig);
             updateMemoryDisplay();
 
-            // Draw RF visualization
-            drawRFVisualization(rfBase, rfEffective, instanceSize);
+            // Draw RF visualization (uses original coordinates for display)
+            drawRFVisualization(rfBase, rfEffective, instanceSizeOrig);
         }
 
         function drawRFVisualization(rfBase, rfEffective, instanceSize) {
@@ -2345,45 +2560,148 @@
         // ============================================
         // Memory Estimation
         // ============================================
+        function formatBytes(bytes) {
+            if (bytes < 1024) return `${bytes} B`;
+            if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+            if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+        }
+
         function estimateMemory() {
             const bs = configState.batchSize;
-            const crop = configState.pipeline === 'single_instance' ? 512 : configState.cropSize;
-            const filters = configState.filters;
-            const rate = configState.filtersRate;
-            const stride = configState.maxStride;
+            const backbone = getCurrentBackboneConfig();
+            const filters = backbone.filters || configState.filters;
+            const rate = backbone.filtersRate || configState.filtersRate;
+            const stride = backbone.maxStride || configState.maxStride;
             const kps = slpData ? slpData.skeleton.nodes.length : 13;
+            const scale = configState.scale || 1.0;
 
-            const levels = Math.log2(stride);
-            let params = 0, inCh = 1, filt = filters;
-
-            for (let i = 0; i < levels; i++) {
-                params += inCh * filt * 9 + filt + filt * filt * 9 + filt;
-                inCh = filt; filt = Math.floor(filt * rate);
+            // Get image dimensions based on pipeline
+            let imgH, imgW;
+            if (configState.pipeline === 'topdown' && configState.activeTopDownTab === 'centeredInstance') {
+                // Centered Instance: uses crop
+                const crop = configState.cropSize || 256;
+                imgH = imgW = Math.round(crop * scale);
+            } else {
+                // Other pipelines: uses full image
+                const origH = videoHeight || 512;
+                const origW = videoWidth || 512;
+                imgH = Math.round(origH * scale);
+                imgW = Math.round(origW * scale);
             }
-            for (let i = 0; i < levels; i++) {
-                filt = Math.floor(filt / rate);
-                params += inCh * filt * 9 + filt + filt * filt * 9 + filt;
-                inCh = filt;
-            }
-            params += filt * kps * 9 + kps;
 
-            const wBytes = params * 4;
-            let actBytes = 0, res = crop;
-            filt = filters;
-            for (let i = 0; i <= levels; i++) {
-                actBytes += res * res * filt * 4 * 2;
-                res = Math.floor(res / 2); filt = Math.floor(filt * rate);
+            // Calculate model parameters (same as updateModelParams for consistency)
+            const downBlocks = Math.log2(stride);
+            const outputStride = getActiveOutputStride();
+            const upBlocks = Math.log2(stride / outputStride);
+            const inputCh = backbone.inChannels || 1;
+            let params = 0;
+
+            // Build encoder channel progression
+            let encoderChannels = [];
+            for (let block = 0; block < downBlocks; block++) {
+                encoderChannels.push(Math.floor(filters * Math.pow(rate, block)));
+            }
+            const bottleneckCh = Math.floor(filters * Math.pow(rate, downBlocks));
+
+            // Encoder
+            let prevCh = inputCh;
+            for (let block = 0; block < downBlocks; block++) {
+                const encCh = encoderChannels[block];
+                params += prevCh * encCh * 9 + encCh;
+                params += encCh * encCh * 9 + encCh;
+                prevCh = encCh;
+            }
+
+            // Middle block
+            const lastEncCh = encoderChannels[downBlocks - 1];
+            params += lastEncCh * bottleneckCh * 9 + bottleneckCh;
+            params += bottleneckCh * bottleneckCh * 9 + bottleneckCh;
+
+            // Decoder with skip connections
+            let xInCh = bottleneckCh;
+            for (let block = 0; block < upBlocks; block++) {
+                const decOutCh = Math.floor(filters * Math.pow(rate, Math.max(0, downBlocks - 1 - block)));
+                const skipCh = decOutCh;
+                params += (xInCh + skipCh) * decOutCh * 9 + decOutCh;
+                params += decOutCh * decOutCh * 9 + decOutCh;
+                xInCh = decOutCh;
+            }
+
+            // Head (1x1 conv)
+            params += xInCh * kps * 1 + kps;
+
+            // Memory breakdown (in bytes)
+            const weightsBytes = params * 4;  // float32
+
+            // Batch images: B × C × H × W × 4 bytes
+            const batchImgBytes = bs * (backbone.inChannels || 1) * imgH * imgW * 4;
+
+            // Batch confmaps: B × K × (H/output_stride) × (W/output_stride) × 4 bytes
+            const confH = Math.ceil(imgH / outputStride);
+            const confW = Math.ceil(imgW / outputStride);
+            const batchConfBytes = bs * kps * confH * confW * 4;
+
+            // Activations: sum of feature maps at each level
+            let actBytes = 0, res = Math.max(imgH, imgW);
+            let actFilt = filters;
+            for (let i = 0; i <= downBlocks; i++) {
+                actBytes += res * res * actFilt * 4 * 2;  // forward + backward
+                res = Math.floor(res / 2); actFilt = Math.floor(actFilt * rate);
             }
             actBytes *= bs;
 
-            const total = (wBytes + actBytes + wBytes * 3) * 1.2;
-            return { totalGB: total / (1024 ** 3), paramsM: params / 1e6 };
+            // Gradients + Optimizer states (Adam uses 2 momentum buffers)
+            const gradientBytes = weightsBytes * 3;  // gradients + m + v
+
+            // Total GPU memory with overhead
+            const totalGpu = (weightsBytes + batchImgBytes + batchConfBytes + actBytes + gradientBytes) * 1.15;
+
+            // CPU cache memory estimation
+            // Note: Images are cached at ORIGINAL resolution as uint8 (1 byte per pixel)
+            let cacheBytes = 0;
+            if (slpData && computedStats) {
+                const numFrames = computedStats.numFrames || 1000;
+                const channels = backbone.inChannels || 1;
+                // Use original video dimensions (not scaled) and uint8 format
+                const origH = videoHeight || 512;
+                const origW = videoWidth || 512;
+                cacheBytes = numFrames * channels * origH * origW * 1;  // uint8 cached images
+            }
+
+            return {
+                totalGB: totalGpu / (1024 ** 3),
+                paramsM: params / 1e6,
+                weightsBytes,
+                batchImgBytes,
+                batchConfBytes,
+                actBytes,
+                gradientBytes,
+                cacheBytes
+            };
         }
 
         function updateMemoryDisplay() {
             const mem = estimateMemory();
             document.getElementById('mem-total').textContent = `~${mem.totalGB.toFixed(1)} GB`;
             document.getElementById('mem-params').textContent = `~${mem.paramsM.toFixed(1)}M`;
+
+            // GPU breakdown
+            document.getElementById('mem-weights').textContent = formatBytes(mem.weightsBytes);
+            document.getElementById('mem-batch-img').textContent = formatBytes(mem.batchImgBytes);
+            document.getElementById('mem-batch-conf').textContent = formatBytes(mem.batchConfBytes);
+            document.getElementById('mem-activations').textContent = formatBytes(mem.actBytes);
+            document.getElementById('mem-gradients').textContent = formatBytes(mem.gradientBytes);
+
+            // CPU cache
+            if (mem.cacheBytes > 0) {
+                document.getElementById('mem-cache').textContent = formatBytes(mem.cacheBytes);
+                const numFrames = computedStats?.numFrames || 0;
+                document.getElementById('mem-cache-detail').textContent = `${numFrames} frames`;
+            } else {
+                document.getElementById('mem-cache').textContent = '- GB';
+                document.getElementById('mem-cache-detail').textContent = 'Load SLP';
+            }
 
             const statusEl = document.getElementById('mem-status');
             let status, color;
@@ -2515,6 +2833,7 @@
             updateFormsFromActiveConfig();
             updateModelParams();
             updateVisualizations();
+            updateMemoryDisplay();
 
             // Update crop size card visibility (only for centered instance)
             const isCenteredInstance = model === 'centered-instance';
@@ -2596,33 +2915,82 @@
             const backbone = getCurrentBackboneConfig();
             const filters = backbone.filters;
             const rate = backbone.filtersRate;
-            const stride = backbone.maxStride;
+            const maxStride = backbone.maxStride;
             const kps = slpData ? slpData.skeleton.nodes.length : 13;
+            const inputCh = getInputChannels(); // Use actual input channels (1 or 3)
+            const outputStride = getActiveOutputStride();
+            const convsPerBlock = 2; // SLEAP-NN default
+            const middleBlock = true; // SLEAP-NN default
 
-            const levels = Math.log2(stride);
+            const downBlocks = Math.log2(maxStride);
+            const upBlocks = Math.log2(maxStride / outputStride);
 
-            // Calculate parameters (same as estimateMemory)
-            let params = 0, inCh = 1, filt = filters;
-            for (let i = 0; i < levels; i++) {
-                params += inCh * filt * 9 + filt + filt * filt * 9 + filt;
-                inCh = filt; filt = Math.floor(filt * rate);
+            // Build encoder channel progression: filters * rate^block
+            let encoderChannels = [];
+            for (let block = 0; block < downBlocks; block++) {
+                encoderChannels.push(Math.floor(filters * Math.pow(rate, block)));
             }
-            const maxFilt = filt; // Peak channels at bottleneck
-            for (let i = 0; i < levels; i++) {
-                filt = Math.floor(filt / rate);
-                params += inCh * filt * 9 + filt + filt * filt * 9 + filt;
-                inCh = filt;
+
+            // Bottleneck (middle block) channels
+            const bottleneckCh = Math.floor(filters * Math.pow(rate, downBlocks));
+
+            // Calculate parameters for SLEAP-NN UNet architecture
+            let params = 0;
+
+            // Encoder: Each block has convs_per_block (2) convolutions
+            // First block: in_ch → enc_ch, then enc_ch → enc_ch
+            // Other blocks: prev_enc_ch → enc_ch, then enc_ch → enc_ch
+            let prevCh = inputCh;
+            for (let block = 0; block < downBlocks; block++) {
+                const encCh = encoderChannels[block];
+                // Conv 0: prev_ch → enc_ch
+                params += prevCh * encCh * 9 + encCh;
+                // Conv 1: enc_ch → enc_ch
+                params += encCh * encCh * 9 + encCh;
+                prevCh = encCh;
             }
-            params += filt * kps * 9 + kps;
+
+            // Middle block (if enabled): expand + contract
+            if (middleBlock) {
+                const lastEncCh = encoderChannels[downBlocks - 1];
+                // Middle expand: (convs_per_block - 1) = 1 conv
+                // last_enc_ch → bottleneck_ch
+                params += lastEncCh * bottleneckCh * 9 + bottleneckCh;
+                // Middle contract: 1 conv
+                // bottleneck_ch → bottleneck_ch (no block_contraction)
+                params += bottleneckCh * bottleneckCh * 9 + bottleneckCh;
+            }
+
+            // Decoder: Each block has convs_per_block (2) refine convolutions
+            // Uses bilinear interpolation (no learnable params for upsampling)
+            // First conv: (x_in + skip_ch) → dec_out_ch
+            // Second conv: dec_out_ch → dec_out_ch
+            let xInCh = bottleneckCh;
+            for (let block = 0; block < upBlocks; block++) {
+                // Decoder output channels: filters * rate^(down_blocks - 1 - block)
+                const decOutCh = Math.floor(filters * Math.pow(rate, Math.max(0, downBlocks - 1 - block)));
+                // Skip connection from encoder has same channels as decoder output
+                const skipCh = decOutCh;
+                // First refine conv: (x_in + skip) → dec_out
+                params += (xInCh + skipCh) * decOutCh * 9 + decOutCh;
+                // Second refine conv: dec_out → dec_out
+                params += decOutCh * decOutCh * 9 + decOutCh;
+                xInCh = decOutCh;
+            }
+
+            // Head: final decoder channels → keypoints (1x1 conv)
+            params += xInCh * kps * 1 + kps;
 
             // Update display
             const paramsM = params / 1e6;
             document.getElementById('model-params').textContent = paramsM >= 1 ? `~${paramsM.toFixed(1)}M` : `~${(params / 1000).toFixed(0)}K`;
 
             // Head output: last decoder channels → keypoints at output stride
-            // For UNet, last decoder outputs = first encoder filters
-            const lastDecoderCh = filters;
-            const outputStride = getActiveOutputStride();
+            // Last decoder channels = filters * rate^(log2(output_stride))
+            // e.g., output_stride=1 → filters*rate^0 = filters
+            //       output_stride=2 → filters*rate^1
+            //       output_stride=4 → filters*rate^2
+            const lastDecoderCh = Math.floor(filters * Math.pow(rate, Math.log2(outputStride)));
             document.getElementById('model-head-output').textContent = `${lastDecoderCh} → ${kps}`;
             document.getElementById('model-head-stride').textContent = `at stride ${outputStride}`;
 
@@ -2636,17 +3004,20 @@
                     scale: parseFloat(document.getElementById('config-scale')?.value || 1.0),
                     isCrop: false
                 } : null;
-                updateUNetDiagram('shared-unet-arch', filters, rate, stride, kps, inputCh, inputDims);
+                updateUNetDiagram('shared-unet-arch', filters, rate, maxStride, kps, inputCh, inputDims, outputStride);
             }
         }
 
         // Render UNet architecture diagram
         // inputDims: { width, height, scale, isCrop } for showing processed dimensions
-        function updateUNetDiagram(elementId, filters, rate, maxStride, outputs, inputChannels = 1, inputDims = null) {
+        function updateUNetDiagram(elementId, filters, rate, maxStride, outputs, inputChannels = 1, inputDims = null, outputStride = 1) {
             const el = document.getElementById(elementId);
             if (!el) return;
 
-            const levels = Math.log2(maxStride);
+            // Calculate blocks based on SLEAP-NN UNet formulas
+            const downBlocks = Math.log2(maxStride);  // Number of encoder blocks
+            const upBlocks = Math.log2(maxStride / outputStride);  // Number of decoder blocks
+
             let html = '<div style="text-align: center; color: var(--text-dim); margin-bottom: 8px;">UNet Encoder-Decoder Architecture</div>';
 
             // Show input dimensions if provided
@@ -2665,28 +3036,31 @@
                 html += '</div>';
             }
 
-            // Build encoder layers with input/output channels
+            // Build encoder layers: channels = filters * rate^block
             let encoderLayers = [];
-            let inCh = inputChannels;
-            let outCh = filters;
-            for (let i = 0; i < levels; i++) {
-                encoderLayers.push({ inCh, outCh, stride: Math.pow(2, i + 1) });
-                inCh = outCh;
-                outCh = Math.floor(outCh * rate);
+            let prevCh = inputChannels;
+            for (let i = 0; i < downBlocks; i++) {
+                const outCh = Math.floor(filters * Math.pow(rate, i));
+                const stride = Math.pow(2, i + 1);
+                encoderLayers.push({ inCh: prevCh, outCh, stride });
+                prevCh = outCh;
             }
 
-            // Bottleneck channels
-            const bottleneckIn = encoderLayers[encoderLayers.length - 1].outCh;
-            const bottleneckOut = Math.floor(bottleneckIn * rate);
+            // Bottleneck channels: last_enc * rate
+            const lastEncCh = encoderLayers[encoderLayers.length - 1].outCh;
+            const bottleneckCh = Math.floor(lastEncCh * rate);
 
-            // Build decoder layers (reverse) with skip connection channels
+            // Build decoder layers (only upBlocks, not all levels)
+            // Decoder output channels: filters * rate^(down_blocks - 1 - block)
             let decoderLayers = [];
-            inCh = bottleneckOut;
-            for (let i = levels - 1; i >= 0; i--) {
-                const skipCh = encoderLayers[i].outCh;
-                outCh = encoderLayers[i].outCh;
-                decoderLayers.push({ inCh, skipCh, outCh, stride: Math.pow(2, i + 1) });
-                inCh = outCh;
+            let xInCh = bottleneckCh;
+            for (let i = 0; i < upBlocks; i++) {
+                const decOutCh = Math.floor(filters * Math.pow(rate, downBlocks - 1 - i));
+                const skipCh = decOutCh;  // Skip from corresponding encoder level
+                const fromStride = Math.pow(2, downBlocks - i);
+                const toStride = Math.pow(2, downBlocks - i - 1);
+                decoderLayers.push({ inCh: xInCh, skipCh, outCh: decOutCh, fromStride, toStride });
+                xInCh = decOutCh;
             }
 
             // Create visual diagram
@@ -2699,7 +3073,7 @@
             // Encoder (downsampling)
             html += '<div style="color: #60a5fa; font-weight: bold; margin: 4px 0;">ENCODER</div>';
             encoderLayers.forEach((layer, i) => {
-                html += `<div style="padding: 4px 12px; background: #3b82f6; border-radius: 4px; color: white; opacity: ${0.6 + i * 0.1};">`;
+                html += `<div style="padding: 4px 12px; background: #3b82f6; border-radius: 4px; color: white; opacity: ${0.6 + i * 0.06};">`;
                 html += `${layer.inCh} → Conv → ${layer.outCh} → Pool ↓${layer.stride}`;
                 html += '</div>';
                 if (i < encoderLayers.length - 1) html += '<div style="color: var(--text-dim);">↓</div>';
@@ -2708,23 +3082,23 @@
             // Bottleneck
             html += '<div style="color: var(--text-dim);">↓</div>';
             html += `<div style="padding: 6px 16px; background: #8b5cf6; border-radius: 4px; color: white; font-weight: bold;">`;
-            html += `Bottleneck: ${bottleneckIn} → ${bottleneckOut}`;
+            html += `Bottleneck: ${lastEncCh} → ${bottleneckCh}`;
             html += '</div>';
             html += '<div style="color: var(--text-dim);">↓</div>';
 
-            // Decoder (upsampling)
+            // Decoder (upsampling) - only show upBlocks
             html += '<div style="color: #34d399; font-weight: bold; margin: 4px 0;">DECODER</div>';
             decoderLayers.forEach((layer, i) => {
-                html += `<div style="padding: 4px 12px; background: #10b981; border-radius: 4px; color: white; opacity: ${0.9 - i * 0.1};">`;
-                html += `${layer.inCh} → Up ↑${layer.stride} + Skip(${layer.skipCh}) → ${layer.outCh}`;
+                html += `<div style="padding: 4px 12px; background: #10b981; border-radius: 4px; color: white; opacity: ${0.9 - i * 0.08};">`;
+                html += `${layer.inCh} → Up s${layer.fromStride}→s${layer.toStride} + Skip(${layer.skipCh}) → ${layer.outCh}`;
                 html += '</div>';
                 if (i < decoderLayers.length - 1) html += '<div style="color: var(--text-dim);">↓</div>';
             });
 
-            // Output head
-            const lastDecoderOut = decoderLayers[decoderLayers.length - 1].outCh;
+            // Output head - uses last decoder output channels
+            const headInputCh = decoderLayers.length > 0 ? decoderLayers[decoderLayers.length - 1].outCh : bottleneckCh;
             html += '<div style="color: var(--text-dim);">↓</div>';
-            html += `<div style="padding: 4px 12px; background: #f59e0b; border-radius: 4px; color: white;">Head: ${lastDecoderOut} → ${outputs} confmaps</div>`;
+            html += `<div style="padding: 4px 12px; background: #f59e0b; border-radius: 4px; color: white;">Head: ${headInputCh} → ${outputs} @ stride ${outputStride}</div>`;
 
             html += '</div>';
 
@@ -2874,6 +3248,9 @@
             const radiusSpan = document.getElementById(`${prefix}-sigma-radius`);
             const suggestSpan = document.getElementById(`${prefix}-sigma-suggest`);
 
+            // Get current input scale
+            const inputScale = parseFloat(document.getElementById('config-scale')?.value || 1.0);
+
             if (radiusSpan) {
                 const effectiveSigma = sigma * outputStride;
                 const radius = Math.round(effectiveSigma * 2); // 2σ covers 95%
@@ -2881,15 +3258,21 @@
             }
 
             if (suggestSpan) {
-                // Show min distance from loaded data
+                // Only show distance-based suggestions for Centroid (where overlap matters)
+                // For keypoint models (SI, CI, BU), each keypoint has its own channel - no overlap
                 if (isCentroid && distanceStats.minCentroidDist) {
-                    const minDist = Math.round(distanceStats.minCentroidDist);
-                    suggestSpan.innerHTML = `Min centroid dist: <strong>${minDist}px</strong>`;
-                } else if (!isCentroid && distanceStats.minKeypointDist) {
-                    const minDist = Math.round(distanceStats.minKeypointDist);
-                    suggestSpan.innerHTML = `Min keypoint dist: <strong>${minDist}px</strong>`;
+                    const origDist = Math.round(distanceStats.minCentroidDist);
+                    const scaledDist = Math.round(distanceStats.minCentroidDist * inputScale);
+                    if (inputScale === 1.0) {
+                        suggestSpan.innerHTML = `Min instance dist: <strong>${origDist}px</strong> (keep σ < ${Math.round(origDist/4)}px to avoid overlap)`;
+                    } else {
+                        suggestSpan.innerHTML = `Min instance dist: <strong>${scaledDist}px</strong> at scale (keep σ < ${Math.round(scaledDist/4)}px)`;
+                    }
+                } else if (isCentroid) {
+                    suggestSpan.textContent = 'Load SLP to compute instance distances';
                 } else {
-                    suggestSpan.textContent = 'Load SLP to compute distances';
+                    // For keypoint models: each keypoint has its own channel, no overlap concern
+                    suggestSpan.innerHTML = 'Default: <strong>2.5</strong> (each keypoint has its own channel)';
                 }
             }
         }
@@ -3144,6 +3527,46 @@
             document.getElementById('head-single-instance').style.display = isSingleInstance ? 'block' : 'none';
             document.getElementById('head-bottomup').style.display = isBottomUp ? 'block' : 'none';
 
+            // Maintain Single Instance disabled state based on multi-instance data
+            const singleInstanceRadio = document.getElementById('pipeline-single-instance');
+            const singleInstanceLabel = document.getElementById('pipeline-single-instance-label');
+            const singleInstanceMsg = document.getElementById('single-instance-disabled-msg');
+            const hasMultipleInstances = computedStats && computedStats.instancesPerFrame.max > 1;
+
+            if (hasMultipleInstances) {
+                singleInstanceRadio.disabled = true;
+                singleInstanceLabel.style.opacity = '0.5';
+                singleInstanceLabel.style.cursor = 'not-allowed';
+                singleInstanceMsg.style.display = 'block';
+                singleInstanceMsg.textContent = `Not available: SLP contains multiple instances (max ${computedStats.instancesPerFrame.max} per frame)`;
+            } else if (computedStats) {
+                // SLP is loaded but only single instances
+                singleInstanceRadio.disabled = false;
+                singleInstanceLabel.style.opacity = '1';
+                singleInstanceLabel.style.cursor = 'pointer';
+                singleInstanceMsg.style.display = 'none';
+            }
+
+            // Multi-class is NOT available for Single Instance (only Top-Down and Bottom-Up)
+            const multiClassCheckbox = document.getElementById('config-multi-class');
+            const multiClassOption = document.getElementById('multi-class-option');
+            if (isSingleInstance) {
+                multiClassCheckbox.disabled = true;
+                multiClassCheckbox.checked = false;
+                configState.multiClass = false;
+                multiClassOption.style.opacity = '0.5';
+                document.getElementById('multi-class-tracks-info').textContent = 'Not available for Single Instance pipeline.';
+            } else {
+                multiClassOption.style.opacity = '1';
+                // Re-enable based on tracks (will be updated by processSlpData if SLP is loaded)
+                if (computedStats && computedStats.hasIdentity && computedStats.numTracks > 0) {
+                    multiClassCheckbox.disabled = false;
+                    document.getElementById('multi-class-tracks-info').textContent =
+                        `${computedStats.numTracks} tracks detected: ${computedStats.trackNames.slice(0, 5).join(', ')}${computedStats.numTracks > 5 ? '...' : ''}`;
+                    document.getElementById('multi-class-tracks-info').style.color = 'var(--success)';
+                }
+            }
+
             // Show/hide model selectors in Data and Trainer tabs
             updateModelSelectorVisibility();
 
@@ -3165,6 +3588,13 @@
             const nodes = slpData.skeleton.nodes;
             nodeNanCounts = {};
 
+            // Debug: check for duplicate node names
+            const uniqueNodes = new Set(nodes);
+            console.log(`Nodes: ${nodes.length} total, ${uniqueNodes.size} unique`);
+            if (nodes.length !== uniqueNodes.size) {
+                console.warn('DUPLICATE NODE NAMES DETECTED!', nodes);
+            }
+
             // Initialize counts
             nodes.forEach((n, i) => {
                 nodeNanCounts[n] = { nan: 0, total: 0 };
@@ -3172,13 +3602,23 @@
 
             // Count user instances and NaNs
             let userInstanceCount = 0;
+            let firstInstancePointsLen = null;
             for (const frame of slpData.frames) {
                 for (const inst of frame.instances) {
                     // Skip predicted instances - only count user-labeled instances
                     if (inst.type !== 'user') continue;
                     userInstanceCount++;
 
-                    inst.points.forEach((pt, i) => {
+                    // Debug: check points array length
+                    if (firstInstancePointsLen === null) {
+                        firstInstancePointsLen = inst.points.length;
+                        console.log(`First instance has ${inst.points.length} points, skeleton has ${nodes.length} nodes`);
+                    }
+
+                    // Only iterate up to number of nodes to avoid double-counting
+                    const numPoints = Math.min(inst.points.length, nodes.length);
+                    for (let i = 0; i < numPoints; i++) {
+                        const pt = inst.points[i];
                         const nodeName = nodes[i];
                         if (nodeNanCounts[nodeName]) {
                             nodeNanCounts[nodeName].total++;
@@ -3186,7 +3626,7 @@
                                 nodeNanCounts[nodeName].nan++;
                             }
                         }
-                    });
+                    }
                 }
             }
             console.log(`NaN computation: ${userInstanceCount} user instances, ${nodes.length} nodes`);
@@ -3209,8 +3649,15 @@
                     opt.value = n;
                     const stats = nodeNanCounts[n];
                     const nanCount = stats ? stats.nan : 0;
-                    const pct = stats && stats.total > 0 ? ((stats.nan / stats.total) * 100).toFixed(0) : 0;
-                    opt.textContent = nanCount > 0 ? `${n} (${nanCount} NaN, ${pct}%)` : n;
+                    const total = stats ? stats.total : 0;
+                    // Show NaN count or checkmark for complete nodes
+                    if (nanCount > 0) {
+                        opt.textContent = `${n} (${nanCount}/${total} missing)`;
+                    } else if (total > 0) {
+                        opt.textContent = `${n} ✓`;  // Complete - no missing values
+                    } else {
+                        opt.textContent = n;
+                    }
                     select.appendChild(opt);
                 });
             });
@@ -3234,8 +3681,7 @@
 
             const stats = nodeNanCounts[anchorPart];
             if (stats.nan > 0) {
-                const pct = ((stats.nan / stats.total) * 100).toFixed(1);
-                infoEl.innerHTML = `<span style="color: #f59e0b;">⚠ ${stats.nan} NaN (${pct}%)</span>`;
+                infoEl.innerHTML = `<span style="color: #f59e0b;">⚠ ${stats.nan}/${stats.total} missing</span>`;
             } else {
                 infoEl.innerHTML = `<span style="color: #10b981;">✓ No missing values</span>`;
             }
@@ -3245,6 +3691,7 @@
             configState.cropSize = parseInt(e.target.value);
             document.getElementById('crop-size-value').textContent = `${e.target.value} px`;
             updateVisualizations();
+            updatePreprocessingPreview(); // Update processed size for Centered Instance
         });
 
         // Shared backbone event listeners (single instance / bottom-up)
@@ -3309,6 +3756,17 @@
             document.getElementById('rf-scale-select').value = e.target.value;
             updatePreprocessingPreview();
             updateVisualizations(); // RF changes with scale
+            // Update sigma info to reflect new scaled distances
+            if (typeof updateCentroidSigmaViz === 'function') {
+                updateCentroidSigmaViz();
+            }
+            if (typeof updateCISigmaViz === 'function') {
+                updateCISigmaViz();
+            }
+            // Update instance size displays to reflect new scale
+            if (typeof updateInstanceSizeDisplays === 'function') {
+                updateInstanceSizeDisplays();
+            }
         });
 
         // RF section controls - sync with Model and Data tabs
@@ -3338,6 +3796,17 @@
             document.getElementById('config-scale').value = newScale;
             updatePreprocessingPreview();
             updateVisualizations();
+            // Update sigma info to reflect new scaled distances
+            if (typeof updateCentroidSigmaViz === 'function') {
+                updateCentroidSigmaViz();
+            }
+            if (typeof updateCISigmaViz === 'function') {
+                updateCISigmaViz();
+            }
+            // Update instance size displays to reflect new scale
+            if (typeof updateInstanceSizeDisplays === 'function') {
+                updateInstanceSizeDisplays();
+            }
         });
 
         // Channels setting - sync with model input channels
@@ -3356,6 +3825,24 @@
             updateModelParams();
             updateTopDownUNetDiagram('centroid');
             updateTopDownUNetDiagram('ci');
+        });
+
+        // Max height/width - limit image size before scaling
+        document.getElementById('config-max-height').addEventListener('input', (e) => {
+            const val = e.target.value ? parseInt(e.target.value) : null;
+            updateConfigValue('maxHeight', val);
+            configState.maxHeight = val;
+            configState.centroid.maxHeight = val;
+            configState.centeredInstance.maxHeight = val;
+            updatePreprocessingPreview();
+        });
+        document.getElementById('config-max-width').addEventListener('input', (e) => {
+            const val = e.target.value ? parseInt(e.target.value) : null;
+            updateConfigValue('maxWidth', val);
+            configState.maxWidth = val;
+            configState.centroid.maxWidth = val;
+            configState.centeredInstance.maxWidth = val;
+            updatePreprocessingPreview();
         });
 
         // Input channels event listeners (UNet backbone)
@@ -3401,6 +3888,38 @@
         });
         document.getElementById('config-wandb-save-viz').addEventListener('change', (e) => {
             configState.wandb.saveViz = e.target.value === 'true';
+        });
+
+        // Use same data for train & validation toggle
+        document.getElementById('config-same-data-val').addEventListener('change', (e) => {
+            configState.useSameDataForVal = e.target.checked;
+        });
+
+        // Online Hard Keypoint Mining toggle and options
+        document.getElementById('config-ohkm-enable').addEventListener('change', (e) => {
+            configState.ohkm.enabled = e.target.checked;
+            document.getElementById('ohkm-options').style.display = e.target.checked ? 'block' : 'none';
+        });
+        document.getElementById('config-ohkm-ratio').addEventListener('input', (e) => {
+            configState.ohkm.hardToEasyRatio = parseFloat(e.target.value) || 2.0;
+        });
+        document.getElementById('config-ohkm-min').addEventListener('input', (e) => {
+            configState.ohkm.minHardKeypoints = parseInt(e.target.value) || 2;
+        });
+        document.getElementById('config-ohkm-max').addEventListener('input', (e) => {
+            const val = e.target.value ? parseInt(e.target.value) : null;
+            configState.ohkm.maxHardKeypoints = val;
+        });
+        document.getElementById('config-ohkm-scale').addEventListener('input', (e) => {
+            configState.ohkm.lossScale = parseFloat(e.target.value) || 5.0;
+        });
+
+        // Checkpoint directory and run name
+        document.getElementById('config-ckpt-dir').addEventListener('input', (e) => {
+            configState.ckptDir = e.target.value || 'models';
+        });
+        document.getElementById('config-run-name').addEventListener('input', (e) => {
+            configState.runName = e.target.value || '';
         });
 
         // Randomize augmentation button
@@ -3487,6 +4006,49 @@
             const stride = configState.centeredInstance.outputStride;
             drawSigmaVisualization('ci-sigma-viz', sigma, stride);
             updateSigmaInfo('ci', sigma, stride, false);
+        }
+
+        // Update instance size displays based on current scale
+        function updateInstanceSizeDisplays() {
+            if (!computedStats || !computedStats.instanceSizes) return;
+
+            const scale = getConfigValue('scale') || configState.scale || 1.0;
+            const maxDim = computedStats.instanceSizes.maxDim;
+            const maxW = computedStats.instanceSizes.maxWidth;
+            const maxH = computedStats.instanceSizes.maxHeight;
+
+            // Scaled values
+            const scaledDim = Math.round(maxDim * scale);
+            const scaledW = Math.round(maxW * scale);
+            const scaledH = Math.round(maxH * scale);
+
+            // Original values (at scale 1.0)
+            const origDim = Math.round(maxDim);
+            const origW = Math.round(maxW);
+            const origH = Math.round(maxH);
+
+            // Update stats card
+            const statSizeEl = document.getElementById('stat-size');
+            const statDetailEl = document.getElementById('stat-size-detail');
+            if (statSizeEl && statDetailEl) {
+                if (scale !== 1.0) {
+                    statSizeEl.innerHTML = `<strong>${scaledDim}</strong> <span style="font-size: 0.7rem; opacity: 0.7;">px @ scale ${scale}</span>`;
+                    statDetailEl.textContent = `${origDim} px @ scale 1.0`;
+                } else {
+                    statSizeEl.textContent = `${origDim} px`;
+                    statDetailEl.textContent = `${origW}×${origH}`;
+                }
+            }
+
+            // Update crop size card
+            const cropMaxEl = document.getElementById('crop-max-instance');
+            if (cropMaxEl) {
+                if (scale !== 1.0) {
+                    cropMaxEl.innerHTML = `<strong>${scaledDim} px</strong> <span style="font-size: 0.75rem; opacity: 0.7;">@ scale ${scale}</span><br><span style="font-size: 0.7rem; opacity: 0.6;">(${origDim} px @ scale 1.0)</span>`;
+                } else {
+                    cropMaxEl.innerHTML = `<strong>${origDim} px</strong> <span style="font-size: 0.75rem;">(${origW}×${origH})</span>`;
+                }
+            }
         }
 
         // Head config event listeners - Bottom-Up Confmaps
@@ -3587,7 +4149,8 @@
                 // For Single Instance / Bottom-Up, use the shared config
                 const filters = parseInt(document.getElementById('config-filters').value) || 24;
                 const rate = parseFloat(document.getElementById('config-filters-rate').value) || 2.0;
-                const stride = parseInt(document.getElementById('config-max-stride').value) || 16;
+                const maxStride = parseInt(document.getElementById('config-max-stride').value) || 16;
+                const outputStride = parseInt(document.getElementById('config-stride').value) || 1;
                 const kps = slpData?.skeleton?.nodes?.length || 13;
                 const inputCh = parseInt(document.getElementById('config-in-channels').value) || 1;
                 const scale = parseFloat(document.getElementById('config-scale')?.value || 1.0);
@@ -3597,11 +4160,12 @@
                     scale: scale,
                     isCrop: false
                 } : null;
-                updateUNetDiagram('shared-unet-arch', filters, rate, stride, kps, inputCh, inputDims);
+                updateUNetDiagram('shared-unet-arch', filters, rate, maxStride, kps, inputCh, inputDims, outputStride);
             } else if (prefix === 'centroid') {
                 const filters = parseInt(document.getElementById('config-centroid-filters').value) || 24;
                 const rate = parseFloat(document.getElementById('config-centroid-filters-rate').value) || 2.0;
-                const stride = parseInt(document.getElementById('config-centroid-max-stride').value) || 16;
+                const maxStride = parseInt(document.getElementById('config-centroid-max-stride').value) || 16;
+                const outputStride = parseInt(document.getElementById('config-centroid-stride').value) || 1;
                 const inputCh = getInputChannels(configState.centroid);
                 // Centroid model uses full image (with scale)
                 const centroidScale = parseFloat(document.getElementById('config-centroid-scale')?.value || 1.0);
@@ -3611,11 +4175,12 @@
                     scale: centroidScale,
                     isCrop: false
                 } : null;
-                updateUNetDiagram('centroid-unet-arch', filters, rate, stride, 1, inputCh, inputDims); // 1 output for centroid
+                updateUNetDiagram('centroid-unet-arch', filters, rate, maxStride, 1, inputCh, inputDims, outputStride); // 1 output for centroid
             } else if (prefix === 'ci') {
                 const filters = parseInt(document.getElementById('config-ci-filters').value) || 24;
                 const rate = parseFloat(document.getElementById('config-ci-filters-rate').value) || 2.0;
-                const stride = parseInt(document.getElementById('config-ci-max-stride').value) || 16;
+                const maxStride = parseInt(document.getElementById('config-ci-max-stride').value) || 16;
+                const outputStride = parseInt(document.getElementById('config-ci-stride').value) || 1;
                 const kps = slpData?.skeleton?.nodes?.length || 13;
                 const inputCh = getInputChannels(configState.centeredInstance);
                 // Centered instance model uses CROP as input (not full image!)
@@ -3627,7 +4192,7 @@
                     scale: ciScale,
                     isCrop: true  // This is a crop, not the full image
                 };
-                updateUNetDiagram('ci-unet-arch', filters, rate, stride, kps, inputCh, inputDims);
+                updateUNetDiagram('ci-unet-arch', filters, rate, maxStride, kps, inputCh, inputDims, outputStride);
             }
         }
 
@@ -3772,16 +4337,36 @@
         const augPrevCanvas = document.getElementById('aug-preview');
         const augPrevCtx = augPrevCanvas.getContext('2d');
 
+        // Helper to compute padded size (pad to be divisible by max_stride)
+        function padToStride(size, maxStride) {
+            return Math.ceil(size / maxStride) * maxStride;
+        }
+
         function updatePreprocessingPreview() {
-            if (!videoFrame) {
+            const paddedSizeEl = document.getElementById('padded-size');
+
+            // Use video frame dimensions, or fall back to SLP video dimensions
+            let origW, origH;
+            if (videoFrame) {
+                origW = videoFrame.width;
+                origH = videoFrame.height;
+            } else if (videoWidth && videoHeight) {
+                // Use dimensions from SLP metadata
+                origW = videoWidth;
+                origH = videoHeight;
+            } else {
                 document.getElementById('orig-size').textContent = '-';
                 document.getElementById('proc-size').textContent = '-';
+                if (paddedSizeEl) paddedSizeEl.textContent = '-';
                 return;
             }
-
-            const origW = videoFrame.width;
-            const origH = videoFrame.height;
             const scale = getConfigValue('scale') || configState.scale;
+            const maxHeight = getConfigValue('maxHeight') || configState.maxHeight;
+            const maxWidth = getConfigValue('maxWidth') || configState.maxWidth;
+
+            // Get max stride from current backbone config
+            const backbone = getCurrentBackboneConfig();
+            const maxStride = backbone.maxStride || 16;
 
             // Scale applies differently per pipeline:
             // - Centered Instance: scale applies to CROP (crop_size × scale)
@@ -3790,23 +4375,53 @@
             const isCenteredInstance = isTopDown && configState.activeTopDownTab === 'centeredInstance';
 
             let procW, procH, procLabel;
+            let paddedW, paddedH;
+
             if (isCenteredInstance) {
+                // For Centered Instance, scale applies to crop, not full image
                 const cropSize = configState.cropSize || 256;
                 const ciScale = configState.centeredInstance?.scale || scale;
                 const scaledCrop = Math.round(cropSize * ciScale);
                 procW = scaledCrop;
                 procH = scaledCrop;
                 procLabel = `${scaledCrop}×${scaledCrop} (crop)`;
+                // Pad crop to stride
+                paddedW = padToStride(scaledCrop, maxStride);
+                paddedH = padToStride(scaledCrop, maxStride);
             } else {
-                procW = Math.round(origW * scale);
-                procH = Math.round(origH * scale);
+                // Apply SizeMatcher first (max_height/max_width limits)
+                let sizedW = origW;
+                let sizedH = origH;
+                if (maxHeight && origH > maxHeight) {
+                    const ratio = maxHeight / origH;
+                    sizedH = maxHeight;
+                    sizedW = Math.round(origW * ratio);
+                }
+                if (maxWidth && sizedW > maxWidth) {
+                    const ratio = maxWidth / sizedW;
+                    sizedW = maxWidth;
+                    sizedH = Math.round(sizedH * ratio);
+                }
+                // Then apply scale
+                procW = Math.round(sizedW * scale);
+                procH = Math.round(sizedH * scale);
                 procLabel = `${procW}×${procH}`;
+                // Pad to stride
+                paddedW = padToStride(procW, maxStride);
+                paddedH = padToStride(procH, maxStride);
             }
 
             document.getElementById('orig-size').textContent = `${origW}×${origH}`;
             document.getElementById('proc-size').textContent = procLabel;
+            if (paddedSizeEl) {
+                if (paddedW === procW && paddedH === procH) {
+                    paddedSizeEl.textContent = `${paddedW}×${paddedH}`;
+                } else {
+                    paddedSizeEl.innerHTML = `${paddedW}×${paddedH} <span style="font-size: 0.7rem; color: var(--text-dim);">(+${paddedW - procW}, +${paddedH - procH})</span>`;
+                }
+            }
 
-            // Draw scaled preview
+            // Draw scaled preview (only if video frame is available)
             const cw = preprocCanvas.width, ch = preprocCanvas.height;
             preprocCtx.clearRect(0, 0, cw, ch);
 
@@ -3820,19 +4435,34 @@
                 dw = dh * aspect;
             }
 
-            // Simulate scaled appearance (scale the drawn size)
-            const scaledW = dw * scale;
-            const scaledH = dh * scale;
-            const dx = (cw - scaledW) / 2;
-            const dy = (ch - scaledH) / 2;
+            if (videoFrame) {
+                // Simulate scaled appearance (scale the drawn size)
+                const scaledW = dw * scale;
+                const scaledH = dh * scale;
+                const dx = (cw - scaledW) / 2;
+                const dy = (ch - scaledH) / 2;
 
-            preprocCtx.drawImage(videoFrame, dx, dy, scaledW, scaledH);
+                preprocCtx.drawImage(videoFrame, dx, dy, scaledW, scaledH);
 
-            // Draw border showing original size
-            preprocCtx.strokeStyle = 'var(--text-dim)';
-            preprocCtx.setLineDash([3, 3]);
-            preprocCtx.strokeRect((cw - dw) / 2, (ch - dh) / 2, dw, dh);
-            preprocCtx.setLineDash([]);
+                // Draw border showing original size
+                preprocCtx.strokeStyle = 'var(--text-dim)';
+                preprocCtx.setLineDash([3, 3]);
+                preprocCtx.strokeRect((cw - dw) / 2, (ch - dh) / 2, dw, dh);
+                preprocCtx.setLineDash([]);
+            } else {
+                // Show placeholder with dimensions from SLP
+                preprocCtx.fillStyle = '#1a1a2e';
+                preprocCtx.fillRect(0, 0, cw, ch);
+                preprocCtx.strokeStyle = 'var(--primary)';
+                preprocCtx.setLineDash([5, 5]);
+                preprocCtx.strokeRect((cw - dw) / 2, (ch - dh) / 2, dw, dh);
+                preprocCtx.setLineDash([]);
+                preprocCtx.fillStyle = 'var(--text-dim)';
+                preprocCtx.font = '10px system-ui';
+                preprocCtx.textAlign = 'center';
+                preprocCtx.fillText(`${origW}×${origH}`, cw / 2, ch / 2);
+                preprocCtx.fillText('(from SLP)', cw / 2, ch / 2 + 12);
+            }
         }
 
         let currentAugParams = { rotation: 0, scale: 1, brightness: 0, contrast: 0 };
@@ -3919,10 +4549,11 @@
             const preprocessingConfig = {
                 ensure_rgb: c.channels === 'rgb' || (c.channels === 'auto' && usesPretrained),
                 ensure_grayscale: c.channels === 'grayscale',
-                max_height: null,
-                max_width: null,
+                max_height: c.maxHeight || null,
+                max_width: c.maxWidth || null,
                 scale: c.scale,
-                min_crop_size: 100
+                min_crop_size: 100,
+                crop_padding: c.cropPadding || null
             };
 
             // Complete intensity augmentation config
@@ -3942,14 +4573,18 @@
             };
 
             // Complete geometric augmentation config
+            // Use separate _p params for each transform type (new sleap-nn format)
             const geometricConfig = {
                 rotation_min: -c.rotation,
                 rotation_max: c.rotation,
+                rotation_p: c.rotation > 0 ? 0.5 : null,
                 scale_min: 1.0 - c.scaleAug / 100,
                 scale_max: 1.0 + c.scaleAug / 100,
+                scale_p: c.scaleAug > 0 ? 0.5 : null,
                 translate_width: 0.0,
                 translate_height: 0.0,
-                affine_p: (c.rotation > 0 || c.scaleAug > 0) ? 0.5 : 0.0,
+                translate_p: null,
+                affine_p: 0.0,
                 erase_scale_min: 0.0001,
                 erase_scale_max: 0.01,
                 erase_ratio_min: 1.0,
@@ -3965,6 +4600,7 @@
                 train_labels_path: 'path/to/train.slp',
                 val_labels_path: null,
                 validation_fraction: 0.1,
+                use_same_data_for_val: c.useSameDataForVal,
                 test_file_path: null,
                 provider: 'LabelsReader',
                 user_instances_only: c.userInstancesOnly,
@@ -4066,8 +4702,8 @@
                 seed: null,
                 use_wandb: c.useWandb,
                 save_ckpt: c.saveCkpt,
-                ckpt_dir: 'models',
-                run_name: null,
+                ckpt_dir: c.ckptDir || 'models',
+                run_name: c.runName || null,
                 resume_ckpt_path: null,
                 wandb: {
                     entity: c.wandb.entity || null,
@@ -4099,11 +4735,11 @@
                     stop_training_on_plateau: c.earlyStop
                 },
                 online_hard_keypoint_mining: {
-                    online_mining: false,
-                    hard_to_easy_ratio: 2.0,
-                    min_hard_keypoints: 2,
-                    max_hard_keypoints: null,
-                    loss_scale: 5.0
+                    online_mining: c.ohkm.enabled,
+                    hard_to_easy_ratio: c.ohkm.hardToEasyRatio,
+                    min_hard_keypoints: c.ohkm.minHardKeypoints,
+                    max_hard_keypoints: c.ohkm.maxHardKeypoints,
+                    loss_scale: c.ohkm.lossScale
                 },
                 zmq: {
                     controller_port: 9000,
@@ -4142,10 +4778,11 @@
                     const modelPreprocessingConfig = {
                         ensure_rgb: modelCfg.channels === 'rgb' || forceRgb,
                         ensure_grayscale: modelCfg.channels === 'grayscale',
-                        max_height: null,
-                        max_width: null,
+                        max_height: modelCfg.maxHeight || null,
+                        max_width: modelCfg.maxWidth || null,
                         scale: modelCfg.scale,
-                        min_crop_size: 100
+                        min_crop_size: 100,
+                        crop_padding: c.cropPadding || null
                     };
                     if (cropSize) modelPreprocessingConfig.crop_size = cropSize;
 
@@ -4164,14 +4801,18 @@
                         brightness_p: modelCfg.brightness > 0 ? 0.5 : 0.0
                     };
 
+                    // Use separate _p params for each transform type (new sleap-nn format)
                     const modelGeometricConfig = {
                         rotation_min: -modelCfg.rotation,
                         rotation_max: modelCfg.rotation,
+                        rotation_p: modelCfg.rotation > 0 ? 0.5 : null,
                         scale_min: 1.0 - modelCfg.scaleAug / 100,
                         scale_max: 1.0 + modelCfg.scaleAug / 100,
+                        scale_p: modelCfg.scaleAug > 0 ? 0.5 : null,
                         translate_width: 0.0,
                         translate_height: 0.0,
-                        affine_p: (modelCfg.rotation > 0 || modelCfg.scaleAug > 0) ? 0.5 : 0.0,
+                        translate_p: null,
+                        affine_p: 0.0,
                         erase_scale_min: 0.0001,
                         erase_scale_max: 0.01,
                         erase_ratio_min: 1.0,
@@ -4186,6 +4827,7 @@
                         train_labels_path: 'path/to/train.slp',
                         val_labels_path: null,
                         validation_fraction: 0.1,
+                        use_same_data_for_val: c.useSameDataForVal,
                         test_file_path: null,
                         provider: 'LabelsReader',
                         user_instances_only: c.userInstancesOnly,
@@ -4354,6 +4996,8 @@
                     };
                 }
 
+                // Use multi_class_topdown head if multiClass is enabled
+                const ciHeadKey = c.multiClass ? 'multi_class_topdown' : 'centered_instance';
                 const ciHeadConfig = {
                     confmaps: {
                         part_names: null,
@@ -4363,6 +5007,15 @@
                         anchor_part: c.centeredInstance.anchorPart || null
                     }
                 };
+                // Add class_vectors head for multi-class top-down
+                if (c.multiClass) {
+                    ciHeadConfig.class_vectors = {
+                        classes: null, // Will be auto-populated from tracks
+                        num_fc_layers: 2,
+                        num_fc_units: 256,
+                        loss_weight: 1.0
+                    };
+                }
 
                 const centeredInstanceConfig = {
                     data_config: buildModelDataConfig(c.centeredInstance, c.cropSize),
@@ -4373,7 +5026,7 @@
                         backbone_config: ciBackboneConfig,
                         head_configs: {
                             ...allHeadsNull,
-                            centered_instance: ciHeadConfig
+                            [ciHeadKey]: ciHeadConfig
                         },
                         total_params: null
                     },
@@ -4412,27 +5065,39 @@
                 return jsyaml.dump(config, { indent: 2, lineWidth: -1 });
 
             } else {
-                // Bottom-up
+                // Bottom-up (or Multi-Class Bottom-up if multiClass enabled)
+                const headKey = c.multiClass ? 'multi_class_bottomup' : 'bottomup';
+                const headConfig = {
+                    confmaps: {
+                        part_names: null,
+                        sigma: c.bottomup.confmaps.sigma,
+                        output_stride: c.bottomup.confmaps.outputStride,
+                        loss_weight: c.bottomup.confmaps.lossWeight
+                    },
+                    pafs: {
+                        edges: null,
+                        sigma: c.bottomup.pafs.sigma,
+                        output_stride: c.bottomup.pafs.outputStride,
+                        loss_weight: c.bottomup.pafs.lossWeight
+                    }
+                };
+                // Add class_maps head for multi-class
+                if (c.multiClass) {
+                    headConfig.class_maps = {
+                        classes: null, // Will be auto-populated from tracks
+                        sigma: c.bottomup.confmaps.sigma,
+                        output_stride: c.bottomup.confmaps.outputStride,
+                        loss_weight: 1.0
+                    };
+                }
+
                 const config = {
                     data_config: { ...baseDataConfig },
                     model_config: {
                         ...baseModelConfig,
                         head_configs: {
                             ...allHeadsNull,
-                            bottomup: {
-                                confmaps: {
-                                    part_names: null,
-                                    sigma: c.bottomup.confmaps.sigma,
-                                    output_stride: c.bottomup.confmaps.outputStride,
-                                    loss_weight: c.bottomup.confmaps.lossWeight
-                                },
-                                pafs: {
-                                    edges: null,
-                                    sigma: c.bottomup.pafs.sigma,
-                                    output_stride: c.bottomup.pafs.outputStride,
-                                    loss_weight: c.bottomup.pafs.lossWeight
-                                }
-                            }
+                            [headKey]: headConfig
                         },
                         total_params: null
                     },
