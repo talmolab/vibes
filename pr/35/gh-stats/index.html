@@ -192,6 +192,15 @@
         .badge.open { background: var(--accent-green); color: white; }
         .badge.merged { background: var(--accent-purple); color: white; }
         .badge.closed { background: var(--accent-orange); color: white; }
+        .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .chart-header h3 { margin-bottom: 0; }
+        .toggle-group { display: flex; align-items: center; gap: 8px; }
+        .toggle-group label { font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; user-select: none; }
+        .toggle-group input[type="checkbox"] {
+            width: 16px; height: 16px;
+            accent-color: var(--accent-blue);
+            cursor: pointer;
+        }
         .loading::after { content: ''; animation: dots 1.5s infinite; }
         @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
         .error { background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-orange); border-radius: 8px; padding: 12px 16px; color: var(--accent-orange); margin: 16px 0; }
@@ -317,6 +326,17 @@
                 <div class="chart-container tall"><canvas id="repoTimeChart"></canvas></div>
             </div>
 
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Lines of Code by Repository Over Time</h3>
+                    <div class="toggle-group">
+                        <input type="checkbox" id="locAbsolute">
+                        <label for="locAbsolute">Show absolute values</label>
+                    </div>
+                </div>
+                <div class="chart-container tall"><canvas id="locRepoChart"></canvas></div>
+            </div>
+
             <div class="chart-grid">
                 <div class="chart-card" style="margin-bottom: 0;">
                     <h3>Daily Commits</h3>
@@ -343,12 +363,21 @@
 
     <script>
         const $ = id => document.getElementById(id);
-        let commitsChart, locChart, repoTimeChart;
+        let commitsChart, locChart, repoTimeChart, locRepoChart;
         let allRepos = [];
         let repoStates = {};
+        let cachedLocRepoData = null; // Cache for re-rendering on toggle
         const REPO_COLORS = [
             '#58a6ff', '#a371f7', '#db61a2', '#f78166', '#d29922',
             '#3fb950', '#79c0ff', '#d2a8ff', '#ff7b72', '#ffa657'
+        ];
+        const GREEN_SHADES = [
+            '#39d353', '#26a641', '#006d32', '#0e4429', '#2ea043',
+            '#56d364', '#3fb950', '#238636', '#196c2e', '#0f5323'
+        ];
+        const RED_SHADES = [
+            '#f85149', '#da3633', '#b62324', '#8b1c1c', '#ff7b72',
+            '#ffa198', '#f78166', '#ea6045', '#cf4c3c', '#a1201c'
         ];
 
         const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
@@ -563,6 +592,75 @@
             });
         }
 
+        function renderLocRepoChart(locByRepoDate, topRepos, labels, useAbsolute = false) {
+            if (locRepoChart) locRepoChart.destroy();
+
+            const reposToShow = topRepos.slice(0, 8);
+            const datasets = [];
+
+            // Additions (green shades) - stacked positive
+            reposToShow.forEach((repo, i) => {
+                const data = labels.map(d => locByRepoDate[repo]?.[d]?.additions || 0);
+                datasets.push({
+                    label: `+${repo.split('/').pop()}`,
+                    data,
+                    backgroundColor: GREEN_SHADES[i % GREEN_SHADES.length] + 'cc',
+                    borderColor: GREEN_SHADES[i % GREEN_SHADES.length],
+                    borderWidth: 1,
+                    stack: 'additions'
+                });
+            });
+
+            // Deletions (red shades) - stacked negative (or positive if absolute)
+            reposToShow.forEach((repo, i) => {
+                const rawData = labels.map(d => locByRepoDate[repo]?.[d]?.deletions || 0);
+                const data = useAbsolute ? rawData : rawData.map(v => -v);
+                datasets.push({
+                    label: `-${repo.split('/').pop()}`,
+                    data,
+                    backgroundColor: RED_SHADES[i % RED_SHADES.length] + 'cc',
+                    borderColor: RED_SHADES[i % RED_SHADES.length],
+                    borderWidth: 1,
+                    stack: useAbsolute ? 'deletions' : 'deletions'
+                });
+            });
+
+            locRepoChart = new Chart($('locRepoChart'), {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#8b949e',
+                                boxWidth: 10,
+                                padding: 6,
+                                font: { size: 10 },
+                                filter: (item) => item.text.startsWith('+') // Only show additions in legend
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const val = Math.abs(ctx.raw);
+                                    const sign = ctx.dataset.label.startsWith('+') ? '+' : '-';
+                                    return `${ctx.dataset.label.slice(1)}: ${sign}${formatNumber(val)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { stacked: true, grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 10 } },
+                        y: { stacked: true, grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
+                    }
+                }
+            });
+        }
+
         function renderPRList(prs) {
             const container = $('prList');
             if (prs.length === 0) {
@@ -651,7 +749,7 @@
                 updateRepoFilters();
 
                 const filteredRepos = getFilteredRepos();
-                const commitsByDate = {}, locByDate = {}, repoStats = {}, commitsByRepoDate = {};
+                const commitsByDate = {}, locByDate = {}, repoStats = {}, commitsByRepoDate = {}, locByRepoDate = {};
                 let totalCommits = 0, totalAdded = 0, totalRemoved = 0;
 
                 for (const repoName of filteredRepos.slice(0, 30)) {
@@ -661,6 +759,7 @@
 
                     repoStats[repoName] = { commits: commits.length, additions: 0, deletions: 0 };
                     commitsByRepoDate[repoName] = {};
+                    locByRepoDate[repoName] = {};
 
                     commits.forEach(c => {
                         const date = c.committedDate.split('T')[0];
@@ -669,6 +768,9 @@
                         locByDate[date] = locByDate[date] || { additions: 0, deletions: 0 };
                         locByDate[date].additions += c.additions;
                         locByDate[date].deletions += c.deletions;
+                        locByRepoDate[repoName][date] = locByRepoDate[repoName][date] || { additions: 0, deletions: 0 };
+                        locByRepoDate[repoName][date].additions += c.additions;
+                        locByRepoDate[repoName][date].deletions += c.deletions;
                         repoStats[repoName].additions += c.additions;
                         repoStats[repoName].deletions += c.deletions;
                         totalCommits++;
@@ -693,9 +795,14 @@
 
                 const calendar = user.contributionsCollection.contributionCalendar;
                 const topRepos = Object.entries(repoStats).sort((a, b) => b[1].commits - a[1].commits).map(([name]) => name);
+                const labels = Object.keys(commitsByDate).sort();
+
+                // Cache data for LOC chart toggle
+                cachedLocRepoData = { locByRepoDate, topRepos, labels };
 
                 renderHeatmap(calendar.weeks);
                 renderCharts(commitsByDate, locByDate, commitsByRepoDate, topRepos);
+                renderLocRepoChart(locByRepoDate, topRepos, labels, $('locAbsolute').checked);
                 renderPRList(prs);
                 renderReposList(repoStats);
 
@@ -714,6 +821,14 @@
 
         $('timeRange').addEventListener('change', () => {
             $('dateRange').classList.toggle('visible', $('timeRange').value === 'custom');
+        });
+
+        // LOC chart absolute toggle
+        $('locAbsolute').addEventListener('change', () => {
+            if (cachedLocRepoData) {
+                const { locByRepoDate, topRepos, labels } = cachedLocRepoData;
+                renderLocRepoChart(locByRepoDate, topRepos, labels, $('locAbsolute').checked);
+            }
         });
 
         const today = new Date().toISOString().split('T')[0];
