@@ -19,6 +19,7 @@
             --accent-purple: #a371f7;
             --accent-orange: #f78166;
             --accent-pink: #db61a2;
+            --accent-yellow: #d29922;
             --gradient: linear-gradient(135deg, #58a6ff 0%, #a371f7 50%, #db61a2 100%);
         }
         body {
@@ -28,7 +29,7 @@
             min-height: 100vh;
             line-height: 1.5;
         }
-        .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
         header {
             text-align: center;
             margin-bottom: 32px;
@@ -88,18 +89,8 @@
         }
         button:hover { filter: brightness(1.1); transform: translateY(-1px); }
         button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
-        button.secondary { background: var(--bg-tertiary); border: 1px solid var(--border); }
-        .filter-section {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid var(--border);
-        }
-        .filter-section summary {
-            cursor: pointer;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            user-select: none;
-        }
+        .filter-section { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+        .filter-section summary { cursor: pointer; color: var(--text-secondary); font-size: 0.875rem; user-select: none; }
         .filter-section summary:hover { color: var(--text-primary); }
         .filter-content { margin-top: 12px; }
         .chip-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
@@ -130,9 +121,7 @@
         .stat-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
+            top: 0; left: 0; right: 0;
             height: 3px;
             background: var(--card-accent, var(--accent-blue));
         }
@@ -152,36 +141,57 @@
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 20px;
+            margin-bottom: 24px;
         }
         .chart-card h3 { font-size: 1rem; margin-bottom: 16px; color: var(--text-secondary); }
         .chart-container { position: relative; height: 250px; }
-        .heatmap-card { grid-column: 1 / -1; }
-        .heatmap { display: flex; gap: 3px; overflow-x: auto; padding-bottom: 8px; }
-        .heatmap-week { display: flex; flex-direction: column; gap: 3px; }
+        .chart-container.tall { height: 350px; }
+        .full-width { grid-column: 1 / -1; }
+        /* Stretched heatmap */
+        .heatmap-wrapper { overflow-x: auto; padding-bottom: 8px; }
+        .heatmap { display: flex; gap: 4px; min-width: max-content; }
+        .heatmap-week { display: flex; flex-direction: column; gap: 4px; }
         .heatmap-day {
-            width: 12px;
-            height: 12px;
-            border-radius: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
             background: var(--bg-tertiary);
+            transition: transform 0.1s;
         }
+        .heatmap-day:hover { transform: scale(1.2); }
         .heatmap-day[data-level="1"] { background: #0e4429; }
         .heatmap-day[data-level="2"] { background: #006d32; }
         .heatmap-day[data-level="3"] { background: #26a641; }
         .heatmap-day[data-level="4"] { background: #39d353; }
+        .heatmap-months { display: flex; gap: 4px; margin-bottom: 8px; font-size: 0.7rem; color: var(--text-secondary); }
+        .heatmap-months span { min-width: 14px; }
         .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 12px; justify-content: flex-end; font-size: 0.75rem; color: var(--text-secondary); }
         .heatmap-legend span { margin: 0 4px; }
-        .repos-list { max-height: 300px; overflow-y: auto; }
-        .repo-item {
+        /* Lists */
+        .list-container { max-height: 400px; overflow-y: auto; }
+        .list-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 12px 0;
             border-bottom: 1px solid var(--border);
+            gap: 12px;
         }
-        .repo-item:last-child { border-bottom: none; }
-        .repo-name { font-weight: 500; color: var(--accent-blue); }
-        .repo-stats { display: flex; gap: 16px; font-size: 0.85rem; color: var(--text-secondary); }
-        .loading { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .list-item:last-child { border-bottom: none; }
+        .list-item-main { flex: 1; min-width: 0; }
+        .list-item-title { font-weight: 500; color: var(--accent-blue); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .list-item-meta { font-size: 0.8rem; color: var(--text-secondary); margin-top: 2px; }
+        .list-item-stats { display: flex; gap: 12px; font-size: 0.85rem; color: var(--text-secondary); flex-shrink: 0; }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge.open { background: var(--accent-green); color: white; }
+        .badge.merged { background: var(--accent-purple); color: white; }
+        .badge.closed { background: var(--accent-orange); color: white; }
         .loading::after { content: ''; animation: dots 1.5s infinite; }
         @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
         .error { background: rgba(248, 81, 73, 0.1); border: 1px solid var(--accent-orange); border-radius: 8px; padding: 12px 16px; color: var(--accent-orange); margin: 16px 0; }
@@ -189,6 +199,8 @@
         .user-avatar { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--border); }
         .user-info h2 { font-size: 1.5rem; }
         .user-info p { color: var(--text-secondary); }
+        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -283,42 +295,61 @@
                 </div>
             </div>
 
-            <div class="chart-grid">
-                <div class="chart-card heatmap-card">
-                    <h3>Contribution Activity</h3>
+            <div class="chart-card">
+                <h3>Contribution Activity</h3>
+                <div class="heatmap-wrapper">
+                    <div id="heatmapMonths" class="heatmap-months"></div>
                     <div id="heatmap" class="heatmap"></div>
-                    <div class="heatmap-legend">
-                        <span>Less</span>
-                        <div class="heatmap-day" data-level="0"></div>
-                        <div class="heatmap-day" data-level="1"></div>
-                        <div class="heatmap-day" data-level="2"></div>
-                        <div class="heatmap-day" data-level="3"></div>
-                        <div class="heatmap-day" data-level="4"></div>
-                        <span>More</span>
-                    </div>
                 </div>
-                <div class="chart-card">
-                    <h3>Commits Over Time</h3>
+                <div class="heatmap-legend">
+                    <span>Less</span>
+                    <div class="heatmap-day" data-level="0"></div>
+                    <div class="heatmap-day" data-level="1"></div>
+                    <div class="heatmap-day" data-level="2"></div>
+                    <div class="heatmap-day" data-level="3"></div>
+                    <div class="heatmap-day" data-level="4"></div>
+                    <span>More</span>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>Commits by Repository Over Time</h3>
+                <div class="chart-container tall"><canvas id="repoTimeChart"></canvas></div>
+            </div>
+
+            <div class="chart-grid">
+                <div class="chart-card" style="margin-bottom: 0;">
+                    <h3>Daily Commits</h3>
                     <div class="chart-container"><canvas id="commitsChart"></canvas></div>
                 </div>
-                <div class="chart-card">
+                <div class="chart-card" style="margin-bottom: 0;">
                     <h3>Lines of Code</h3>
                     <div class="chart-container"><canvas id="locChart"></canvas></div>
                 </div>
             </div>
 
-            <div class="chart-card">
-                <h3>Top Repositories by Commits</h3>
-                <div id="reposList" class="repos-list"></div>
+            <div class="two-col">
+                <div class="chart-card" style="margin-bottom: 0;">
+                    <h3>Recent Pull Requests</h3>
+                    <div id="prList" class="list-container"></div>
+                </div>
+                <div class="chart-card" style="margin-bottom: 0;">
+                    <h3>Top Repositories by Commits</h3>
+                    <div id="reposList" class="list-container"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
         const $ = id => document.getElementById(id);
-        let commitsChart, locChart;
+        let commitsChart, locChart, repoTimeChart;
         let allRepos = [];
         let repoStates = {};
+        const REPO_COLORS = [
+            '#58a6ff', '#a371f7', '#db61a2', '#f78166', '#d29922',
+            '#3fb950', '#79c0ff', '#d2a8ff', '#ff7b72', '#ffa657'
+        ];
 
         const GITHUB_GRAPHQL = 'https://api.github.com/graphql';
 
@@ -346,6 +377,10 @@
             return n.toLocaleString();
         }
 
+        function formatDate(dateStr) {
+            return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
         async function fetchUserData(token, username, from, to) {
             const query = `query($login: String!, $from: DateTime, $to: DateTime) {
                 user(login: $login) {
@@ -368,11 +403,7 @@
                         target {
                             ... on Commit {
                                 history(first: 100, since: $since, until: $until) {
-                                    nodes {
-                                        committedDate
-                                        author { user { login } }
-                                        additions deletions
-                                    }
+                                    nodes { committedDate author { user { login } } additions deletions }
                                 }
                             }
                         }
@@ -390,7 +421,7 @@
             const query = `query($query: String!) {
                 search(query: $query, type: ISSUE, first: 100) {
                     nodes {
-                        ... on PullRequest { title state createdAt repository { nameWithOwner } }
+                        ... on PullRequest { title state createdAt mergedAt url repository { nameWithOwner } }
                     }
                 }
             }`;
@@ -413,10 +444,7 @@
                     else repoStates[repo] = 'selected';
                     updateRepoFilters();
                 };
-                chip.ondblclick = () => {
-                    repoStates[repo] = 'excluded';
-                    updateRepoFilters();
-                };
+                chip.ondblclick = () => { repoStates[repo] = 'excluded'; updateRepoFilters(); };
                 container.appendChild(chip);
             });
         }
@@ -430,11 +458,18 @@
 
         function renderHeatmap(weeks) {
             const container = $('heatmap');
+            const monthsContainer = $('heatmapMonths');
             container.innerHTML = '';
-            weeks.forEach(week => {
+            monthsContainer.innerHTML = '';
+
+            const months = [];
+            let lastMonth = '';
+
+            weeks.forEach((week, weekIndex) => {
                 const weekDiv = document.createElement('div');
                 weekDiv.className = 'heatmap-week';
-                week.contributionDays.forEach(day => {
+
+                week.contributionDays.forEach((day, dayIndex) => {
                     const dayDiv = document.createElement('div');
                     dayDiv.className = 'heatmap-day';
                     const count = day.contributionCount;
@@ -442,12 +477,30 @@
                     dayDiv.setAttribute('data-level', level);
                     dayDiv.title = `${day.date}: ${count} contributions`;
                     weekDiv.appendChild(dayDiv);
+
+                    if (dayIndex === 0) {
+                        const month = new Date(day.date).toLocaleDateString('en-US', { month: 'short' });
+                        if (month !== lastMonth) {
+                            months.push({ month, weekIndex });
+                            lastMonth = month;
+                        }
+                    }
                 });
                 container.appendChild(weekDiv);
             });
+
+            // Render month labels
+            let pos = 0;
+            months.forEach((m, i) => {
+                const span = document.createElement('span');
+                span.textContent = m.month;
+                span.style.marginLeft = i === 0 ? '0' : `${(m.weekIndex - pos - 1) * 18}px`;
+                monthsContainer.appendChild(span);
+                pos = m.weekIndex;
+            });
         }
 
-        function renderCharts(commitsByDate, locByDate) {
+        function renderCharts(commitsByDate, locByDate, commitsByRepoDate, topRepos) {
             const labels = Object.keys(commitsByDate).sort();
             const commitData = labels.map(d => commitsByDate[d] || 0);
             const addData = labels.map(d => locByDate[d]?.additions || 0);
@@ -458,7 +511,7 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: {
-                    x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 7 } },
+                    x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 8 } },
                     y: { grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
                 }
             };
@@ -466,10 +519,7 @@
             if (commitsChart) commitsChart.destroy();
             commitsChart = new Chart($('commitsChart'), {
                 type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ data: commitData, backgroundColor: 'rgba(88, 166, 255, 0.8)', borderRadius: 4 }]
-                },
+                data: { labels, datasets: [{ data: commitData, backgroundColor: 'rgba(88, 166, 255, 0.8)', borderRadius: 4 }] },
                 options: chartConfig
             });
 
@@ -485,15 +535,68 @@
                 },
                 options: { ...chartConfig, plugins: { legend: { display: true, labels: { color: '#8b949e' } } }, scales: { ...chartConfig.scales, x: { ...chartConfig.scales.x, stacked: true }, y: { ...chartConfig.scales.y, stacked: true } } }
             });
+
+            // Stacked area chart by repo
+            if (repoTimeChart) repoTimeChart.destroy();
+            const datasets = topRepos.slice(0, 8).map((repo, i) => ({
+                label: repo.split('/').pop(),
+                data: labels.map(d => commitsByRepoDate[repo]?.[d] || 0),
+                backgroundColor: REPO_COLORS[i % REPO_COLORS.length] + '80',
+                borderColor: REPO_COLORS[i % REPO_COLORS.length],
+                borderWidth: 1,
+                fill: true
+            }));
+
+            repoTimeChart = new Chart($('repoTimeChart'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true, position: 'top', labels: { color: '#8b949e', boxWidth: 12, padding: 8 } } },
+                    scales: {
+                        x: { grid: { color: '#30363d' }, ticks: { color: '#8b949e', maxTicksLimit: 10 } },
+                        y: { stacked: true, grid: { color: '#30363d' }, ticks: { color: '#8b949e' } }
+                    },
+                    elements: { line: { tension: 0.3 }, point: { radius: 0 } }
+                }
+            });
+        }
+
+        function renderPRList(prs) {
+            const container = $('prList');
+            if (prs.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No pull requests in this period</p>';
+                return;
+            }
+            const sorted = [...prs].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            container.innerHTML = sorted.slice(0, 15).map(pr => {
+                const state = pr.state.toLowerCase();
+                const stateClass = state === 'merged' ? 'merged' : state === 'open' ? 'open' : 'closed';
+                return `
+                <div class="list-item">
+                    <div class="list-item-main">
+                        <div class="list-item-title" title="${pr.title}">${pr.title}</div>
+                        <div class="list-item-meta">${pr.repository.nameWithOwner} &bull; ${formatDate(pr.createdAt)}</div>
+                    </div>
+                    <span class="badge ${stateClass}">${pr.state}</span>
+                </div>`;
+            }).join('');
         }
 
         function renderReposList(repoStats) {
-            const sorted = Object.entries(repoStats).sort((a, b) => b[1].commits - a[1].commits).slice(0, 10);
+            const sorted = Object.entries(repoStats).sort((a, b) => b[1].commits - a[1].commits).slice(0, 15);
             const container = $('reposList');
-            container.innerHTML = sorted.map(([name, stats]) => `
-                <div class="repo-item">
-                    <span class="repo-name">${name}</span>
-                    <div class="repo-stats">
+            if (sorted.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary); text-align: center; padding: 20px;">No commits in this period</p>';
+                return;
+            }
+            container.innerHTML = sorted.map(([name, stats], i) => `
+                <div class="list-item">
+                    <div class="list-item-main">
+                        <div class="list-item-title" style="color: ${REPO_COLORS[i % REPO_COLORS.length]}">${name}</div>
+                    </div>
+                    <div class="list-item-stats">
                         <span>${stats.commits} commits</span>
                         <span class="positive">+${formatNumber(stats.additions)}</span>
                         <span class="negative">-${formatNumber(stats.deletions)}</span>
@@ -548,7 +651,7 @@
                 updateRepoFilters();
 
                 const filteredRepos = getFilteredRepos();
-                const commitsByDate = {}, locByDate = {}, repoStats = {};
+                const commitsByDate = {}, locByDate = {}, repoStats = {}, commitsByRepoDate = {};
                 let totalCommits = 0, totalAdded = 0, totalRemoved = 0;
 
                 for (const repoName of filteredRepos.slice(0, 30)) {
@@ -557,10 +660,12 @@
                     if (commits.length === 0) continue;
 
                     repoStats[repoName] = { commits: commits.length, additions: 0, deletions: 0 };
+                    commitsByRepoDate[repoName] = {};
 
                     commits.forEach(c => {
                         const date = c.committedDate.split('T')[0];
                         commitsByDate[date] = (commitsByDate[date] || 0) + 1;
+                        commitsByRepoDate[repoName][date] = (commitsByRepoDate[repoName][date] || 0) + 1;
                         locByDate[date] = locByDate[date] || { additions: 0, deletions: 0 };
                         locByDate[date].additions += c.additions;
                         locByDate[date].deletions += c.deletions;
@@ -587,8 +692,11 @@
                 $('repoDetail').textContent = `of ${filteredRepos.length} tracked`;
 
                 const calendar = user.contributionsCollection.contributionCalendar;
+                const topRepos = Object.entries(repoStats).sort((a, b) => b[1].commits - a[1].commits).map(([name]) => name);
+
                 renderHeatmap(calendar.weeks);
-                renderCharts(commitsByDate, locByDate);
+                renderCharts(commitsByDate, locByDate, commitsByRepoDate, topRepos);
+                renderPRList(prs);
                 renderReposList(repoStats);
 
                 $('dashboard').classList.add('visible');
@@ -604,20 +712,16 @@
         $('token').addEventListener('keypress', e => { if (e.key === 'Enter') fetchStats(); });
         $('username').addEventListener('keypress', e => { if (e.key === 'Enter') fetchStats(); });
 
-        // Custom date range toggle
         $('timeRange').addEventListener('change', () => {
-            const isCustom = $('timeRange').value === 'custom';
-            $('dateRange').classList.toggle('visible', isCustom);
+            $('dateRange').classList.toggle('visible', $('timeRange').value === 'custom');
         });
 
-        // Initialize date inputs with sensible defaults
         const today = new Date().toISOString().split('T')[0];
         const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
         $('endDate').value = today;
         $('startDate').value = thirtyDaysAgo;
         $('endDate').max = today;
 
-        // Load from localStorage
         if (localStorage.getItem('gh-stats-token')) $('token').value = localStorage.getItem('gh-stats-token');
         if (localStorage.getItem('gh-stats-username')) $('username').value = localStorage.getItem('gh-stats-username');
         $('token').addEventListener('change', () => localStorage.setItem('gh-stats-token', $('token').value));
