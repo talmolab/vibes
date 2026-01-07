@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Duplicate Pose Investigator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .panel {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .panel h3 {
+            margin: 0 0 15px 0;
+            color: #fff;
+            font-size: 16px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        .btn-duplicate { background: #22c55e; }
+        .btn-duplicate:hover { background: #16a34a; }
+        .btn-not-duplicate { background: #ef4444; }
+        .btn-not-duplicate:hover { background: #dc2626; }
+        .btn-skip { background: #666; }
+        .btn-skip:hover { background: #555; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .status-text { color: #aaa; font-size: 14px; }
+        .status-text.ready { color: #4ade80; }
+        .status-text.error { color: #ff6b6b; }
+        .progress-container { margin-top: 10px; display: none; }
+        .progress-bar {
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #667eea;
+            width: 0%;
+            transition: width 0.2s;
+        }
+        .progress-text { font-size: 12px; color: #aaa; margin-top: 5px; }
+        .histogram-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+        .histogram-box { flex: 1; min-width: 0; }
+        .histogram-box h4 { margin: 0 0 10px 0; color: #fff; font-size: 14px; }
+        .chart-container { position: relative; height: 300px; width: 100%; }
+        .histogram-box canvas { width: 100% !important; height: 100% !important; }
+        .histogram-help { font-size: 12px; color: #888; margin-top: 10px; }
+        .threshold-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .threshold-controls input[type="number"] {
+            width: 70px;
+            padding: 4px 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a1a;
+            color: #fff;
+            font-size: 13px;
+        }
+        .threshold-controls select {
+            padding: 4px 8px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a1a;
+            color: #fff;
+            font-size: 13px;
+        }
+        .threshold-controls button {
+            padding: 4px 12px;
+            font-size: 12px;
+            margin: 0;
+        }
+        .threshold-controls label {
+            font-size: 12px;
+            color: #aaa;
+        }
+        .annotation-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .annotation-left { }
+        .annotation-right { }
+        .pr-chart-container { position: relative; height: 300px; width: 100%; }
+        @media (max-width: 900px) {
+            .annotation-row { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 1200px) {
+            .histogram-container { grid-template-columns: 1fr 1fr; }
+            .chart-container { height: 180px; }
+        }
+        @media (max-width: 700px) {
+            .histogram-container { grid-template-columns: 1fr; }
+            .chart-container { height: 160px; }
+        }
+        .annotation-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 14px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .annotation-info span { color: #e0e0e0; }
+        .annotation-info .iou-value { color: #667eea; font-weight: bold; }
+        #annotationCanvas {
+            display: block;
+            max-width: 100%;
+            max-height: 400px;
+            margin: 0 auto;
+            border-radius: 4px;
+            background: #000;
+        }
+        .annotation-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .annotation-buttons button { min-width: 180px; }
+        .summary-stats {
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            font-size: 14px;
+        }
+        .summary-stats .stat { display: flex; gap: 8px; }
+        .summary-stats .stat-label { color: #888; }
+        .summary-stats .stat-value { color: #fff; font-weight: bold; }
+        .summary-stats .stat-value.duplicate { color: #22c55e; }
+        .summary-stats .stat-value.not-duplicate { color: #ef4444; }
+        .diagnostic-console {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+        .diagnostic-console-header {
+            background: #2a2a2a;
+            padding: 8px 15px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .diagnostic-console-header h3 { margin: 0; color: #fff; font-size: 12px; }
+        .diagnostic-console-header button { background: #444; padding: 4px 10px; font-size: 11px; margin: 0; }
+        .diagnostic-console-body { height: 100px; overflow-y: auto; padding: 10px 15px; }
+        .log-entry { margin: 2px 0; display: flex; gap: 10px; }
+        .log-time { color: #666; flex-shrink: 0; }
+        .log-msg { color: #aaa; }
+        .log-msg.info { color: #667eea; }
+        .log-msg.success { color: #4ade80; }
+        .log-msg.warn { color: #fbbf24; }
+        .log-msg.error { color: #ff6b6b; }
+        .hotkeys {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 14px;
+        }
+        .hotkeys h3 { margin-top: 0; color: #fff; }
+        .hotkeys-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 8px 20px;
+        }
+        .hotkey { display: flex; gap: 10px; }
+        .hotkey-key { color: #667eea; font-family: 'Courier New', monospace; min-width: 40px; }
+        .hotkey-desc { color: #aaa; }
+        .error-msg {
+            background: #4a2020;
+            border: 1px solid #ff6b6b;
+            color: #ff6b6b;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+        }
+        .hidden { display: none !important; }
+        @media (max-width: 600px) {
+            body { padding: 10px; }
+            .panel { padding: 15px; }
+            button { padding: 10px 16px; font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Duplicate Pose Investigator</h1>
+        <p class="description">Identify duplicate poses (multiple detections of the same animal) by analyzing bounding box IOU between pose pairs.</p>
+
+        <!-- File Loading -->
+        <div class="panel">
+            <div class="controls">
+                <input type="file" id="videoFileInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
+                <input type="file" id="poseFileInput" accept=".slp,.h5,.hdf5" style="display: none;">
+                <button id="loadVideoBtn">Load Video</button>
+                <button id="loadPoseBtn">Load Poses (.slp/.h5)</button>
+                <button id="computeBtn" disabled>Compute Metrics</button>
+            </div>
+            <div class="status-text" id="statusText">Load video and pose files to begin</div>
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+                <div class="progress-text" id="progressText">Computing...</div>
+            </div>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+        <!-- Histogram Panel -->
+        <div class="panel hidden" id="histogramPanel">
+            <h3>Metric Distributions</h3>
+            <div class="histogram-container">
+                <div class="histogram-box">
+                    <h4>IOU (Bounding Box Overlap)</h4>
+                    <div class="chart-container"><canvas id="iouHistogramCanvas"></canvas></div>
+                    <div class="threshold-controls">
+                        <label>Non-dup if</label>
+                        <select id="iouOp"><option value="<">&lt;</option><option value="<=">&le;</option><option value=">">&gt;</option><option value=">=">&ge;</option></select>
+                        <input type="number" id="iouThresh" step="0.05" min="0" max="1" value="0.5">
+                        <button onclick="addThresholdPoint('iou')">Add</button>
+                    </div>
+                </div>
+                <div class="histogram-box">
+                    <h4>Centroid Distance (px)</h4>
+                    <div class="chart-container"><canvas id="centroidHistogramCanvas"></canvas></div>
+                    <div class="threshold-controls">
+                        <label>Non-dup if</label>
+                        <select id="centroidOp"><option value=">">&gt;</option><option value=">=">&ge;</option><option value="<">&lt;</option><option value="<=">&le;</option></select>
+                        <input type="number" id="centroidThresh" step="5" min="0" value="50">
+                        <button onclick="addThresholdPoint('centroidDist')">Add</button>
+                    </div>
+                </div>
+                <div class="histogram-box">
+                    <h4>BBox Centroid Distance (px)</h4>
+                    <div class="chart-container"><canvas id="bboxCentroidHistogramCanvas"></canvas></div>
+                    <div class="threshold-controls">
+                        <label>Non-dup if</label>
+                        <select id="bboxCentroidOp"><option value=">">&gt;</option><option value=">=">&ge;</option><option value="<">&lt;</option><option value="<=">&le;</option></select>
+                        <input type="number" id="bboxCentroidThresh" step="5" min="0" value="50">
+                        <button onclick="addThresholdPoint('bboxCentroidDist')">Add</button>
+                    </div>
+                </div>
+            </div>
+            <div class="histogram-help">Click on bars to sample pose pairs from that range. Green/red dots show your labels.</div>
+        </div>
+
+        <!-- Annotation Panel -->
+        <div class="panel hidden" id="annotationPanel">
+            <div class="annotation-row">
+                <div class="annotation-left">
+                    <h3>Pose Pair Annotation</h3>
+                    <div class="annotation-info">
+                        <span id="pairInfo">Frame: -- | Tracks: -- vs --</span>
+                        <span>IOU: <span class="iou-value" id="pairIOU">--</span> | Centroid: <span class="iou-value" id="pairCentroid">--</span>px | BBox: <span class="iou-value" id="pairBboxCentroid">--</span>px</span>
+                    </div>
+                    <canvas id="annotationCanvas"></canvas>
+                    <div class="annotation-buttons">
+                        <button class="btn-duplicate" id="duplicateBtn">Yes, Duplicate (D)</button>
+                        <button class="btn-not-duplicate" id="notDuplicateBtn">No, Not Duplicate (N)</button>
+                        <button class="btn-skip" id="skipBtn">Skip (S)</button>
+                    </div>
+                </div>
+                <div class="annotation-right">
+                    <h3>Precision vs Accuracy</h3>
+                    <div class="pr-chart-container"><canvas id="precisionAccuracyCanvas"></canvas></div>
+                    <div style="font-size: 12px; color: #888; margin-top: 10px;">Add threshold rules above to plot points. Hover for details.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Panel -->
+        <div class="panel hidden" id="summaryPanel">
+            <h3>Labeling Progress</h3>
+            <div class="summary-stats">
+                <div class="stat"><span class="stat-label">Total Pairs:</span><span class="stat-value" id="totalPairs">0</span></div>
+                <div class="stat"><span class="stat-label">Labeled:</span><span class="stat-value" id="labeledCount">0</span></div>
+                <div class="stat"><span class="stat-label">Duplicates:</span><span class="stat-value duplicate" id="duplicateCount">0</span></div>
+                <div class="stat"><span class="stat-label">Not Duplicates:</span><span class="stat-value not-duplicate" id="notDuplicateCount">0</span></div>
+            </div>
+            <div style="margin-top: 15px;">
+                <button id="exportBtn">Export Labels (JSON)</button>
+            </div>
+        </div>
+
+        <!-- Diagnostic Console -->
+        <div class="diagnostic-console">
+            <div class="diagnostic-console-header">
+                <h3>Diagnostic Log</h3>
+                <button id="copyLogBtn">Copy</button>
+            </div>
+            <div class="diagnostic-console-body" id="logBody"></div>
+        </div>
+
+        <!-- Keyboard Shortcuts -->
+        <div class="hotkeys">
+            <h3>Keyboard Shortcuts</h3>
+            <div class="hotkeys-grid">
+                <div class="hotkey"><span class="hotkey-key">D</span><span class="hotkey-desc">Mark as Duplicate</span></div>
+                <div class="hotkey"><span class="hotkey-key">N</span><span class="hotkey-desc">Mark as Not Duplicate</span></div>
+                <div class="hotkey"><span class="hotkey-key">S</span><span class="hotkey-desc">Skip current pair</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- mp4box.js for demuxing MP4 files -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+
+    <script>
+        // ============================================
+        // Diagnostic Logging System
+        // ============================================
+        const logBody = document.getElementById('logBody');
+        const MAX_LOG_ENTRIES = 100;
+
+        function log(msg, level = 'info') {
+            const time = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${level}">${msg}</span>`;
+            logBody.appendChild(entry);
+            while (logBody.children.length > MAX_LOG_ENTRIES) {
+                logBody.removeChild(logBody.firstChild);
+            }
+            logBody.scrollTop = logBody.scrollHeight;
+        }
+
+        document.getElementById('copyLogBtn').addEventListener('click', () => {
+            const lines = Array.from(logBody.querySelectorAll('.log-entry')).map(entry => {
+                const time = entry.querySelector('.log-time').textContent;
+                const msg = entry.querySelector('.log-msg').textContent;
+                return `${time} ${msg}`;
+            });
+            navigator.clipboard.writeText(lines.join('\n')).then(() => log('Log copied', 'success'));
+        });
+
+        log('Duplicate Pose Investigator initialized', 'info');
+
+        // ============================================
+        // On-Demand Video Decoder with Sliding Cache
+        // ============================================
+        class OnDemandVideoDecoder {
+            constructor(options = {}) {
+                this.cacheSize = options.cacheSize || 30;
+                this.lookahead = options.lookahead || 5;
+                this.cache = new Map();
+                this.samples = [];
+                this.keyframeIndices = [];
+                this.decoder = null;
+                this.config = null;
+                this.videoTrack = null;
+                this.mp4boxFile = null;
+                this.file = null;
+                this.fileSize = 0;
+                this.CHUNK_SIZE = 1024 * 1024;
+                this.isDecoding = false;
+                this.pendingFrame = null;
+            }
+
+            async init(source) {
+                if (source.getFile) {
+                    this.file = await source.getFile();
+                } else {
+                    this.file = source;
+                }
+                this.fileSize = this.file.size;
+
+                this.mp4boxFile = MP4Box.createFile();
+                const ready = new Promise((resolve, reject) => {
+                    this.mp4boxFile.onError = reject;
+                    this.mp4boxFile.onReady = resolve;
+                });
+
+                let offset = 0;
+                let resolved = false;
+                ready.then(() => { resolved = true; });
+
+                while (offset < this.fileSize && !resolved) {
+                    const buffer = await this.readChunk(offset, this.CHUNK_SIZE);
+                    buffer.fileStart = offset;
+                    const nextOffset = this.mp4boxFile.appendBuffer(buffer);
+                    offset = nextOffset === undefined ? offset + buffer.byteLength : nextOffset;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                const info = await ready;
+                if (info.videoTracks.length === 0) throw new Error('No video tracks found');
+
+                this.videoTrack = info.videoTracks[0];
+                const trak = this.mp4boxFile.getTrackById(this.videoTrack.id);
+                const description = this.getCodecDescription(trak);
+
+                const codec = this.videoTrack.codec.startsWith('vp08') ? 'vp8' : this.videoTrack.codec;
+                this.config = { codec, codedWidth: this.videoTrack.video.width, codedHeight: this.videoTrack.video.height };
+                if (description) this.config.description = description;
+
+                const support = await VideoDecoder.isConfigSupported(this.config);
+                if (!support.supported) throw new Error(`Codec ${codec} not supported`);
+
+                this.extractSamples();
+                const duration = this.videoTrack.duration / this.videoTrack.timescale;
+                this.fps = this.samples.length / duration;
+
+                return {
+                    width: this.videoTrack.video.width,
+                    height: this.videoTrack.video.height,
+                    totalFrames: this.samples.length,
+                    fps: this.fps,
+                };
+            }
+
+            async readChunk(offset, size) {
+                const end = Math.min(offset + size, this.fileSize);
+                const blob = this.file.slice(offset, end);
+                return await blob.arrayBuffer();
+            }
+
+            getCodecDescription(trak) {
+                for (const entry of trak.mdia.minf.stbl.stsd.entries) {
+                    const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+                    if (box) {
+                        const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                        box.write(stream);
+                        return new Uint8Array(stream.buffer, 8);
+                    }
+                }
+                return null;
+            }
+
+            extractSamples() {
+                const samplesInfo = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id);
+                if (!samplesInfo || samplesInfo.length === 0) throw new Error('No samples found');
+
+                const timescale = this.videoTrack.timescale;
+                for (let i = 0; i < samplesInfo.length; i++) {
+                    const sample = samplesInfo[i];
+                    this.samples.push({
+                        offset: sample.offset,
+                        size: sample.size,
+                        timestamp: sample.cts * 1e6 / timescale,
+                        duration: sample.duration * 1e6 / timescale,
+                        isKeyframe: sample.is_sync,
+                    });
+                    if (sample.is_sync) this.keyframeIndices.push(i);
+                }
+            }
+
+            findKeyframeBefore(frameIndex) {
+                let result = 0;
+                for (const kf of this.keyframeIndices) {
+                    if (kf <= frameIndex) result = kf;
+                    else break;
+                }
+                return result;
+            }
+
+            async getFrame(frameIndex) {
+                if (frameIndex < 0 || frameIndex >= this.samples.length) return null;
+                if (this.cache.has(frameIndex)) return { bitmap: this.cache.get(frameIndex), fromCache: true };
+
+                if (this.isDecoding) {
+                    await new Promise(resolve => {
+                        const check = () => this.isDecoding ? setTimeout(check, 10) : resolve();
+                        check();
+                    });
+                    if (this.cache.has(frameIndex)) return { bitmap: this.cache.get(frameIndex), fromCache: true };
+                }
+
+                const keyframe = this.findKeyframeBefore(frameIndex);
+                const endFrame = Math.min(frameIndex + this.lookahead, this.samples.length - 1);
+                await this.decodeRange(keyframe, endFrame, frameIndex);
+
+                const bitmap = this.cache.get(frameIndex);
+                return bitmap ? { bitmap, fromCache: false } : null;
+            }
+
+            async decodeRange(startFrame, endFrame, targetFrame) {
+                this.isDecoding = true;
+                try {
+                    const expectedFrames = endFrame - startFrame + 1;
+                    let decodedCount = 0;
+                    const halfCache = Math.floor(this.cacheSize / 2);
+                    const cacheWindowStart = Math.max(startFrame, targetFrame - halfCache);
+                    const cacheWindowEnd = Math.min(endFrame, targetFrame + halfCache);
+
+                    if (this.decoder) try { this.decoder.close(); } catch (e) {}
+
+                    const sampleDataArray = await this.readSampleDataRange(startFrame, endFrame);
+
+                    await new Promise((resolve, reject) => {
+                        this.decoder = new VideoDecoder({
+                            output: (frame) => {
+                                const frameIndex = startFrame + decodedCount;
+                                if (frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
+                                    createImageBitmap(frame).then(bitmap => {
+                                        this.addToCache(frameIndex, bitmap);
+                                        frame.close();
+                                        if (++decodedCount >= expectedFrames) resolve();
+                                    }).catch(() => { frame.close(); if (++decodedCount >= expectedFrames) resolve(); });
+                                } else {
+                                    frame.close();
+                                    if (++decodedCount >= expectedFrames) resolve();
+                                }
+                            },
+                            error: (e) => e.name === 'AbortError' ? resolve() : reject(e)
+                        });
+
+                        this.decoder.configure(this.config);
+                        for (let i = startFrame; i <= endFrame; i++) {
+                            const sample = this.samples[i];
+                            const chunk = new EncodedVideoChunk({
+                                type: sample.isKeyframe ? 'key' : 'delta',
+                                timestamp: sample.timestamp,
+                                duration: sample.duration,
+                                data: sampleDataArray[i - startFrame],
+                            });
+                            this.decoder.decode(chunk);
+                        }
+                        this.decoder.flush();
+                    });
+                } finally {
+                    this.isDecoding = false;
+                }
+            }
+
+            async readSampleDataRange(startFrame, endFrame) {
+                const results = [];
+                let regionStart = startFrame;
+                while (regionStart <= endFrame) {
+                    const firstSample = this.samples[regionStart];
+                    let regionEnd = regionStart;
+                    let regionBytes = firstSample.size;
+
+                    while (regionEnd < endFrame) {
+                        const curr = this.samples[regionEnd];
+                        const next = this.samples[regionEnd + 1];
+                        if (next.offset === curr.offset + curr.size) {
+                            regionEnd++;
+                            regionBytes += next.size;
+                        } else break;
+                    }
+
+                    const buffer = await this.readChunk(firstSample.offset, regionBytes);
+                    const view = new Uint8Array(buffer);
+                    let offset = 0;
+                    for (let i = regionStart; i <= regionEnd; i++) {
+                        results.push(view.slice(offset, offset + this.samples[i].size));
+                        offset += this.samples[i].size;
+                    }
+                    regionStart = regionEnd + 1;
+                }
+                return results;
+            }
+
+            addToCache(frameIndex, bitmap) {
+                if (this.cache.size >= this.cacheSize) {
+                    const firstKey = this.cache.keys().next().value;
+                    this.cache.get(firstKey).close();
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(frameIndex, bitmap);
+            }
+
+            close() {
+                if (this.decoder) this.decoder.close();
+                for (const bitmap of this.cache.values()) bitmap.close();
+                this.cache.clear();
+            }
+        }
+
+        // ============================================
+        // SLEAP Pose Data Loader
+        // ============================================
+        class SLEAPLoader {
+            constructor() {
+                this.nodeNames = [];
+                this.trackNames = [];
+                this.edges = [];
+                this.tracks = null;
+                this.numFrames = 0;
+                this.numNodes = 0;
+                this.numTracks = 0;
+                this.h5wasm = null;
+                this.h5Module = null;
+            }
+
+            async init() {
+                if (!this.h5Module) {
+                    log('Loading h5wasm module...', 'info');
+                    const h5wasmModule = await import('https://cdn.jsdelivr.net/npm/h5wasm@0.7.5/dist/esm/hdf5_hl.js');
+                    this.h5wasm = h5wasmModule.default || h5wasmModule;
+                    this.h5Module = await this.h5wasm.ready;
+                    log('h5wasm initialized', 'info');
+                }
+            }
+
+            async loadFile(file) {
+                await this.init();
+                const arrayBuffer = await file.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                const FS = this.h5Module.FS;
+                const filename = 'temp_' + Date.now() + '.h5';
+                FS.writeFile(filename, uint8Array);
+
+                try {
+                    const h5file = new this.h5wasm.File(filename, 'r');
+                    const keys = h5file.keys();
+                    log(`HDF5 keys: ${keys.join(', ')}`, 'info');
+
+                    if (keys.includes('tracks') && keys.includes('node_names')) {
+                        await this.parseAnalysisFormat(h5file);
+                    } else if (keys.includes('metadata')) {
+                        await this.parseNativeFormat(h5file);
+                    } else {
+                        throw new Error('Unknown SLEAP file format');
+                    }
+                    h5file.close();
+                } finally {
+                    try { this.h5Module.FS.unlink(filename); } catch (e) {}
+                }
+
+                return { nodeNames: this.nodeNames, trackNames: this.trackNames, edges: this.edges,
+                         numFrames: this.numFrames, numNodes: this.numNodes, numTracks: this.numTracks };
+            }
+
+            async parseAnalysisFormat(h5file) {
+                const nodeNamesData = h5file.get('node_names');
+                if (nodeNamesData) {
+                    this.nodeNames = Array.from(nodeNamesData.value).map(n =>
+                        n instanceof Uint8Array ? new TextDecoder().decode(n) : String(n));
+                }
+                this.numNodes = this.nodeNames.length;
+
+                const trackNamesData = h5file.get('track_names');
+                if (trackNamesData) {
+                    this.trackNames = Array.from(trackNamesData.value).map(n =>
+                        n instanceof Uint8Array ? new TextDecoder().decode(n) : String(n));
+                }
+
+                const tracksData = h5file.get('tracks');
+                if (tracksData) {
+                    const shape = tracksData.shape;
+                    const rawData = tracksData.value;
+                    const [numTracks, numCoords, numNodes, numFrames] = shape;
+                    this.numFrames = numFrames;
+                    this.numTracks = numTracks;
+
+                    this.tracks = new Array(numFrames);
+                    for (let f = 0; f < numFrames; f++) {
+                        this.tracks[f] = new Array(numTracks);
+                        for (let t = 0; t < numTracks; t++) {
+                            this.tracks[f][t] = new Array(numNodes);
+                            for (let n = 0; n < numNodes; n++) {
+                                const xIdx = t + numTracks * (0 + numCoords * (n + numNodes * f));
+                                const yIdx = t + numTracks * (1 + numCoords * (n + numNodes * f));
+                                this.tracks[f][t][n] = [rawData[xIdx], rawData[yIdx]];
+                            }
+                        }
+                    }
+                }
+
+                if (this.edges.length === 0 && this.numNodes > 1) {
+                    for (let i = 0; i < this.numNodes - 1; i++) this.edges.push([i, i + 1]);
+                }
+                log(`Analysis format: ${this.numNodes} nodes, ${this.numTracks} tracks, ${this.numFrames} frames`, 'success');
+            }
+
+            async parseNativeFormat(h5file) {
+                const metadataGroup = h5file.get('metadata');
+                if (!metadataGroup) throw new Error('No metadata found');
+
+                let metadata = null;
+                try {
+                    const metadataJson = metadataGroup.attrs['json'];
+                    if (metadataJson) {
+                        const jsonStr = typeof metadataJson === 'string' ? metadataJson :
+                            (metadataJson.value ? new TextDecoder().decode(metadataJson.value) : String(metadataJson));
+                        metadata = JSON.parse(jsonStr);
+                    }
+                } catch (e) { log('Could not parse metadata: ' + e.message, 'warn'); }
+
+                if (metadata?.nodes) {
+                    this.nodeNames = metadata.nodes.map(n => n.name || n);
+                    this.numNodes = this.nodeNames.length;
+                }
+
+                if (metadata?.skeletons?.[0]?.links) {
+                    this.edges = metadata.skeletons[0].links.map(link => [link.source, link.target]);
+                }
+
+                const tracksJson = h5file.get('tracks_json');
+                if (tracksJson) {
+                    this.trackNames = Array.from(tracksJson.value).map(t => {
+                        try {
+                            const str = t instanceof Uint8Array ? new TextDecoder().decode(t) : String(t);
+                            const parsed = JSON.parse(str);
+                            return Array.isArray(parsed) ? parsed[1] : str;
+                        } catch { return String(t); }
+                    });
+                    this.numTracks = this.trackNames.length;
+                }
+
+                const framesData = h5file.get('frames');
+                const instancesData = h5file.get('instances');
+                const predPointsData = h5file.get('pred_points');
+
+                // Infer numNodes from instances if metadata parsing failed
+                if (this.numNodes === 0 && instancesData && instancesData.value.length > 0) {
+                    const inst = instancesData.value[0];
+                    const pointStart = Number(inst.point_id_start !== undefined ? inst.point_id_start : inst[7]);
+                    const pointEnd = Number(inst.point_id_end !== undefined ? inst.point_id_end : inst[8]);
+                    this.numNodes = pointEnd - pointStart;
+                    log(`Inferred ${this.numNodes} nodes from instance data`, 'info');
+
+                    // Generate default node names
+                    this.nodeNames = [];
+                    for (let i = 0; i < this.numNodes; i++) {
+                        this.nodeNames.push(`node_${i}`);
+                    }
+
+                    // Generate default edges
+                    if (this.edges.length === 0 && this.numNodes > 1) {
+                        for (let i = 0; i < this.numNodes - 1; i++) {
+                            this.edges.push([i, i + 1]);
+                        }
+                    }
+                }
+
+                if (!framesData || !instancesData || !predPointsData) {
+                    throw new Error('Missing required datasets');
+                }
+
+                const frames = framesData.value;
+                const instances = instancesData.value;
+                const predPoints = predPointsData.value;
+                this.numFrames = frames.length;
+
+                this.tracks = new Array(this.numFrames);
+                for (let f = 0; f < this.numFrames; f++) {
+                    this.tracks[f] = new Array(this.numTracks);
+                    for (let t = 0; t < this.numTracks; t++) {
+                        this.tracks[f][t] = new Array(this.numNodes);
+                        for (let n = 0; n < this.numNodes; n++) {
+                            this.tracks[f][t][n] = [NaN, NaN];
+                        }
+                    }
+
+                    const frame = frames[f];
+                    const instStart = Number(frame.instance_id_start || frame[3]);
+                    const instEnd = Number(frame.instance_id_end || frame[4]);
+
+                    for (let i = instStart; i < instEnd && i < instances.length; i++) {
+                        const inst = instances[i];
+                        const trackIdx = Number(inst.track !== undefined ? inst.track : inst[4]);
+                        const pointStart = Number(inst.point_id_start !== undefined ? inst.point_id_start : inst[7]);
+                        const pointEnd = Number(inst.point_id_end !== undefined ? inst.point_id_end : inst[8]);
+
+                        if (trackIdx < 0 || trackIdx >= this.numTracks) continue;
+
+                        for (let p = pointStart, nodeIdx = 0; p < pointEnd && nodeIdx < this.numNodes; p++, nodeIdx++) {
+                            if (p < predPoints.length) {
+                                const point = predPoints[p];
+                                this.tracks[f][trackIdx][nodeIdx] = [
+                                    Number(point.x !== undefined ? point.x : point[0]),
+                                    Number(point.y !== undefined ? point.y : point[1])
+                                ];
+                            }
+                        }
+                    }
+                }
+                log(`Native format: ${this.numNodes} nodes, ${this.numTracks} tracks, ${this.numFrames} frames`, 'success');
+            }
+
+            getPosesForFrame(frameIndex) {
+                if (!this.tracks || frameIndex < 0 || frameIndex >= this.numFrames) return null;
+                return this.tracks[frameIndex];
+            }
+
+            isValidPoint(point) {
+                return point && !isNaN(point[0]) && !isNaN(point[1]);
+            }
+        }
+
+        // ============================================
+        // Metrics Computer (IOU + Centroid Distance)
+        // ============================================
+        class MetricsComputer {
+            constructor(sleapLoader) {
+                this.sleapLoader = sleapLoader;
+                this.pairs = [];
+            }
+
+            computeBoundingBox(poseNodes) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                let hasValid = false;
+
+                for (const node of poseNodes) {
+                    if (this.sleapLoader.isValidPoint(node)) {
+                        hasValid = true;
+                        minX = Math.min(minX, node[0]);
+                        minY = Math.min(minY, node[1]);
+                        maxX = Math.max(maxX, node[0]);
+                        maxY = Math.max(maxY, node[1]);
+                    }
+                }
+
+                return hasValid ? { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY } : null;
+            }
+
+            computeCentroid(poseNodes) {
+                let sumX = 0, sumY = 0, count = 0;
+                for (const node of poseNodes) {
+                    if (this.sleapLoader.isValidPoint(node)) {
+                        sumX += node[0];
+                        sumY += node[1];
+                        count++;
+                    }
+                }
+                return count > 0 ? { x: sumX / count, y: sumY / count } : null;
+            }
+
+            computeCentroidDistance(centroid1, centroid2) {
+                const dx = centroid1.x - centroid2.x;
+                const dy = centroid1.y - centroid2.y;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+
+            computeBboxCentroid(bbox) {
+                return {
+                    x: (bbox.minX + bbox.maxX) / 2,
+                    y: (bbox.minY + bbox.maxY) / 2
+                };
+            }
+
+            computeIOU(bbox1, bbox2) {
+                const xOverlap = Math.max(0, Math.min(bbox1.maxX, bbox2.maxX) - Math.max(bbox1.minX, bbox2.minX));
+                const yOverlap = Math.max(0, Math.min(bbox1.maxY, bbox2.maxY) - Math.max(bbox1.minY, bbox2.minY));
+                const intersection = xOverlap * yOverlap;
+
+                const area1 = bbox1.width * bbox1.height;
+                const area2 = bbox2.width * bbox2.height;
+                const union = area1 + area2 - intersection;
+
+                return union > 0 ? intersection / union : 0;
+            }
+
+            computeAllPairs(progressCallback) {
+                this.pairs = [];
+                const numFrames = this.sleapLoader.numFrames;
+                const numTracks = this.sleapLoader.numTracks;
+
+                for (let f = 0; f < numFrames; f++) {
+                    if (f % 100 === 0 && progressCallback) {
+                        progressCallback(f / numFrames);
+                    }
+
+                    const framePoses = this.sleapLoader.getPosesForFrame(f);
+                    if (!framePoses) continue;
+
+                    // Compute bounding boxes and centroids for all tracks
+                    const bboxes = [];
+                    const centroids = [];
+                    for (let t = 0; t < numTracks; t++) {
+                        bboxes.push(this.computeBoundingBox(framePoses[t]));
+                        centroids.push(this.computeCentroid(framePoses[t]));
+                    }
+
+                    // Compute pairwise metrics
+                    for (let t1 = 0; t1 < numTracks; t1++) {
+                        if (!bboxes[t1] || !centroids[t1]) continue;
+                        for (let t2 = t1 + 1; t2 < numTracks; t2++) {
+                            if (!bboxes[t2] || !centroids[t2]) continue;
+
+                            const iou = this.computeIOU(bboxes[t1], bboxes[t2]);
+                            const centroidDist = this.computeCentroidDistance(centroids[t1], centroids[t2]);
+                            const bboxCentroid1 = this.computeBboxCentroid(bboxes[t1]);
+                            const bboxCentroid2 = this.computeBboxCentroid(bboxes[t2]);
+                            const bboxCentroidDist = this.computeCentroidDistance(bboxCentroid1, bboxCentroid2);
+
+                            if (iou > 0) {  // Only store pairs with overlap
+                                this.pairs.push({ frame: f, track1: t1, track2: t2, iou, centroidDist, bboxCentroidDist });
+                            }
+                        }
+                    }
+                }
+
+                if (progressCallback) progressCallback(1);
+                return this.pairs;
+            }
+
+            getPairsInRange(metric, minVal, maxVal) {
+                return this.pairs.filter(p => p[metric] >= minVal && p[metric] < maxVal);
+            }
+        }
+
+        // ============================================
+        // Annotation Manager
+        // ============================================
+        class AnnotationManager {
+            constructor() {
+                this.labels = new Map();
+            }
+
+            makeKey(frame, track1, track2) {
+                return `${frame}-${Math.min(track1, track2)}-${Math.max(track1, track2)}`;
+            }
+
+            addLabel(frame, track1, track2, isDuplicate) {
+                this.labels.set(this.makeKey(frame, track1, track2), isDuplicate);
+            }
+
+            getLabel(frame, track1, track2) {
+                return this.labels.get(this.makeKey(frame, track1, track2));
+            }
+
+            getLabelCounts() {
+                let duplicate = 0, notDuplicate = 0;
+                for (const val of this.labels.values()) {
+                    if (val) duplicate++;
+                    else notDuplicate++;
+                }
+                return { duplicate, notDuplicate, total: duplicate + notDuplicate };
+            }
+
+            exportLabels() {
+                const result = [];
+                for (const [key, isDuplicate] of this.labels.entries()) {
+                    const [frame, track1, track2] = key.split('-').map(Number);
+                    result.push({ frame, track1, track2, isDuplicate });
+                }
+                return result;
+            }
+        }
+
+        // ============================================
+        // Histogram Controller
+        // ============================================
+        class HistogramController {
+            constructor(canvasId, annotationManager, metricKey, options = {}) {
+                this.canvas = document.getElementById(canvasId);
+                this.chart = null;
+                this.annotationManager = annotationManager;
+                this.metricKey = metricKey;
+                this.binCount = options.binCount || 20;
+                this.minVal = options.minVal || 0;
+                this.maxVal = options.maxVal || 1;
+                this.xLabel = options.xLabel || metricKey;
+                this.pairs = [];
+                this.onRangeSelected = null;
+            }
+
+            setRange(minVal, maxVal) {
+                this.minVal = minVal;
+                this.maxVal = maxVal;
+            }
+
+            render(pairs) {
+                this.pairs = pairs;
+
+                // Auto-compute range for distance metrics
+                if ((this.metricKey === 'centroidDist' || this.metricKey === 'bboxCentroidDist') && pairs.length > 0) {
+                    const values = pairs.map(p => p[this.metricKey]).filter(v => !isNaN(v));
+                    this.minVal = 0;
+                    this.maxVal = Math.ceil(Math.max(...values) / 10) * 10; // Round up to nearest 10
+                }
+
+                const binSize = (this.maxVal - this.minVal) / this.binCount;
+                const bins = new Array(this.binCount).fill(0);
+                const duplicateBins = new Array(this.binCount).fill(0);
+                const notDuplicateBins = new Array(this.binCount).fill(0);
+
+                for (const pair of pairs) {
+                    const val = pair[this.metricKey];
+                    if (isNaN(val)) continue;
+                    const binIndex = Math.min(Math.floor((val - this.minVal) / binSize), this.binCount - 1);
+                    if (binIndex < 0) continue;
+                    bins[binIndex]++;
+
+                    const label = this.annotationManager.getLabel(pair.frame, pair.track1, pair.track2);
+                    if (label === true) duplicateBins[binIndex]++;
+                    else if (label === false) notDuplicateBins[binIndex]++;
+                }
+
+                const labels = Array.from({ length: this.binCount }, (_, i) => {
+                    const lo = this.minVal + i * binSize;
+                    const hi = this.minVal + (i + 1) * binSize;
+                    if (this.metricKey === 'iou') {
+                        return `${lo.toFixed(2)}-${hi.toFixed(2)}`;
+                    } else {
+                        return `${lo.toFixed(0)}-${hi.toFixed(0)}`;
+                    }
+                });
+
+                if (this.chart) this.chart.destroy();
+
+                const self = this;
+                this.chart = new Chart(this.canvas, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [
+                            {
+                                label: 'Pose Pairs',
+                                data: bins,
+                                backgroundColor: 'rgba(102, 126, 234, 0.7)',
+                                borderColor: 'rgba(102, 126, 234, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Duplicates',
+                                data: duplicateBins,
+                                backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                                borderColor: 'rgba(34, 197, 94, 1)',
+                                borderWidth: 1,
+                                type: 'bar'
+                            },
+                            {
+                                label: 'Not Duplicates',
+                                data: notDuplicateBins,
+                                backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                                borderColor: 'rgba(239, 68, 68, 1)',
+                                borderWidth: 1,
+                                type: 'bar'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        onClick: (e, elements) => {
+                            if (elements.length > 0 && self.onRangeSelected) {
+                                const binIndex = elements[0].index;
+                                const minV = self.minVal + binIndex * binSize;
+                                const maxV = self.minVal + (binIndex + 1) * binSize;
+                                self.onRangeSelected(minV, maxV);
+                            }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: this.xLabel, color: '#aaa' }, ticks: { color: '#888', maxRotation: 45 }, grid: { color: '#333' } },
+                            y: { title: { display: true, text: 'Count', color: '#aaa' }, beginAtZero: true, ticks: { color: '#888' }, grid: { color: '#333' } }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+        }
+
+        // ============================================
+        // Pose Pair Renderer
+        // ============================================
+        class PosePairRenderer {
+            constructor(canvasId, videoDecoder, sleapLoader) {
+                this.canvas = document.getElementById(canvasId);
+                this.ctx = this.canvas.getContext('2d');
+                this.videoDecoder = videoDecoder;
+                this.sleapLoader = sleapLoader;
+                this.padding = 50;
+            }
+
+            computeBbox(poseNodes) {
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const node of poseNodes) {
+                    if (this.sleapLoader.isValidPoint(node)) {
+                        minX = Math.min(minX, node[0]);
+                        minY = Math.min(minY, node[1]);
+                        maxX = Math.max(maxX, node[0]);
+                        maxY = Math.max(maxY, node[1]);
+                    }
+                }
+                return { minX, minY, maxX, maxY };
+            }
+
+            unionBbox(bbox1, bbox2) {
+                const minX = Math.max(0, Math.min(bbox1.minX, bbox2.minX) - this.padding);
+                const minY = Math.max(0, Math.min(bbox1.minY, bbox2.minY) - this.padding);
+                const maxX = Math.max(bbox1.maxX, bbox2.maxX) + this.padding;
+                const maxY = Math.max(bbox1.maxY, bbox2.maxY) + this.padding;
+                return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+            }
+
+            async renderPair(frame, track1, track2) {
+                const result = await this.videoDecoder.getFrame(frame);
+                if (!result?.bitmap) return false;
+
+                const framePoses = this.sleapLoader.getPosesForFrame(frame);
+                const pose1 = framePoses[track1];
+                const pose2 = framePoses[track2];
+
+                const bbox1 = this.computeBbox(pose1);
+                const bbox2 = this.computeBbox(pose2);
+                const unionBbox = this.unionBbox(bbox1, bbox2);
+
+                // Limit canvas size
+                const maxDim = 600;
+                const scale = Math.min(1, maxDim / Math.max(unionBbox.width, unionBbox.height));
+                this.canvas.width = unionBbox.width * scale;
+                this.canvas.height = unionBbox.height * scale;
+
+                this.ctx.scale(scale, scale);
+
+                // Draw cropped frame
+                this.ctx.drawImage(
+                    result.bitmap,
+                    unionBbox.minX, unionBbox.minY, unionBbox.width, unionBbox.height,
+                    0, 0, unionBbox.width, unionBbox.height
+                );
+
+                // Draw poses
+                this.drawPose(pose1, '#00FFFF', unionBbox);  // Cyan
+                this.drawPose(pose2, '#FF00FF', unionBbox);  // Magenta
+
+                this.ctx.setTransform(1, 0, 0, 1, 0, 0);  // Reset transform
+                return true;
+            }
+
+            drawPose(poseNodes, color, cropBbox) {
+                // Draw edges
+                this.ctx.strokeStyle = color;
+                this.ctx.lineWidth = 3;
+                this.ctx.lineCap = 'round';
+
+                for (const [srcIdx, dstIdx] of this.sleapLoader.edges) {
+                    const src = poseNodes[srcIdx];
+                    const dst = poseNodes[dstIdx];
+                    if (!this.sleapLoader.isValidPoint(src) || !this.sleapLoader.isValidPoint(dst)) continue;
+
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(src[0] - cropBbox.minX, src[1] - cropBbox.minY);
+                    this.ctx.lineTo(dst[0] - cropBbox.minX, dst[1] - cropBbox.minY);
+                    this.ctx.stroke();
+                }
+
+                // Draw nodes
+                this.ctx.fillStyle = color;
+                for (const node of poseNodes) {
+                    if (!this.sleapLoader.isValidPoint(node)) continue;
+                    this.ctx.beginPath();
+                    this.ctx.arc(node[0] - cropBbox.minX, node[1] - cropBbox.minY, 5, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+            }
+        }
+
+        // ============================================
+        // Threshold & Precision/Accuracy Manager
+        // ============================================
+        class ThresholdManager {
+            constructor(annotationManager) {
+                this.annotationManager = annotationManager;
+                this.thresholdRules = [];  // Store rules, not computed points
+                this.pairs = [];
+                this.chart = null;
+                this.canvas = document.getElementById('precisionAccuracyCanvas');
+                this.metricColors = {
+                    'iou': '#667eea',
+                    'centroidDist': '#f59e0b',
+                    'bboxCentroidDist': '#10b981'
+                };
+                this.metricNames = {
+                    'iou': 'IOU',
+                    'centroidDist': 'Centroid Dist',
+                    'bboxCentroidDist': 'BBox Centroid Dist'
+                };
+            }
+
+            setPairs(pairs) {
+                this.pairs = pairs;
+            }
+
+            addThreshold(metric, op, threshold) {
+                // Check if this rule already exists
+                const exists = this.thresholdRules.some(r =>
+                    r.metric === metric && r.op === op && r.threshold === threshold
+                );
+                if (exists) {
+                    log('This threshold rule already exists', 'warn');
+                    return;
+                }
+
+                this.thresholdRules.push({ metric, op, threshold });
+                log(`Added threshold rule: ${this.metricNames[metric]} ${op} ${threshold}`, 'success');
+                this.update();
+            }
+
+            update() {
+                // Recompute all threshold points with current labels
+                if (this.thresholdRules.length === 0) return;
+                this.render();
+            }
+
+            computeStats(metric, op, threshold, pairs) {
+                let tp = 0, fp = 0, tn = 0, fn = 0;
+
+                for (const pair of pairs) {
+                    const label = this.annotationManager.getLabel(pair.frame, pair.track1, pair.track2);
+                    if (label === undefined) continue;
+
+                    const value = pair[metric];
+                    let predictNotDuplicate = false;
+
+                    switch (op) {
+                        case '<': predictNotDuplicate = value < threshold; break;
+                        case '<=': predictNotDuplicate = value <= threshold; break;
+                        case '>': predictNotDuplicate = value > threshold; break;
+                        case '>=': predictNotDuplicate = value >= threshold; break;
+                    }
+
+                    const actualNotDuplicate = !label;
+
+                    if (predictNotDuplicate && actualNotDuplicate) tn++;
+                    else if (predictNotDuplicate && !actualNotDuplicate) fn++;
+                    else if (!predictNotDuplicate && actualNotDuplicate) fp++;
+                    else if (!predictNotDuplicate && !actualNotDuplicate) tp++;
+                }
+
+                const total = tp + fp + tn + fn;
+                const precision = (tp + fp) > 0 ? tp / (tp + fp) : 0;
+                const accuracy = total > 0 ? (tp + tn) / total : 0;
+
+                return { tp, fp, tn, fn, total, precision, accuracy };
+            }
+
+            render() {
+                if (this.chart) this.chart.destroy();
+
+                const datasets = [];
+                const metricGroups = {};
+
+                // Compute stats for each rule with current labels
+                for (const rule of this.thresholdRules) {
+                    const stats = this.computeStats(rule.metric, rule.op, rule.threshold, this.pairs);
+                    if (stats.total === 0) continue;
+
+                    if (!metricGroups[rule.metric]) {
+                        metricGroups[rule.metric] = [];
+                    }
+                    metricGroups[rule.metric].push({
+                        ...rule,
+                        ...stats
+                    });
+                }
+
+                for (const metric of Object.keys(metricGroups)) {
+                    datasets.push({
+                        label: this.metricNames[metric],
+                        data: metricGroups[metric].map(p => ({
+                            x: p.accuracy * 100,
+                            y: p.precision * 100,
+                            metric: p.metric,
+                            op: p.op,
+                            threshold: p.threshold,
+                            tp: p.tp,
+                            fp: p.fp,
+                            tn: p.tn,
+                            fn: p.fn
+                        })),
+                        backgroundColor: this.metricColors[metric],
+                        borderColor: this.metricColors[metric],
+                        pointRadius: 8,
+                        pointHoverRadius: 12
+                    });
+                }
+
+                this.chart = new Chart(this.canvas, {
+                    type: 'scatter',
+                    data: { datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Accuracy (%)', color: '#aaa' },
+                                min: 0, max: 100,
+                                ticks: { color: '#888' },
+                                grid: { color: '#333' }
+                            },
+                            y: {
+                                title: { display: true, text: 'Precision (%)', color: '#aaa' },
+                                min: 0, max: 100,
+                                ticks: { color: '#888' },
+                                grid: { color: '#333' }
+                            }
+                        },
+                        plugins: {
+                            legend: { labels: { color: '#aaa' } },
+                            tooltip: {
+                                callbacks: {
+                                    label: (ctx) => {
+                                        const d = ctx.raw;
+                                        return [
+                                            `${this.metricNames[d.metric]} ${d.op} ${d.threshold}`,
+                                            `Precision: ${d.y.toFixed(1)}%`,
+                                            `Accuracy: ${d.x.toFixed(1)}%`,
+                                            `TP:${d.tp} FP:${d.fp} TN:${d.tn} FN:${d.fn}`
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            clear() {
+                this.thresholdRules = [];
+                this.pairs = [];
+                if (this.chart) this.chart.destroy();
+                this.chart = null;
+            }
+        }
+
+        // ============================================
+        // Main Application
+        // ============================================
+        let videoDecoder = null;
+        let sleapLoader = null;
+        let metricsComputer = null;
+        let annotationManager = new AnnotationManager();
+        let thresholdManager = null;
+        let iouHistogram = null;
+        let centroidHistogram = null;
+        let bboxCentroidHistogram = null;
+        let pairRenderer = null;
+
+        let allPairs = [];
+        let currentPairs = [];
+        let currentPairIndex = -1;
+        let currentPair = null;
+        let currentMetric = 'iou';
+
+        // UI Elements
+        const loadVideoBtn = document.getElementById('loadVideoBtn');
+        const loadPoseBtn = document.getElementById('loadPoseBtn');
+        const computeBtn = document.getElementById('computeBtn');
+        const videoFileInput = document.getElementById('videoFileInput');
+        const poseFileInput = document.getElementById('poseFileInput');
+        const statusText = document.getElementById('statusText');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const errorMsg = document.getElementById('errorMsg');
+        const histogramPanel = document.getElementById('histogramPanel');
+        const annotationPanel = document.getElementById('annotationPanel');
+        const summaryPanel = document.getElementById('summaryPanel');
+
+        let videoLoaded = false;
+        let posesLoaded = false;
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.style.display = 'block';
+        }
+
+        function hideError() {
+            errorMsg.style.display = 'none';
+        }
+
+        function updateStatus(msg, isReady = false, isError = false) {
+            statusText.textContent = msg;
+            statusText.className = 'status-text' + (isReady ? ' ready' : '') + (isError ? ' error' : '');
+        }
+
+        function checkReadyToCompute() {
+            computeBtn.disabled = !(videoLoaded && posesLoaded);
+            if (videoLoaded && posesLoaded) {
+                updateStatus('Ready to compute metrics. Click "Compute Metrics" to begin.', true);
+            }
+        }
+
+        // Video loading
+        loadVideoBtn.addEventListener('click', () => videoFileInput.click());
+
+        videoFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            hideError();
+            updateStatus('Loading video...');
+            log(`Loading video: ${file.name}`, 'info');
+
+            try {
+                if (videoDecoder) videoDecoder.close();
+                videoDecoder = new OnDemandVideoDecoder({ cacheSize: 30, lookahead: 5 });
+                const info = await videoDecoder.init(file);
+                log(`Video loaded: ${info.width}x${info.height}, ${info.totalFrames} frames`, 'success');
+                videoLoaded = true;
+                updateStatus(`Video loaded: ${info.totalFrames} frames`);
+                checkReadyToCompute();
+            } catch (err) {
+                log(`Error loading video: ${err.message}`, 'error');
+                showError('Error loading video: ' + err.message);
+                updateStatus('Error loading video', false, true);
+            }
+        });
+
+        // Pose loading
+        loadPoseBtn.addEventListener('click', () => poseFileInput.click());
+
+        poseFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            hideError();
+            updateStatus('Loading poses...');
+            log(`Loading poses: ${file.name}`, 'info');
+
+            try {
+                sleapLoader = new SLEAPLoader();
+                await sleapLoader.loadFile(file);
+                log(`Poses loaded: ${sleapLoader.numTracks} tracks, ${sleapLoader.numFrames} frames`, 'success');
+                posesLoaded = true;
+                updateStatus(`Poses loaded: ${sleapLoader.numTracks} tracks, ${sleapLoader.numFrames} frames`);
+                checkReadyToCompute();
+            } catch (err) {
+                log(`Error loading poses: ${err.message}`, 'error');
+                showError('Error loading poses: ' + err.message);
+                updateStatus('Error loading poses', false, true);
+            }
+        });
+
+        // Compute metrics
+        computeBtn.addEventListener('click', async () => {
+            hideError();
+            computeBtn.disabled = true;
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            progressText.textContent = 'Computing metrics...';
+
+            try {
+                metricsComputer = new MetricsComputer(sleapLoader);
+
+                // Compute with progress updates
+                await new Promise(resolve => {
+                    setTimeout(() => {
+                        allPairs = metricsComputer.computeAllPairs((progress) => {
+                            progressFill.style.width = (progress * 100) + '%';
+                            progressText.textContent = `Computing metrics... ${Math.round(progress * 100)}%`;
+                        });
+                        resolve();
+                    }, 50);
+                });
+
+                log(`Computed ${allPairs.length} overlapping pose pairs`, 'success');
+
+                progressContainer.style.display = 'none';
+                updateStatus(`Found ${allPairs.length} overlapping pose pairs`, true);
+
+                // Initialize IOU histogram
+                iouHistogram = new HistogramController('iouHistogramCanvas', annotationManager, 'iou', {
+                    binCount: 20, minVal: 0, maxVal: 1, xLabel: 'IOU'
+                });
+                iouHistogram.onRangeSelected = (minV, maxV) => selectRange('iou', minV, maxV);
+                iouHistogram.render(allPairs);
+
+                // Initialize Centroid Distance histogram
+                centroidHistogram = new HistogramController('centroidHistogramCanvas', annotationManager, 'centroidDist', {
+                    binCount: 20, xLabel: 'Centroid Dist (px)'
+                });
+                centroidHistogram.onRangeSelected = (minV, maxV) => selectRange('centroidDist', minV, maxV);
+                centroidHistogram.render(allPairs);
+
+                // Initialize BBox Centroid Distance histogram
+                bboxCentroidHistogram = new HistogramController('bboxCentroidHistogramCanvas', annotationManager, 'bboxCentroidDist', {
+                    binCount: 20, xLabel: 'BBox Centroid Dist (px)'
+                });
+                bboxCentroidHistogram.onRangeSelected = (minV, maxV) => selectRange('bboxCentroidDist', minV, maxV);
+                bboxCentroidHistogram.render(allPairs);
+
+                // Initialize threshold manager
+                thresholdManager = new ThresholdManager(annotationManager);
+                thresholdManager.setPairs(allPairs);
+
+                pairRenderer = new PosePairRenderer('annotationCanvas', videoDecoder, sleapLoader);
+
+                // Show panels
+                histogramPanel.classList.remove('hidden');
+                annotationPanel.classList.remove('hidden');
+                summaryPanel.classList.remove('hidden');
+
+                updateSummary();
+
+            } catch (err) {
+                log(`Error computing metrics: ${err.message}`, 'error');
+                showError('Error computing metrics: ' + err.message);
+                progressContainer.style.display = 'none';
+                computeBtn.disabled = false;
+            }
+        });
+
+        let allRangePairs = [];  // All pairs in current range (for relabeling)
+        let relabelMode = false;
+
+        // Select range from histogram
+        function selectRange(metric, minVal, maxVal) {
+            currentMetric = metric;
+            const metricLabel = metric === 'iou' ? 'IOU' : (metric === 'centroidDist' ? 'Centroid Distance' : 'BBox Centroid Distance');
+            log(`Selected ${metricLabel} range: ${minVal.toFixed(2)} - ${maxVal.toFixed(2)}`, 'info');
+
+            // Get all pairs in this range
+            allRangePairs = allPairs.filter(p =>
+                p[metric] >= minVal && p[metric] < maxVal
+            );
+
+            if (allRangePairs.length === 0) {
+                log('No pairs in this range', 'warn');
+                document.getElementById('pairInfo').textContent = 'No pairs in this range';
+                document.getElementById('pairIOU').textContent = '--';
+                document.getElementById('pairCentroid').textContent = '--';
+                document.getElementById('pairBboxCentroid').textContent = '--';
+                return;
+            }
+
+            // Get unlabeled pairs only
+            currentPairs = allRangePairs.filter(p =>
+                annotationManager.getLabel(p.frame, p.track1, p.track2) === undefined
+            );
+
+            if (currentPairs.length > 0) {
+                relabelMode = false;
+                currentPairIndex = Math.floor(Math.random() * currentPairs.length);
+                log(`${currentPairs.length} unlabeled pairs in this range`, 'info');
+            } else {
+                // All labeled - enter relabel mode
+                relabelMode = true;
+                currentPairs = [...allRangePairs];
+                currentPairIndex = Math.floor(Math.random() * currentPairs.length);
+                log('All pairs labeled - entering relabel mode', 'info');
+            }
+
+            showCurrentPair();
+        }
+
+        async function showCurrentPair() {
+            if (currentPairIndex < 0 || currentPairIndex >= currentPairs.length) return;
+
+            currentPair = currentPairs[currentPairIndex];
+            const existingLabel = annotationManager.getLabel(currentPair.frame, currentPair.track1, currentPair.track2);
+
+            let infoText = `Frame: ${currentPair.frame} | Track ${currentPair.track1} vs Track ${currentPair.track2}`;
+            if (relabelMode && existingLabel !== undefined) {
+                infoText += existingLabel ? ' [Current: Duplicate]' : ' [Current: Not Duplicate]';
+            }
+            document.getElementById('pairInfo').textContent = infoText;
+            document.getElementById('pairIOU').textContent = currentPair.iou.toFixed(3);
+            document.getElementById('pairCentroid').textContent = currentPair.centroidDist.toFixed(1);
+            document.getElementById('pairBboxCentroid').textContent = currentPair.bboxCentroidDist.toFixed(1);
+
+            await pairRenderer.renderPair(currentPair.frame, currentPair.track1, currentPair.track2);
+        }
+
+        function labelCurrent(isDuplicate) {
+            if (!currentPair) return;
+
+            annotationManager.addLabel(currentPair.frame, currentPair.track1, currentPair.track2, isDuplicate);
+
+            if (relabelMode) {
+                log(`Relabeled frame ${currentPair.frame} tracks ${currentPair.track1}-${currentPair.track2} as ${isDuplicate ? 'DUPLICATE' : 'NOT duplicate'}`, 'warn');
+            } else {
+                log(`Labeled frame ${currentPair.frame} tracks ${currentPair.track1}-${currentPair.track2} as ${isDuplicate ? 'DUPLICATE' : 'NOT duplicate'}`,
+                    isDuplicate ? 'success' : 'info');
+            }
+
+            // Update all histograms
+            iouHistogram.render(allPairs);
+            centroidHistogram.render(allPairs);
+            bboxCentroidHistogram.render(allPairs);
+            updateSummary();
+
+            // Update precision/accuracy plot with new labels
+            if (thresholdManager) {
+                thresholdManager.update();
+            }
+
+            // Move to next pair
+            nextPair();
+        }
+
+        function skipCurrent() {
+            if (!currentPair || currentPairs.length <= 1) return;
+            log(`Skipped frame ${currentPair.frame}`, 'info');
+
+            // Move to a different pair without removing current
+            let newIndex;
+            do {
+                newIndex = Math.floor(Math.random() * currentPairs.length);
+            } while (newIndex === currentPairIndex);
+            currentPairIndex = newIndex;
+            showCurrentPair();
+        }
+
+        function nextPair() {
+            if (relabelMode) {
+                // In relabel mode, just move to next pair (don't remove)
+                if (currentPairs.length <= 1) {
+                    showCurrentPair();
+                    return;
+                }
+                let newIndex;
+                do {
+                    newIndex = Math.floor(Math.random() * currentPairs.length);
+                } while (newIndex === currentPairIndex);
+                currentPairIndex = newIndex;
+                showCurrentPair();
+            } else {
+                // Normal mode: remove labeled pair and move to next
+                currentPairs.splice(currentPairIndex, 1);
+
+                if (currentPairs.length > 0) {
+                    currentPairIndex = Math.floor(Math.random() * currentPairs.length);
+                    showCurrentPair();
+                } else {
+                    // All pairs in range are now labeled - enter relabel mode
+                    relabelMode = true;
+                    currentPairs = [...allRangePairs];
+                    currentPairIndex = Math.floor(Math.random() * currentPairs.length);
+                    log('All pairs in this range labeled! Click a histogram bar to select a new range, or continue to review/relabel.', 'success');
+                    showCurrentPair();
+                }
+            }
+        }
+
+        function updateSummary() {
+            const counts = annotationManager.getLabelCounts();
+            document.getElementById('totalPairs').textContent = allPairs.length;
+            document.getElementById('labeledCount').textContent = counts.total;
+            document.getElementById('duplicateCount').textContent = counts.duplicate;
+            document.getElementById('notDuplicateCount').textContent = counts.notDuplicate;
+        }
+
+        // Button handlers
+        document.getElementById('duplicateBtn').addEventListener('click', () => labelCurrent(true));
+        document.getElementById('notDuplicateBtn').addEventListener('click', () => labelCurrent(false));
+        document.getElementById('skipBtn').addEventListener('click', skipCurrent);
+
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            const data = annotationManager.exportLabels();
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'duplicate_pose_labels.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            log(`Exported ${data.length} labels`, 'success');
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (!currentPair) return;
+
+            switch (e.key.toLowerCase()) {
+                case 'd':
+                    labelCurrent(true);
+                    e.preventDefault();
+                    break;
+                case 'n':
+                    labelCurrent(false);
+                    e.preventDefault();
+                    break;
+                case 's':
+                    skipCurrent();
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // Check WebCodecs support
+        if (!('VideoDecoder' in window)) {
+            showError('WebCodecs API not supported. Please use Chrome, Edge, or Firefox.');
+            loadVideoBtn.disabled = true;
+        }
+
+        // Global function for threshold buttons
+        function addThresholdPoint(metric) {
+            if (!thresholdManager || allPairs.length === 0) {
+                log('Load data and compute metrics first', 'warn');
+                return;
+            }
+
+            let op, threshold;
+            if (metric === 'iou') {
+                op = document.getElementById('iouOp').value;
+                threshold = parseFloat(document.getElementById('iouThresh').value);
+            } else if (metric === 'centroidDist') {
+                op = document.getElementById('centroidOp').value;
+                threshold = parseFloat(document.getElementById('centroidThresh').value);
+            } else if (metric === 'bboxCentroidDist') {
+                op = document.getElementById('bboxCentroidOp').value;
+                threshold = parseFloat(document.getElementById('bboxCentroidThresh').value);
+            }
+
+            if (isNaN(threshold)) {
+                log('Invalid threshold value', 'error');
+                return;
+            }
+
+            thresholdManager.addThreshold(metric, op, threshold);
+        }
+    </script>
+</body>
+</html>
+
