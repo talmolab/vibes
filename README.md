@@ -19,6 +19,7 @@ Self-contained HTML tools and applets for the web.
 - [Video Event Annotator](event-annotator/) - Frame-accurate event segment annotation with multi-track timeline
 - [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay, embedded pkg.slp support, track colors, and shareable links
 - [GitHub Stats](gh-stats/) - Contribution stats dashboard with commits, LOC, PRs, and activity heatmap
+- [PyPI Name Checker](pypi-name-checker/) - Check Python package name availability with suggestions
 
 ## About
 

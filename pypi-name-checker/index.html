@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyPI Name Checker</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 { margin-bottom: 0.5rem; }
+        .subtitle { color: #666; margin-top: 0; }
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .result {
+            padding: 16px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .result.available { background: #dcfce7; border: 1px solid #86efac; }
+        .result.taken { background: #fee2e2; border: 1px solid #fca5a5; }
+        .result.checking { background: #f3f4f6; border: 1px solid #d1d5db; }
+        .result.error { background: #fef3c7; border: 1px solid #fcd34d; }
+        .status-icon { font-size: 1.5rem; }
+        .result-info { flex: 1; }
+        .result-name { font-weight: 600; font-family: monospace; font-size: 1.1rem; }
+        .result-detail { color: #666; font-size: 0.9rem; }
+        .result-link { color: #3b82f6; text-decoration: none; font-size: 0.9rem; }
+        .result-link:hover { text-decoration: underline; }
+        .section { margin: 30px 0; }
+        .section-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 15px; color: #374151; }
+        .loading { display: inline-block; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .suggestion-grid {
+            display: grid;
+            gap: 8px;
+        }
+        .tip {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .search-box { flex-direction: column; }
+            button { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>PyPI Name Checker</h1>
+    <p class="subtitle">Check if a Python package name is available on PyPI</p>
+
+    <div class="tip">
+        <strong>Tip:</strong> PyPI normalizes names (e.g., <code>my_pkg</code>, <code>my-pkg</code>, <code>My.Pkg</code> are all equivalent).
+    </div>
+
+    <div class="search-box">
+        <input type="text" id="nameInput" placeholder="Enter package name..." autocomplete="off" spellcheck="false">
+        <button id="checkBtn" onclick="checkName()">Check</button>
+    </div>
+
+    <div id="mainResult"></div>
+
+    <div id="suggestionsSection" class="section" style="display: none;">
+        <div class="section-title">Suggestions</div>
+        <div id="suggestions" class="suggestion-grid"></div>
+    </div>
+
+    <script>
+        const nameInput = document.getElementById('nameInput');
+        const checkBtn = document.getElementById('checkBtn');
+        const mainResult = document.getElementById('mainResult');
+        const suggestionsSection = document.getElementById('suggestionsSection');
+        const suggestionsDiv = document.getElementById('suggestions');
+
+        // Common prefixes and suffixes for suggestions
+        const prefixes = ['py', 'python', 'easy', 'fast', 'simple', 'super', 'ultra', 'micro', 'nano', 'mini'];
+        const suffixes = ['py', 'lib', 'tool', 'utils', 'kit', 'box', 'io', 'x', 'plus', 'pro'];
+
+        // Normalize name per PEP 503
+        function normalizeName(name) {
+            return name.toLowerCase().replace(/[-_.]+/g, '-');
+        }
+
+        // Generate suggestions based on the input name
+        function generateSuggestions(name) {
+            const normalized = normalizeName(name);
+            const base = normalized.replace(/-/g, '');
+            const suggestions = new Set();
+
+            // Add variations with prefixes
+            prefixes.forEach(p => {
+                suggestions.add(`${p}-${base}`);
+                suggestions.add(`${p}${base}`);
+            });
+
+            // Add variations with suffixes
+            suffixes.forEach(s => {
+                suggestions.add(`${base}-${s}`);
+                suggestions.add(`${base}${s}`);
+            });
+
+            // Add some creative variations
+            suggestions.add(`${base}2`);
+            suggestions.add(`${base}3`);
+            suggestions.add(`go-${base}`);
+            suggestions.add(`the-${base}`);
+            suggestions.add(`my-${base}`);
+
+            // Remove the original name and very short names
+            suggestions.delete(normalized);
+            suggestions.delete(base);
+
+            return Array.from(suggestions).filter(s => s.length >= 3).slice(0, 20);
+        }
+
+        // Check if a name is available on PyPI
+        async function checkPyPI(name) {
+            const normalized = normalizeName(name);
+            try {
+                const response = await fetch(`https://pypi.org/pypi/${encodeURIComponent(normalized)}/json`, {
+                    method: 'GET',
+                });
+
+                if (response.status === 404) {
+                    return { available: true, name: normalized };
+                } else if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        available: false,
+                        name: normalized,
+                        info: data.info
+                    };
+                } else {
+                    return { error: true, name: normalized, message: `HTTP ${response.status}` };
+                }
+            } catch (e) {
+                // CORS error or network issue
+                return { error: true, name: normalized, message: 'Network error (CORS)' };
+            }
+        }
+
+        // Render a single result
+        function renderResult(result, isMain = false) {
+            const div = document.createElement('div');
+            div.className = 'result';
+
+            if (result.checking) {
+                div.className += ' checking';
+                div.innerHTML = `
+                    <span class="status-icon loading">...</span>
+                    <div class="result-info">
+                        <div class="result-name">${escapeHtml(result.name)}</div>
+                        <div class="result-detail">Checking availability...</div>
+                    </div>
+                `;
+            } else if (result.error) {
+                div.className += ' error';
+                div.innerHTML = `
+                    <span class="status-icon">⚠️</span>
+                    <div class="result-info">
+                        <div class="result-name">${escapeHtml(result.name)}</div>
+                        <div class="result-detail">${escapeHtml(result.message)} - <a href="https://pypi.org/project/${encodeURIComponent(result.name)}/" target="_blank" class="result-link">Check manually</a></div>
+                    </div>
+                `;
+            } else if (result.available) {
+                div.className += ' available';
+                div.innerHTML = `
+                    <span class="status-icon">✅</span>
+                    <div class="result-info">
+                        <div class="result-name">${escapeHtml(result.name)}</div>
+                        <div class="result-detail">Available!</div>
+                    </div>
+                `;
+            } else {
+                div.className += ' taken';
+                const summary = result.info?.summary || 'No description';
+                div.innerHTML = `
+                    <span class="status-icon">❌</span>
+                    <div class="result-info">
+                        <div class="result-name">${escapeHtml(result.name)}</div>
+                        <div class="result-detail">${escapeHtml(summary.slice(0, 100))}${summary.length > 100 ? '...' : ''}</div>
+                        <a href="https://pypi.org/project/${encodeURIComponent(result.name)}/" target="_blank" class="result-link">View on PyPI</a>
+                    </div>
+                `;
+            }
+
+            return div;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function checkName() {
+            const name = nameInput.value.trim();
+            if (!name) return;
+
+            checkBtn.disabled = true;
+            mainResult.innerHTML = '';
+            suggestionsSection.style.display = 'none';
+            suggestionsDiv.innerHTML = '';
+
+            // Update URL hash
+            location.hash = encodeURIComponent(name);
+
+            // Show checking state for main result
+            mainResult.appendChild(renderResult({ checking: true, name }));
+
+            // Check main name
+            const result = await checkPyPI(name);
+            mainResult.innerHTML = '';
+            mainResult.appendChild(renderResult(result, true));
+
+            // Generate and check suggestions
+            const suggestions = generateSuggestions(name);
+            if (suggestions.length > 0) {
+                suggestionsSection.style.display = 'block';
+
+                // Show all as checking initially
+                suggestions.forEach(s => {
+                    suggestionsDiv.appendChild(renderResult({ checking: true, name: s }));
+                });
+
+                // Check suggestions in parallel (batched to avoid overwhelming)
+                const batchSize = 5;
+                for (let i = 0; i < suggestions.length; i += batchSize) {
+                    const batch = suggestions.slice(i, i + batchSize);
+                    const results = await Promise.all(batch.map(s => checkPyPI(s)));
+
+                    results.forEach((res, idx) => {
+                        const globalIdx = i + idx;
+                        const newEl = renderResult(res);
+                        suggestionsDiv.children[globalIdx].replaceWith(newEl);
+                    });
+                }
+
+                // Sort: available first
+                const allResults = Array.from(suggestionsDiv.children);
+                allResults.sort((a, b) => {
+                    const aAvail = a.classList.contains('available') ? 0 : 1;
+                    const bAvail = b.classList.contains('available') ? 0 : 1;
+                    return aAvail - bAvail;
+                });
+                suggestionsDiv.innerHTML = '';
+                allResults.forEach(el => suggestionsDiv.appendChild(el));
+            }
+
+            checkBtn.disabled = false;
+        }
+
+        // Handle Enter key
+        nameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') checkName();
+        });
+
+        // Load from URL hash
+        function loadFromHash() {
+            const hash = decodeURIComponent(location.hash.slice(1));
+            if (hash) {
+                nameInput.value = hash;
+                checkName();
+            }
+        }
+
+        window.addEventListener('hashchange', loadFromHash);
+        loadFromHash();
+
+        // Focus input on load
+        nameInput.focus();
+    </script>
+</body>
+</html>
