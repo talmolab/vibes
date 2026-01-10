@@ -18,6 +18,7 @@ Self-contained HTML tools and applets for the web.
 - [Link Unfurl Preview](link-unfurl/) - Preview how links appear when shared on social media
 - [Video Event Annotator](event-annotator/) - Frame-accurate event segment annotation with multi-track timeline
 - [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay, embedded pkg.slp support, track colors, and shareable links
+- [GitHub Stats](gh-stats/) - Contribution stats dashboard with commits, LOC, PRs, and activity heatmap
 
 ## About
 
