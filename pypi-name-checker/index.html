@@ -151,30 +151,41 @@
             return Array.from(suggestions).filter(s => s.length >= 3).slice(0, 20);
         }
 
+        // CORS proxy for PyPI requests (PyPI doesn't allow browser CORS)
+        const CORS_PROXY = 'https://corsproxy.io/?';
+
         // Check if a name is available on PyPI
         async function checkPyPI(name) {
             const normalized = normalizeName(name);
-            try {
-                const response = await fetch(`https://pypi.org/pypi/${encodeURIComponent(normalized)}/json`, {
-                    method: 'GET',
-                });
+            const pypiUrl = `https://pypi.org/pypi/${encodeURIComponent(normalized)}/json`;
 
-                if (response.status === 404) {
-                    return { available: true, name: normalized };
-                } else if (response.ok) {
-                    const data = await response.json();
-                    return {
-                        available: false,
-                        name: normalized,
-                        info: data.info
-                    };
-                } else {
-                    return { error: true, name: normalized, message: `HTTP ${response.status}` };
+            // Try direct first (works in some contexts), then fall back to CORS proxy
+            for (const url of [pypiUrl, CORS_PROXY + encodeURIComponent(pypiUrl)]) {
+                try {
+                    const response = await fetch(url, { method: 'GET' });
+
+                    if (response.status === 404) {
+                        return { available: true, name: normalized };
+                    } else if (response.ok) {
+                        const data = await response.json();
+                        return {
+                            available: false,
+                            name: normalized,
+                            info: data.info
+                        };
+                    } else if (response.status >= 500) {
+                        // Server error, try next URL
+                        continue;
+                    } else {
+                        return { error: true, name: normalized, message: `HTTP ${response.status}` };
+                    }
+                } catch (e) {
+                    // CORS error or network issue, try next URL
+                    continue;
                 }
-            } catch (e) {
-                // CORS error or network issue
-                return { error: true, name: normalized, message: 'Network error (CORS)' };
             }
+            // All attempts failed
+            return { error: true, name: normalized, message: 'Network error' };
         }
 
         // Render a single result
