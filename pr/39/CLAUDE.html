@@ -22,7 +22,7 @@
 {"@context":"https://schema.org","@type":"WebPage","description":"Self-contained HTML vibes for the web","headline":"Claude Instructions for vibes.tlab.sh","url":"http://vibes.tlab.sh/CLAUDE.html"}</script>
 <!-- End Jekyll SEO tag -->
 
-    <link rel="stylesheet" href="/assets/css/style.css?v=021f2abf39b9626657380a9d30ae7e0fe9a202e6">
+    <link rel="stylesheet" href="/assets/css/style.css?v=12664b4010aa217e1655c912aa831b0fe8839ba1">
     <style>
 /* README badge styling for vibe list */
 .readme-badge {
@@ -156,6 +156,20 @@
 <span class="c1">// Listen</span>
 <span class="nb">window</span><span class="p">.</span><span class="nx">addEventListener</span><span class="p">(</span><span class="dl">'</span><span class="s1">hashchange</span><span class="dl">'</span><span class="p">,</span> <span class="nx">update</span><span class="p">);</span>
 </code></pre></div></div>
+
+<h2 id="cors-issues">CORS Issues</h2>
+
+<p>If you need to fetch from an API that blocks browser CORS requests, use the <a href="https://github.com/talmolab/nocors">nocors.tlab.sh</a> proxy:</p>
+
+<div class="language-javascript highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// Prepend the proxy URL to your target URL</span>
+<span class="kd">const</span> <span class="nx">proxyUrl</span> <span class="o">=</span> <span class="dl">'</span><span class="s1">https://nocors.tlab.sh/</span><span class="dl">'</span><span class="p">;</span>
+<span class="kd">const</span> <span class="nx">targetUrl</span> <span class="o">=</span> <span class="dl">'</span><span class="s1">https://api.example.com/data</span><span class="dl">'</span><span class="p">;</span>
+
+<span class="kd">const</span> <span class="nx">response</span> <span class="o">=</span> <span class="k">await</span> <span class="nx">fetch</span><span class="p">(</span><span class="nx">proxyUrl</span> <span class="o">+</span> <span class="nx">targetUrl</span><span class="p">);</span>
+<span class="kd">const</span> <span class="nx">data</span> <span class="o">=</span> <span class="k">await</span> <span class="nx">response</span><span class="p">.</span><span class="nx">json</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>Note: The proxy only works from whitelisted origins (<code class="language-plaintext highlighter-rouge">*.tlab.sh</code>, <code class="language-plaintext highlighter-rouge">*.sleap.ai</code>, <code class="language-plaintext highlighter-rouge">*.slp.sh</code>, <code class="language-plaintext highlighter-rouge">*.talmolab.org</code>).</p>
 
 <h2 id="common-cdn-libraries">Common CDN Libraries</h2>
 

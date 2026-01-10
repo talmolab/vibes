@@ -2,6 +2,8 @@
 
 **Live:** https://vibes.tlab.sh/cors-check/
 
+Uses [nocors.tlab.sh](https://github.com/talmolab/nocors) as the CORS proxy.
+
 Test if a URL is accessible from the browser and get the right fetch code.
 
 ## Features
