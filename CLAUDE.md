@@ -101,6 +101,21 @@ location.hash = encodeURIComponent(value);
 window.addEventListener('hashchange', update);
 ```
 
+## CORS Issues
+
+If you need to fetch from an API that blocks browser CORS requests, use the [nocors.tlab.sh](https://github.com/talmolab/nocors) proxy:
+
+```javascript
+// Prepend the proxy URL to your target URL
+const proxyUrl = 'https://nocors.tlab.sh/';
+const targetUrl = 'https://api.example.com/data';
+
+const response = await fetch(proxyUrl + targetUrl);
+const data = await response.json();
+```
+
+Note: The proxy only works from whitelisted origins (`*.tlab.sh`, `*.sleap.ai`, `*.slp.sh`, `*.talmolab.org`).
+
 ## Common CDN Libraries
 
 ```html

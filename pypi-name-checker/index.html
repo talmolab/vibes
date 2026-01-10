@@ -152,7 +152,8 @@
         }
 
         // CORS proxy for PyPI requests (PyPI doesn't allow browser CORS)
-        const CORS_PROXY = 'https://corsproxy.io/?';
+        // Uses nocors.tlab.sh - see https://github.com/talmolab/nocors
+        const CORS_PROXY = 'https://nocors.tlab.sh/';
 
         // Check if a name is available on PyPI
         async function checkPyPI(name) {
