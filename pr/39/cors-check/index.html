@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Check</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #fafafa;
+        }
+        h1 { margin-bottom: 0.5rem; }
+        .description { color: #666; margin-top: 0; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        input:focus { outline: none; border-color: #007bff; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .output { display: none; }
+        .output.visible { display: block; }
+        .status-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .status-success { background: #d4edda; color: #155724; }
+        .status-error { background: #f8d7da; color: #721c24; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #666;
+            margin: 15px 0 8px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metadata {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .metadata-row {
+            display: flex;
+            margin: 4px 0;
+        }
+        .metadata-key {
+            font-weight: 600;
+            min-width: 180px;
+            color: #555;
+        }
+        .metadata-value {
+            color: #333;
+            word-break: break-all;
+        }
+        .code-block {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            position: relative;
+        }
+        .code-block code { white-space: pre; }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            padding: 4px 10px;
+            font-size: 12px;
+            background: #333;
+        }
+        .copy-btn:hover { background: #555; }
+        .recommendation {
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        .rec-direct { background: #d4edda; border-left: 4px solid #28a745; }
+        .rec-proxy { background: #cce5ff; border-left: 4px solid #007bff; }
+        .rec-error { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #fff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .input-row { flex-direction: column; }
+            .metadata-row { flex-direction: column; }
+            .metadata-key { min-width: auto; margin-bottom: 2px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>CORS Check</h1>
+    <p class="description">Test if a URL is accessible from the browser and get the right fetch code.</p>
+
+    <div class="card">
+        <div class="input-row">
+            <input type="url" id="urlInput" placeholder="https://api.example.com/data" />
+            <button id="checkBtn">Check CORS</button>
+        </div>
+    </div>
+
+    <div id="output" class="output card">
+        <div class="status-row">
+            <span id="directStatus" class="status-badge status-pending">Direct: Checking...</span>
+            <span id="proxyStatus" class="status-badge status-pending">Proxy: Checking...</span>
+        </div>
+
+        <div class="section-title">Direct Fetch</div>
+        <div id="directMeta" class="metadata"></div>
+
+        <div class="section-title">Proxied Fetch (via nocors.tlab.sh)</div>
+        <div id="proxyMeta" class="metadata"></div>
+
+        <div id="recommendation" class="recommendation"></div>
+
+        <div class="section-title">Sample Code</div>
+        <div class="code-block">
+            <button class="copy-btn" id="copyCode">Copy</button>
+            <code id="sampleCode"></code>
+        </div>
+    </div>
+
+    <script>
+        const PROXY_URL = 'https://nocors.tlab.sh/';
+        const CORS_HEADERS = [
+            'access-control-allow-origin',
+            'access-control-allow-methods',
+            'access-control-allow-headers',
+            'access-control-expose-headers',
+            'access-control-allow-credentials'
+        ];
+
+        async function checkUrl(url, useProxy = false) {
+            const fetchUrl = useProxy ? PROXY_URL + url : url;
+            const start = performance.now();
+
+            try {
+                const response = await fetch(fetchUrl, { method: 'GET', mode: 'cors' });
+                const elapsed = Math.round(performance.now() - start);
+                const headers = {};
+
+                response.headers.forEach((value, key) => {
+                    headers[key.toLowerCase()] = value;
+                });
+
+                return {
+                    success: true,
+                    status: response.status,
+                    statusText: response.statusText,
+                    contentType: headers['content-type'] || 'unknown',
+                    corsHeaders: CORS_HEADERS.filter(h => headers[h]).reduce((acc, h) => {
+                        acc[h] = headers[h];
+                        return acc;
+                    }, {}),
+                    elapsed
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message || 'Request failed',
+                    elapsed: Math.round(performance.now() - start)
+                };
+            }
+        }
+
+        function renderMetadata(result, container) {
+            container.innerHTML = '';
+
+            const addRow = (key, value) => {
+                const row = document.createElement('div');
+                row.className = 'metadata-row';
+                const keyEl = document.createElement('span');
+                keyEl.className = 'metadata-key';
+                keyEl.textContent = key;
+                const valEl = document.createElement('span');
+                valEl.className = 'metadata-value';
+                valEl.textContent = value;
+                row.appendChild(keyEl);
+                row.appendChild(valEl);
+                container.appendChild(row);
+            };
+
+            if (result.success) {
+                addRow('Status', `${result.status} ${result.statusText}`);
+                addRow('Content-Type', result.contentType);
+                addRow('Response Time', `${result.elapsed}ms`);
+
+                const corsKeys = Object.keys(result.corsHeaders);
+                if (corsKeys.length > 0) {
+                    corsKeys.forEach(h => addRow(h, result.corsHeaders[h]));
+                } else {
+                    addRow('CORS Headers', 'None present');
+                }
+            } else {
+                addRow('Error', result.error);
+                addRow('Response Time', `${result.elapsed}ms`);
+            }
+        }
+
+        function generateCode(url, directWorks, proxyWorks) {
+            if (directWorks) {
+                return `// Direct fetch works - no proxy needed
+const response = await fetch("${url}");
+const data = await response.json();`;
+            } else if (proxyWorks) {
+                return `// CORS blocked - use nocors.tlab.sh proxy
+const proxyUrl = "https://nocors.tlab.sh/";
+const targetUrl = "${url}";
+
+const response = await fetch(proxyUrl + targetUrl);
+const data = await response.json();
+
+// Note: Proxy only works from whitelisted origins
+// (*.tlab.sh, *.sleap.ai, *.slp.sh, *.talmolab.org)`;
+            } else {
+                return `// Both direct and proxied requests failed
+// The URL may be invalid, the server may be down,
+// or additional authentication may be required.
+
+// Try checking:
+// 1. The URL is correct and accessible
+// 2. The server is running
+// 3. Any required API keys or auth headers`;
+            }
+        }
+
+        async function runCheck() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (!url) return;
+
+            try { new URL(url); } catch {
+                alert('Please enter a valid URL');
+                return;
+            }
+
+            const btn = document.getElementById('checkBtn');
+            const output = document.getElementById('output');
+            const directStatus = document.getElementById('directStatus');
+            const proxyStatus = document.getElementById('proxyStatus');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Checking...';
+            output.classList.add('visible');
+
+            directStatus.className = 'status-badge status-pending';
+            directStatus.textContent = 'Direct: Checking...';
+            proxyStatus.className = 'status-badge status-pending';
+            proxyStatus.textContent = 'Proxy: Checking...';
+
+            const [directResult, proxyResult] = await Promise.all([
+                checkUrl(url, false),
+                checkUrl(url, true)
+            ]);
+
+            directStatus.className = `status-badge ${directResult.success ? 'status-success' : 'status-error'}`;
+            directStatus.textContent = directResult.success ? 'Direct: OK' : 'Direct: Blocked';
+
+            proxyStatus.className = `status-badge ${proxyResult.success ? 'status-success' : 'status-error'}`;
+            proxyStatus.textContent = proxyResult.success ? 'Proxy: OK' : 'Proxy: Failed';
+
+            renderMetadata(directResult, document.getElementById('directMeta'));
+            renderMetadata(proxyResult, document.getElementById('proxyMeta'));
+
+            const rec = document.getElementById('recommendation');
+            if (directResult.success) {
+                rec.className = 'recommendation rec-direct';
+                rec.textContent = 'This URL has proper CORS headers. You can fetch it directly from the browser without a proxy.';
+            } else if (proxyResult.success) {
+                rec.className = 'recommendation rec-proxy';
+                rec.textContent = 'CORS is blocked for this URL. Use the nocors.tlab.sh proxy to fetch it from whitelisted origins.';
+            } else {
+                rec.className = 'recommendation rec-error';
+                rec.textContent = 'Both direct and proxied requests failed. Check that the URL is valid and the server is accessible.';
+            }
+
+            document.getElementById('sampleCode').textContent = generateCode(url, directResult.success, proxyResult.success);
+
+            location.hash = encodeURIComponent(url);
+
+            btn.disabled = false;
+            btn.textContent = 'Check CORS';
+        }
+
+        document.getElementById('checkBtn').addEventListener('click', runCheck);
+        document.getElementById('urlInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') runCheck();
+        });
+
+        document.getElementById('copyCode').addEventListener('click', () => {
+            const code = document.getElementById('sampleCode').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = document.getElementById('copyCode');
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = 'Copy', 1500);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = code;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            });
+        });
+
+        // Load from URL hash
+        const hash = decodeURIComponent(location.hash.slice(1));
+        if (hash) {
+            document.getElementById('urlInput').value = hash;
+            runCheck();
+        }
+    </script>
+</body>
+</html>
