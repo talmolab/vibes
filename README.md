@@ -21,6 +21,7 @@ Self-contained HTML tools and applets for the web.
 - [GitHub Stats](gh-stats/) - Contribution stats dashboard with commits, LOC, PRs, and activity heatmap
 - [PyPI Name Checker](pypi-name-checker/) - Check Python package name availability with suggestions
 - [CORS Check](cors-check/) - Test URL CORS status and get the right fetch code
+- [Video Info Tool](video-info-tool/) - Quick video metadata extraction (FPS, resolution, duration, frame count)
 
 ## About
 
