@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Info Tool - vibes</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .subtitle a {
+            color: #6c9fff;
+            text-decoration: none;
+        }
+
+        .drop-zone {
+            border: 2px dashed #444;
+            border-radius: 12px;
+            padding: 60px 40px;
+            text-align: center;
+            margin-bottom: 30px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .drop-zone:hover {
+            border-color: #6c9fff;
+            background: rgba(108, 159, 255, 0.05);
+        }
+
+        .drop-zone.dragover {
+            border-color: #6c9fff;
+            background: rgba(108, 159, 255, 0.1);
+        }
+
+        .drop-zone-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .drop-zone-text {
+            color: #888;
+            font-size: 16px;
+        }
+
+        .drop-zone-text strong {
+            color: #6c9fff;
+        }
+
+        .btn {
+            background: #6c9fff;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+            margin-top: 15px;
+        }
+
+        .btn:hover {
+            background: #5a8ae6;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .results {
+            display: none;
+        }
+
+        .results.visible {
+            display: block;
+        }
+
+        .video-preview {
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .video-preview video {
+            max-width: 100%;
+            max-height: 300px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-card {
+            background: #252540;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .info-card label {
+            display: block;
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .info-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #6c9fff;
+            word-break: break-all;
+        }
+
+        .info-card .value.small {
+            font-size: 16px;
+        }
+
+        .info-card .unit {
+            font-size: 14px;
+            color: #888;
+            margin-left: 4px;
+        }
+
+        .filename-card {
+            background: #252540;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filename-card label {
+            display: block;
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .filename-card .value {
+            font-size: 18px;
+            color: #fff;
+            word-break: break-all;
+        }
+
+        .export-section {
+            background: #252540;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .export-section h3 {
+            margin-bottom: 15px;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .code-block {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin-bottom: 15px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .code-block .comment {
+            color: #666;
+        }
+
+        .code-block .string {
+            color: #98c379;
+        }
+
+        .code-block .number {
+            color: #d19a66;
+        }
+
+        .code-block .key {
+            color: #e06c75;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-secondary {
+            background: #444;
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        .copy-feedback {
+            color: #4ade80;
+            font-size: 14px;
+            margin-left: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .copy-feedback.show {
+            opacity: 1;
+        }
+
+        .warning {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid #fbbf24;
+            color: #fbbf24;
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        footer a {
+            color: #6c9fff;
+            text-decoration: none;
+        }
+
+        .format-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .format-tab {
+            background: #1a1a2e;
+            border: 1px solid #444;
+            color: #888;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .format-tab:hover {
+            border-color: #6c9fff;
+            color: #fff;
+        }
+
+        .format-tab.active {
+            background: #6c9fff;
+            border-color: #6c9fff;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Info Tool</h1>
+        <p class="subtitle">
+            Quick video metadata extraction |
+            <a href="https://github.com/talmolab/vibes">vibes</a>
+        </p>
+
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-icon">🎬</div>
+            <div class="drop-zone-text">
+                <strong>Drop video here</strong> or click to browse
+            </div>
+            <button class="btn">Select Video</button>
+            <input type="file" id="fileInput" accept="video/*">
+        </div>
+
+        <div class="results" id="results">
+            <div class="filename-card">
+                <label>File</label>
+                <div class="value" id="fileName">-</div>
+            </div>
+
+            <div class="video-preview" id="videoPreview">
+                <video id="video" controls muted></video>
+            </div>
+
+            <div id="warning" class="warning" style="display: none;"></div>
+
+            <div class="info-grid">
+                <div class="info-card">
+                    <label>Resolution</label>
+                    <div class="value" id="resolution">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Duration</label>
+                    <div class="value" id="duration">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Frame Rate</label>
+                    <div class="value" id="fps">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Total Frames</label>
+                    <div class="value" id="frames">-</div>
+                </div>
+                <div class="info-card">
+                    <label>File Size</label>
+                    <div class="value" id="fileSize">-</div>
+                </div>
+                <div class="info-card">
+                    <label>Bitrate</label>
+                    <div class="value" id="bitrate">-</div>
+                </div>
+            </div>
+
+            <div class="export-section">
+                <h3>Export Video Info</h3>
+                <div class="format-tabs">
+                    <button class="format-tab active" data-format="json">JSON</button>
+                    <button class="format-tab" data-format="python">Python</button>
+                    <button class="format-tab" data-format="csv">CSV</button>
+                </div>
+                <div class="code-block" id="codeBlock">-</div>
+                <div class="btn-row">
+                    <button class="btn" id="copyBtn">Copy</button>
+                    <button class="btn btn-secondary" id="downloadBtn">Download</button>
+                    <span class="copy-feedback" id="copyFeedback">Copied!</span>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Part of <a href="https://github.com/talmolab/vibes">vibes</a> - Tools for behavioral neuroscience</p>
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const results = document.getElementById('results');
+        const video = document.getElementById('video');
+        const warning = document.getElementById('warning');
+        const codeBlock = document.getElementById('codeBlock');
+        const copyBtn = document.getElementById('copyBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const copyFeedback = document.getElementById('copyFeedback');
+        const formatTabs = document.querySelectorAll('.format-tab');
+
+        let videoInfo = null;
+        let currentFormat = 'json';
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type.startsWith('video/')) {
+                loadVideo(file);
+            }
+        });
+
+        dropZone.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadVideo(file);
+            }
+        });
+
+        // Format tabs
+        formatTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                formatTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFormat = tab.dataset.format;
+                updateCodeBlock();
+            });
+        });
+
+        function loadVideo(file) {
+            const url = URL.createObjectURL(file);
+            video.src = url;
+
+            video.onloadedmetadata = () => {
+                // Calculate info
+                const width = video.videoWidth;
+                const height = video.videoHeight;
+                const duration = video.duration;
+                const fileSize = file.size;
+
+                // Estimate FPS - this is tricky without demuxing
+                // Common values: 23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 120
+                // We'll try to detect from requestVideoFrameCallback if available
+                let fps = null;
+                let totalFrames = null;
+                let warnings = [];
+
+                // Try to get FPS from video element (not always reliable)
+                if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+                    // Modern browsers - we can count frames
+                    detectFPS(video, file, (detectedFps, frameCount) => {
+                        fps = detectedFps;
+                        totalFrames = frameCount || Math.round(duration * fps);
+                        updateDisplay(file, width, height, duration, fps, totalFrames, fileSize, warnings);
+                    });
+                } else {
+                    // Fallback - estimate from common frame rates
+                    fps = estimateFPS(duration);
+                    totalFrames = Math.round(duration * fps);
+                    warnings.push('FPS estimated from duration. For accurate frame count, use Chrome/Edge.');
+                    updateDisplay(file, width, height, duration, fps, totalFrames, fileSize, warnings);
+                }
+            };
+
+            video.onerror = () => {
+                warning.textContent = 'Error loading video. The format may not be supported by your browser.';
+                warning.style.display = 'block';
+            };
+        }
+
+        function detectFPS(videoEl, file, callback) {
+            // Use requestVideoFrameCallback to measure actual frame rate
+            let frameCount = 0;
+            let startTime = null;
+            let lastFrameTime = 0;
+            let frameTimes = [];
+
+            // Seek to beginning and play briefly to sample frames
+            videoEl.currentTime = 0;
+            videoEl.muted = true;
+
+            const sampleDuration = 1.0; // Sample for 1 second
+
+            function onFrame(now, metadata) {
+                if (startTime === null) {
+                    startTime = metadata.mediaTime;
+                }
+
+                frameCount++;
+                const elapsed = metadata.mediaTime - startTime;
+
+                if (metadata.mediaTime > lastFrameTime) {
+                    frameTimes.push(metadata.mediaTime - lastFrameTime);
+                }
+                lastFrameTime = metadata.mediaTime;
+
+                if (elapsed < sampleDuration && metadata.mediaTime < videoEl.duration - 0.1) {
+                    videoEl.requestVideoFrameCallback(onFrame);
+                } else {
+                    videoEl.pause();
+                    videoEl.currentTime = 0;
+
+                    // Calculate FPS from frame times
+                    if (frameTimes.length > 5) {
+                        // Remove outliers and calculate median
+                        frameTimes.sort((a, b) => a - b);
+                        const mid = Math.floor(frameTimes.length / 2);
+                        const medianFrameTime = frameTimes[mid];
+                        const detectedFps = 1 / medianFrameTime;
+
+                        // Round to common frame rate
+                        const roundedFps = roundToCommonFPS(detectedFps);
+                        const totalFrames = Math.round(videoEl.duration * roundedFps);
+
+                        callback(roundedFps, totalFrames);
+                    } else {
+                        // Not enough frames sampled
+                        const estimatedFps = estimateFPS(videoEl.duration);
+                        callback(estimatedFps, null);
+                    }
+                }
+            }
+
+            videoEl.play().then(() => {
+                videoEl.requestVideoFrameCallback(onFrame);
+            }).catch(() => {
+                // Autoplay blocked - use estimation
+                const estimatedFps = estimateFPS(videoEl.duration);
+                callback(estimatedFps, null);
+            });
+        }
+
+        function roundToCommonFPS(fps) {
+            // Common frame rates
+            const commonFPS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60, 90, 120, 240];
+            let closest = commonFPS[0];
+            let minDiff = Math.abs(fps - closest);
+
+            for (const common of commonFPS) {
+                const diff = Math.abs(fps - common);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = common;
+                }
+            }
+
+            // If we're within 0.5 fps of a common rate, use it
+            if (minDiff < 0.5) {
+                return closest;
+            }
+
+            // Otherwise return the detected value rounded to 2 decimals
+            return Math.round(fps * 100) / 100;
+        }
+
+        function estimateFPS(duration) {
+            // Without frame-level access, we can only guess
+            // Most common is 30fps for consumer video, 24fps for cinema
+            return 30;
+        }
+
+        function updateDisplay(file, width, height, duration, fps, totalFrames, fileSize, warnings) {
+            videoInfo = {
+                filename: file.name,
+                width,
+                height,
+                duration,
+                fps,
+                totalFrames,
+                fileSize,
+            };
+
+            // Update UI
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('resolution').innerHTML =
+                `${width}<span class="unit">×</span>${height}`;
+            document.getElementById('duration').innerHTML =
+                `${formatDuration(duration)}`;
+            document.getElementById('fps').innerHTML =
+                `${fps.toFixed(2)}<span class="unit">fps</span>`;
+            document.getElementById('frames').textContent =
+                totalFrames ? totalFrames.toLocaleString() : '~' + Math.round(duration * fps).toLocaleString();
+            document.getElementById('fileSize').innerHTML =
+                `${formatFileSize(fileSize)}`;
+            document.getElementById('bitrate').innerHTML =
+                `${formatBitrate(fileSize, duration)}`;
+
+            // Show warnings if any
+            if (warnings.length > 0) {
+                warning.textContent = warnings.join(' ');
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+
+            // Update code block
+            updateCodeBlock();
+
+            // Show results
+            results.classList.add('visible');
+        }
+
+        function formatDuration(seconds) {
+            if (seconds < 60) {
+                return `${seconds.toFixed(2)}<span class="unit">s</span>`;
+            } else if (seconds < 3600) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}<span class="unit">m</span> ${secs.toFixed(1)}<span class="unit">s</span>`;
+            } else {
+                const hrs = Math.floor(seconds / 3600);
+                const mins = Math.floor((seconds % 3600) / 60);
+                const secs = seconds % 60;
+                return `${hrs}<span class="unit">h</span> ${mins}<span class="unit">m</span> ${Math.round(secs)}<span class="unit">s</span>`;
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) {
+                return `${bytes}<span class="unit">B</span>`;
+            } else if (bytes < 1024 * 1024) {
+                return `${(bytes / 1024).toFixed(1)}<span class="unit">KB</span>`;
+            } else if (bytes < 1024 * 1024 * 1024) {
+                return `${(bytes / (1024 * 1024)).toFixed(1)}<span class="unit">MB</span>`;
+            } else {
+                return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)}<span class="unit">GB</span>`;
+            }
+        }
+
+        function formatBitrate(bytes, seconds) {
+            const bitsPerSecond = (bytes * 8) / seconds;
+            if (bitsPerSecond < 1000000) {
+                return `${(bitsPerSecond / 1000).toFixed(0)}<span class="unit">kbps</span>`;
+            } else {
+                return `${(bitsPerSecond / 1000000).toFixed(1)}<span class="unit">Mbps</span>`;
+            }
+        }
+
+        function updateCodeBlock() {
+            if (!videoInfo) return;
+
+            let code = '';
+            switch (currentFormat) {
+                case 'json':
+                    code = formatAsJSON(videoInfo);
+                    break;
+                case 'python':
+                    code = formatAsPython(videoInfo);
+                    break;
+                case 'csv':
+                    code = formatAsCSV(videoInfo);
+                    break;
+            }
+
+            codeBlock.innerHTML = code;
+        }
+
+        function formatAsJSON(info) {
+            const json = {
+                filename: info.filename,
+                width: info.width,
+                height: info.height,
+                duration_seconds: Math.round(info.duration * 1000) / 1000,
+                fps: Math.round(info.fps * 1000) / 1000,
+                total_frames: info.totalFrames,
+                file_size_bytes: info.fileSize,
+            };
+
+            // Syntax highlight the JSON
+            const jsonStr = JSON.stringify(json, null, 2);
+            return jsonStr
+                .replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:')
+                .replace(/: "([^"]+)"/g, ': <span class="string">"$1"</span>')
+                .replace(/: (\d+\.?\d*)/g, ': <span class="number">$1</span>');
+        }
+
+        function formatAsPython(info) {
+            return `<span class="comment"># Video Info</span>
+video_info = {
+    <span class="string">"filename"</span>: <span class="string">"${info.filename}"</span>,
+    <span class="string">"width"</span>: <span class="number">${info.width}</span>,
+    <span class="string">"height"</span>: <span class="number">${info.height}</span>,
+    <span class="string">"duration"</span>: <span class="number">${info.duration.toFixed(3)}</span>,  <span class="comment"># seconds</span>
+    <span class="string">"fps"</span>: <span class="number">${info.fps.toFixed(3)}</span>,
+    <span class="string">"total_frames"</span>: <span class="number">${info.totalFrames}</span>,
+    <span class="string">"file_size"</span>: <span class="number">${info.fileSize}</span>,  <span class="comment"># bytes</span>
+}`;
+        }
+
+        function formatAsCSV(info) {
+            const header = 'filename,width,height,duration_seconds,fps,total_frames,file_size_bytes';
+            const row = `${info.filename},${info.width},${info.height},${info.duration.toFixed(3)},${info.fps.toFixed(3)},${info.totalFrames},${info.fileSize}`;
+            return `<span class="comment"># CSV format</span>
+${header}
+${row}`;
+        }
+
+        function getPlainText() {
+            if (!videoInfo) return '';
+
+            switch (currentFormat) {
+                case 'json':
+                    return JSON.stringify({
+                        filename: videoInfo.filename,
+                        width: videoInfo.width,
+                        height: videoInfo.height,
+                        duration_seconds: Math.round(videoInfo.duration * 1000) / 1000,
+                        fps: Math.round(videoInfo.fps * 1000) / 1000,
+                        total_frames: videoInfo.totalFrames,
+                        file_size_bytes: videoInfo.fileSize,
+                    }, null, 2);
+
+                case 'python':
+                    return `# Video Info
+video_info = {
+    "filename": "${videoInfo.filename}",
+    "width": ${videoInfo.width},
+    "height": ${videoInfo.height},
+    "duration": ${videoInfo.duration.toFixed(3)},  # seconds
+    "fps": ${videoInfo.fps.toFixed(3)},
+    "total_frames": ${videoInfo.totalFrames},
+    "file_size": ${videoInfo.fileSize},  # bytes
+}`;
+
+                case 'csv':
+                    const header = 'filename,width,height,duration_seconds,fps,total_frames,file_size_bytes';
+                    const row = `${videoInfo.filename},${videoInfo.width},${videoInfo.height},${videoInfo.duration.toFixed(3)},${videoInfo.fps.toFixed(3)},${videoInfo.totalFrames},${videoInfo.fileSize}`;
+                    return `${header}\n${row}`;
+            }
+        }
+
+        copyBtn.addEventListener('click', () => {
+            const text = getPlainText();
+            navigator.clipboard.writeText(text).then(() => {
+                copyFeedback.classList.add('show');
+                setTimeout(() => copyFeedback.classList.remove('show'), 2000);
+            });
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            const text = getPlainText();
+            const ext = currentFormat === 'json' ? 'json' : currentFormat === 'python' ? 'py' : 'csv';
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `video_info.${ext}`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
