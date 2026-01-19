@@ -747,6 +747,7 @@
         function goToFrame(idx) {
             currentFrameIdx = Math.max(0, Math.min(labeledFrames.length - 1, idx));
             updateFrameInfo();
+            updateUrl();
 
             // Load image for the new frame
             if (hasEmbeddedImages) {
@@ -889,6 +890,7 @@
             offsetX = 0;
             offsetY = 0;
             render();
+            updateUrl();
         }
 
         // Mouse wheel zoom handler
@@ -910,6 +912,7 @@
 
             zoomToPoint(mouseX, mouseY, newScale);
             render();
+            updateUrlThrottled();
         }
 
         // Mouse drag pan handlers
@@ -936,6 +939,7 @@
             if (isDragging) {
                 isDragging = false;
                 canvas.style.cursor = 'default';
+                updateUrlThrottled();
             }
         }
 
@@ -1016,6 +1020,7 @@
             if (e.touches.length === 0) {
                 touchStartX = null;
                 touchStartY = null;
+                updateUrlThrottled();
             }
         }
 
@@ -1105,18 +1110,73 @@
             }
         }
 
-        function updateUrl(slpUrl) {
+        // URL state management
+        let urlUpdateTimeout = null;
+
+        function updateUrl(slpUrl = null) {
             const url = new URL(window.location.href);
-            url.searchParams.set('url', slpUrl);
+            if (slpUrl !== null) {
+                url.searchParams.set('url', slpUrl);
+            }
+            // Only save view state if we have loaded content
+            if (labeledFrames.length > 0) {
+                url.searchParams.set('frame', currentFrameIdx);
+            }
+            if (scale !== 1 || offsetX !== 0 || offsetY !== 0) {
+                url.searchParams.set('zoom', scale.toFixed(2));
+                url.searchParams.set('panX', Math.round(offsetX));
+                url.searchParams.set('panY', Math.round(offsetY));
+            } else {
+                url.searchParams.delete('zoom');
+                url.searchParams.delete('panX');
+                url.searchParams.delete('panY');
+            }
             history.replaceState({}, '', url);
         }
 
-        // Check URL parameter on load
+        function updateUrlThrottled() {
+            if (urlUpdateTimeout) clearTimeout(urlUpdateTimeout);
+            urlUpdateTimeout = setTimeout(() => updateUrl(), 150);
+        }
+
+        // Check URL parameters on load
         const params = new URLSearchParams(window.location.search);
         const urlParam = params.get('url');
+        const frameParam = params.get('frame');
+        const zoomParam = params.get('zoom');
+        const panXParam = params.get('panX');
+        const panYParam = params.get('panY');
+
+        // Store initial view state to apply after loading
+        const initialViewState = {
+            frame: frameParam !== null ? parseInt(frameParam) : null,
+            zoom: zoomParam !== null ? parseFloat(zoomParam) : null,
+            panX: panXParam !== null ? parseInt(panXParam) : null,
+            panY: panYParam !== null ? parseInt(panYParam) : null
+        };
+
         if (urlParam) {
             urlInput.value = urlParam;
-            loadFromUrl(urlParam);
+            loadFromUrl(urlParam).then(() => {
+                // Apply initial view state after loading
+                // Set zoom/pan first (before goToFrame which updates URL)
+                if (initialViewState.zoom !== null) {
+                    scale = initialViewState.zoom;
+                }
+                if (initialViewState.panX !== null) {
+                    offsetX = initialViewState.panX;
+                }
+                if (initialViewState.panY !== null) {
+                    offsetY = initialViewState.panY;
+                }
+                // Now go to frame (which will update URL with correct zoom/pan)
+                if (initialViewState.frame !== null && labeledFrames.length > 0) {
+                    goToFrame(initialViewState.frame);
+                } else if (initialViewState.zoom !== null || initialViewState.panX !== null || initialViewState.panY !== null) {
+                    render();
+                    updateUrl();
+                }
+            });
         }
     </script>
 </body>
