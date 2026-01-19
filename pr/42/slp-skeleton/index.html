@@ -297,6 +297,8 @@
         let currentImage = null;
         let imageCache = new Map();
         let hasEmbeddedImages = false;
+        let isImageLoading = false;
+        let expectedImageSize = null; // { width, height } from video
 
         // Zoom/pan state
         let scale = 1;
@@ -401,12 +403,23 @@
             const video = frame.video;
             const cacheKey = `${labels.videos.indexOf(video)}_${frame.frameIdx}`;
 
+            // Get expected image size from video for positioning before image loads
+            if (video.shape && video.shape.length >= 2) {
+                expectedImageSize = { height: video.shape[0], width: video.shape[1] };
+            }
+
             // Check cache first
             if (imageCache.has(cacheKey)) {
                 currentImage = imageCache.get(cacheKey);
+                isImageLoading = false;
                 render();
                 return;
             }
+
+            // Show skeleton immediately while image loads
+            isImageLoading = true;
+            currentImage = null;
+            render();
 
             // Get image from video backend
             if (video.backend) {
@@ -415,12 +428,13 @@
                     if (image) {
                         imageCache.set(cacheKey, image);
                         currentImage = image;
-                        render();
                     }
                 } catch (err) {
                     console.warn('Error loading frame image:', err);
                 }
             }
+            isImageLoading = false;
+            render();
         }
 
         // Canvas resize
@@ -570,7 +584,7 @@
                 });
             }
 
-            // Get image dimensions if available
+            // Get image dimensions if available, or use expected size
             let imgWidth = 0, imgHeight = 0;
             if (currentImage) {
                 if (currentImage instanceof ImageBitmap) {
@@ -580,34 +594,37 @@
                     imgWidth = currentImage.width;
                     imgHeight = currentImage.height;
                 }
+            } else if (expectedImageSize) {
+                imgWidth = expectedImageSize.width;
+                imgHeight = expectedImageSize.height;
             }
 
             // Calculate positions
             nodePositions = [];
 
-            if (currentImage && imgWidth > 0 && imgHeight > 0) {
+            if (imgWidth > 0 && imgHeight > 0 && points && points.length > 0) {
                 // Calculate transform to fit image in canvas with padding
                 const padding = 20;
                 const baseScale = Math.min((width - padding * 2) / imgWidth, (height - padding * 2) / imgHeight);
                 const baseOffsetX = (width - imgWidth * baseScale) / 2;
                 const baseOffsetY = (height - imgHeight * baseScale) / 2;
 
-                // Draw image
-                ctx.drawImage(currentImage, baseOffsetX, baseOffsetY, imgWidth * baseScale, imgHeight * baseScale);
+                // Draw image if available
+                if (currentImage) {
+                    ctx.drawImage(currentImage, baseOffsetX, baseOffsetY, imgWidth * baseScale, imgHeight * baseScale);
+                }
 
                 // Calculate node positions from pose data (in image coordinates)
-                if (points && points.length > 0) {
-                    points.forEach(pt => {
-                        if (pt) {
-                            nodePositions.push({
-                                x: pt[0] * baseScale + baseOffsetX,
-                                y: pt[1] * baseScale + baseOffsetY
-                            });
-                        } else {
-                            nodePositions.push(null);
-                        }
-                    });
-                }
+                points.forEach(pt => {
+                    if (pt) {
+                        nodePositions.push({
+                            x: pt[0] * baseScale + baseOffsetX,
+                            y: pt[1] * baseScale + baseOffsetY
+                        });
+                    } else {
+                        nodePositions.push(null);
+                    }
+                });
             } else if (points && points.length > 0 && points.some(p => p !== null)) {
                 // No image - use pose bounds for positioning
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -652,6 +669,37 @@
 
             // Restore context after zoom/pan transform
             ctx.restore();
+
+            // Draw loading indicator if image is loading
+            if (isImageLoading) {
+                ctx.save();
+                const indicatorX = 15;
+                const indicatorY = height - 30;
+
+                // Draw spinner
+                const spinnerRadius = 8;
+                const time = Date.now() / 1000;
+
+                ctx.strokeStyle = '#667eea';
+                ctx.lineWidth = 2;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                const startAngle = time * 4;
+                ctx.arc(indicatorX + spinnerRadius, indicatorY, spinnerRadius, startAngle, startAngle + Math.PI * 1.5);
+                ctx.stroke();
+
+                // "Loading image..." text
+                ctx.fillStyle = '#aaa';
+                ctx.font = '12px system-ui, -apple-system, sans-serif';
+                ctx.textAlign = 'left';
+                ctx.fillText('Loading image...', indicatorX + spinnerRadius * 2 + 8, indicatorY + 4);
+                ctx.restore();
+
+                // Animate spinner
+                requestAnimationFrame(() => {
+                    if (isImageLoading) render();
+                });
+            }
 
             // Update content bounds for pan constraints
             if (nodePositions.length > 0) {
