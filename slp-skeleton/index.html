@@ -673,7 +673,7 @@
         function renderSkeleton(width, height) {
             nodeLabelsContainer.innerHTML = '';
 
-            // Draw edges
+            // Draw edges (size stays constant regardless of zoom)
             skeleton.edges.forEach((edge, idx) => {
                 const srcIdx = skeleton.index(edge.source.name || edge.source);
                 const dstIdx = skeleton.index(edge.destination.name || edge.destination);
@@ -686,7 +686,7 @@
                 const color = getEdgeColor(idx);
 
                 ctx.strokeStyle = color;
-                ctx.lineWidth = isHovered || isSelected ? 5 : 3;
+                ctx.lineWidth = (isHovered || isSelected ? 5 : 3) / scale;
                 ctx.lineCap = 'round';
                 ctx.globalAlpha = (hoveredEdge !== null && !isHovered && !isSelected) ? 0.3 : 1;
 
@@ -698,7 +698,7 @@
 
             ctx.globalAlpha = 1;
 
-            // Draw nodes
+            // Draw nodes (size stays constant regardless of zoom)
             skeleton.nodes.forEach((node, idx) => {
                 const name = node.name || node;
                 const pos = nodePositions[idx];
@@ -706,7 +706,7 @@
 
                 const isHovered = hoveredNode === idx;
                 const isSelected = selectedNode === idx;
-                const radius = isHovered || isSelected ? 12 : 8;
+                const radius = (isHovered || isSelected ? 12 : 8) / scale;
 
                 ctx.fillStyle = isSelected ? '#667eea' : (isHovered ? '#fff' : '#ddd');
                 ctx.globalAlpha = (hoveredNode !== null && !isHovered && !isSelected) ? 0.3 : 1;
@@ -716,20 +716,19 @@
                 ctx.fill();
 
                 ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2 / scale;
                 ctx.stroke();
 
                 ctx.globalAlpha = 1;
 
-                // Node label (apply zoom/pan transform to position)
+                // Node label (constant size, positioned in screen space)
                 const label = document.createElement('div');
                 label.className = 'node-label';
                 label.textContent = name;
-                const labelX = pos.x * scale + offsetX + 14 * scale;
-                const labelY = pos.y * scale + offsetY - 8 * scale;
+                const labelX = pos.x * scale + offsetX + 14;
+                const labelY = pos.y * scale + offsetY - 8;
                 label.style.left = labelX + 'px';
                 label.style.top = labelY + 'px';
-                label.style.fontSize = Math.max(8, 11 * scale) + 'px';
                 if (isHovered || isSelected) {
                     label.style.background = '#667eea';
                 }
