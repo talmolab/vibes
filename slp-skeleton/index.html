@@ -175,6 +175,20 @@
         }
         .stat { display: flex; gap: 5px; }
         .stat-label { color: #667eea; }
+        .image-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            background: #4ade80;
+            color: #000;
+            font-size: 10px;
+            border-radius: 3px;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+        .image-badge.no-image {
+            background: #666;
+            color: #ccc;
+        }
         @media (max-width: 900px) {
             .main-layout { grid-template-columns: 1fr; }
             .info-panel { max-height: 400px; }
@@ -265,6 +279,10 @@
         let hoveredNode = null;
         let hoveredEdge = null;
         let nodePositions = [];
+        let currentImage = null;
+        let imageCache = new Map();
+        let hasEmbeddedImages = false;
+        let videoInfo = null;
 
         // UI Elements
         const canvas = document.getElementById('canvas');
@@ -296,9 +314,22 @@
             } else if (type === 'result') {
                 hideLoading();
                 handleResult(data);
+            } else if (type === 'frame') {
+                handleFrameResult(data);
             } else if (type === 'error') {
                 hideLoading();
                 alert('Error: ' + data.message);
+            }
+        }
+
+        function handleFrameResult(data) {
+            const { frameIdx, image } = data;
+            if (image) {
+                // Cache the image
+                const cacheKey = `${currentFrameIdx}`;
+                imageCache.set(cacheKey, image);
+                currentImage = image;
+                render();
             }
         }
 
@@ -306,9 +337,18 @@
             skeleton = data.skeleton;
             frames = data.frames || [];
             currentFrameIdx = 0;
+            hasEmbeddedImages = data.hasEmbeddedImages || false;
+            videoInfo = data.videoInfo || null;
+
+            // Clear image cache
+            imageCache.clear();
+            currentImage = null;
 
             // Update UI
-            document.getElementById('skeletonName').textContent = skeleton.name || 'Skeleton';
+            const badgeHtml = hasEmbeddedImages
+                ? '<span class="image-badge">Images</span>'
+                : '<span class="image-badge no-image">No Images</span>';
+            document.getElementById('skeletonName').innerHTML = (skeleton.name || 'Skeleton') + badgeHtml;
             document.getElementById('nodeCount').textContent = skeleton.nodes.length;
             document.getElementById('edgeCount').textContent = skeleton.edges.length;
             document.getElementById('symCount').textContent = skeleton.symmetries.length;
@@ -329,6 +369,33 @@
 
             mainLayout.style.display = 'grid';
             resizeCanvas();
+
+            // Load first frame image if available
+            if (hasEmbeddedImages && frames.length > 0) {
+                loadCurrentFrameImage();
+            }
+        }
+
+        // Load image for current frame from worker
+        function loadCurrentFrameImage() {
+            if (!hasEmbeddedImages || frames.length === 0 || !worker) return;
+
+            const frame = frames[currentFrameIdx];
+            const cacheKey = `${currentFrameIdx}`;
+
+            // Check cache first
+            if (imageCache.has(cacheKey)) {
+                currentImage = imageCache.get(cacheKey);
+                render();
+                return;
+            }
+
+            // Request image from worker
+            worker.postMessage({
+                type: 'getFrame',
+                frameIdx: frame.frameIdx,
+                videoIdx: frame.videoIdx || 0
+            });
         }
 
         // Canvas resize
@@ -472,10 +539,46 @@
                 points = frames[currentFrameIdx].instances[0].points;
             }
 
+            // Get image dimensions if available
+            let imgWidth = 0, imgHeight = 0;
+            if (currentImage) {
+                if (currentImage instanceof ImageBitmap) {
+                    imgWidth = currentImage.width;
+                    imgHeight = currentImage.height;
+                } else if (currentImage instanceof ImageData) {
+                    imgWidth = currentImage.width;
+                    imgHeight = currentImage.height;
+                }
+            }
+
             // Calculate positions
             nodePositions = [];
-            if (points && points.length > 0 && points.some(p => p !== null)) {
-                // Use actual pose positions
+
+            if (currentImage && imgWidth > 0 && imgHeight > 0) {
+                // Calculate transform to fit image in canvas with padding
+                const padding = 20;
+                const scale = Math.min((width - padding * 2) / imgWidth, (height - padding * 2) / imgHeight);
+                const offsetX = (width - imgWidth * scale) / 2;
+                const offsetY = (height - imgHeight * scale) / 2;
+
+                // Draw image
+                ctx.drawImage(currentImage, offsetX, offsetY, imgWidth * scale, imgHeight * scale);
+
+                // Calculate node positions from pose data (in image coordinates)
+                if (points && points.length > 0) {
+                    points.forEach(pt => {
+                        if (pt) {
+                            nodePositions.push({
+                                x: pt[0] * scale + offsetX,
+                                y: pt[1] * scale + offsetY
+                            });
+                        } else {
+                            nodePositions.push(null);
+                        }
+                    });
+                }
+            } else if (points && points.length > 0 && points.some(p => p !== null)) {
+                // No image - use pose bounds for positioning
                 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
                 points.forEach(pt => {
                     if (pt) {
@@ -589,7 +692,13 @@
         function goToFrame(idx) {
             currentFrameIdx = Math.max(0, Math.min(frames.length - 1, idx));
             updateFrameInfo();
-            render();
+
+            // Load image for the new frame
+            if (hasEmbeddedImages) {
+                loadCurrentFrameImage();
+            } else {
+                render();
+            }
         }
 
         // Canvas mouse interaction
