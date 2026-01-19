@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SLP Skeleton Viewer</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "h5wasm": "https://unpkg.com/h5wasm@0.8.8/dist/esm/hdf5_hl.js",
+            "yaml": "https://esm.sh/yaml@2.6.1",
+            "skia-canvas": "data:text/javascript,export class Canvas{}",
+            "child_process": "data:text/javascript,export function spawn(){}"
+        }
+    }
+    </script>
     <style>
         * { box-sizing: border-box; }
         body {
@@ -264,6 +274,8 @@
     </div>
 
     <script type="module">
+        import { loadSlp } from 'https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.1.8/dist/index.js';
+
         // Edge colors
         const EDGE_COLORS = [
             '#667eea', '#4ade80', '#fbbf24', '#f472b6',
@@ -271,8 +283,9 @@
         ];
 
         // State
+        let labels = null;
         let skeleton = null;
-        let frames = [];
+        let labeledFrames = [];
         let currentFrameIdx = 0;
         let selectedNode = null;
         let selectedEdge = null;
@@ -282,7 +295,6 @@
         let currentImage = null;
         let imageCache = new Map();
         let hasEmbeddedImages = false;
-        let videoInfo = null;
 
         // UI Elements
         const canvas = document.getElementById('canvas');
@@ -294,51 +306,28 @@
         const fileInput = document.getElementById('fileInput');
         const nodeLabelsContainer = document.getElementById('nodeLabels');
 
-        // Worker
-        let worker = null;
-
-        function initWorker() {
-            if (worker) worker.terminate();
-            worker = new Worker('./skeleton-worker.js');
-            worker.onmessage = handleWorkerMessage;
-            worker.onerror = (e) => {
-                hideLoading();
-                alert('Worker error: ' + e.message);
-            };
+        // Loading UI
+        function showLoading(text) {
+            loadingText.textContent = text;
+            loading.classList.add('visible');
+        }
+        function hideLoading() {
+            loading.classList.remove('visible');
         }
 
-        function handleWorkerMessage(e) {
-            const { type, data } = e.data;
-            if (type === 'loading') {
-                showLoading(data.message);
-            } else if (type === 'result') {
-                hideLoading();
-                handleResult(data);
-            } else if (type === 'frame') {
-                handleFrameResult(data);
-            } else if (type === 'error') {
-                hideLoading();
-                alert('Error: ' + data.message);
-            }
+        function getEdgeColor(idx) {
+            return EDGE_COLORS[idx % EDGE_COLORS.length];
         }
 
-        function handleFrameResult(data) {
-            const { frameIdx, image } = data;
-            if (image) {
-                // Cache the image
-                const cacheKey = `${currentFrameIdx}`;
-                imageCache.set(cacheKey, image);
-                currentImage = image;
-                render();
-            }
-        }
-
-        function handleResult(data) {
-            skeleton = data.skeleton;
-            frames = data.frames || [];
+        // Handle loaded labels
+        function handleResult(loadedLabels) {
+            labels = loadedLabels;
+            skeleton = labels.skeletons[0];
+            labeledFrames = labels.labeledFrames;
             currentFrameIdx = 0;
-            hasEmbeddedImages = data.hasEmbeddedImages || false;
-            videoInfo = data.videoInfo || null;
+
+            // Check for embedded images
+            hasEmbeddedImages = labels.videos.some(v => v.hasEmbeddedImages);
 
             // Clear image cache
             imageCache.clear();
@@ -359,9 +348,9 @@
 
             // Frame navigation
             const frameNav = document.getElementById('frameNav');
-            if (frames.length > 0) {
+            if (labeledFrames.length > 0) {
                 frameNav.style.display = 'flex';
-                document.getElementById('frameSlider').max = frames.length - 1;
+                document.getElementById('frameSlider').max = labeledFrames.length - 1;
                 updateFrameInfo();
             } else {
                 frameNav.style.display = 'none';
@@ -371,17 +360,18 @@
             resizeCanvas();
 
             // Load first frame image if available
-            if (hasEmbeddedImages && frames.length > 0) {
+            if (hasEmbeddedImages && labeledFrames.length > 0) {
                 loadCurrentFrameImage();
             }
         }
 
-        // Load image for current frame from worker
-        function loadCurrentFrameImage() {
-            if (!hasEmbeddedImages || frames.length === 0 || !worker) return;
+        // Load image for current frame
+        async function loadCurrentFrameImage() {
+            if (!hasEmbeddedImages || labeledFrames.length === 0) return;
 
-            const frame = frames[currentFrameIdx];
-            const cacheKey = `${currentFrameIdx}`;
+            const frame = labeledFrames[currentFrameIdx];
+            const video = frame.video;
+            const cacheKey = `${labels.videos.indexOf(video)}_${frame.frameIdx}`;
 
             // Check cache first
             if (imageCache.has(cacheKey)) {
@@ -390,12 +380,19 @@
                 return;
             }
 
-            // Request image from worker
-            worker.postMessage({
-                type: 'getFrame',
-                frameIdx: frame.frameIdx,
-                videoIdx: frame.videoIdx || 0
-            });
+            // Get image from video backend
+            if (video.backend) {
+                try {
+                    const image = await video.backend.getFrame(frame.frameIdx);
+                    if (image) {
+                        imageCache.set(cacheKey, image);
+                        currentImage = image;
+                        render();
+                    }
+                } catch (err) {
+                    console.warn('Error loading frame image:', err);
+                }
+            }
         }
 
         // Canvas resize
@@ -409,24 +406,12 @@
             render();
         }
 
-        // Loading UI
-        function showLoading(text) {
-            loadingText.textContent = text;
-            loading.classList.add('visible');
-        }
-        function hideLoading() {
-            loading.classList.remove('visible');
-        }
-
-        function getEdgeColor(idx) {
-            return EDGE_COLORS[idx % EDGE_COLORS.length];
-        }
-
         // Table population
         function populateNodesTable() {
             const tbody = document.getElementById('nodesTable');
             tbody.innerHTML = '';
-            skeleton.nodes.forEach((name, idx) => {
+            skeleton.nodes.forEach((node, idx) => {
+                const name = node.name || node;
                 const tr = document.createElement('tr');
                 tr.dataset.nodeIdx = idx;
                 tr.innerHTML = `<td>${idx}</td><td>${name}</td>`;
@@ -440,14 +425,16 @@
         function populateEdgesTable() {
             const tbody = document.getElementById('edgesTable');
             tbody.innerHTML = '';
-            skeleton.edges.forEach(([srcIdx, dstIdx], idx) => {
+            skeleton.edges.forEach((edge, idx) => {
+                const srcName = edge.source.name || edge.source;
+                const dstName = edge.destination.name || edge.destination;
                 const color = getEdgeColor(idx);
                 const tr = document.createElement('tr');
                 tr.dataset.edgeIdx = idx;
                 tr.innerHTML = `
                     <td><span class="color-swatch" style="background:${color}"></span></td>
-                    <td>${skeleton.nodes[srcIdx]}</td>
-                    <td>${skeleton.nodes[dstIdx]}</td>
+                    <td>${srcName}</td>
+                    <td>${dstName}</td>
                 `;
                 tr.addEventListener('mouseenter', () => hoverEdge(idx));
                 tr.addEventListener('mouseleave', () => hoverEdge(null));
@@ -463,9 +450,14 @@
                 tbody.innerHTML = '<tr><td colspan="2" style="color:#666;text-align:center;">No symmetries</td></tr>';
                 return;
             }
-            skeleton.symmetries.forEach(([nodeA, nodeB]) => {
+            skeleton.symmetries.forEach(symmetry => {
+                // Symmetry objects have .at(0) and .at(1) methods or .nodes Set
+                const nodeA = symmetry.at ? symmetry.at(0) : symmetry[0];
+                const nodeB = symmetry.at ? symmetry.at(1) : symmetry[1];
+                const nameA = nodeA?.name || nodeA;
+                const nameB = nodeB?.name || nodeB;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${skeleton.nodes[nodeA]}</td><td>${skeleton.nodes[nodeB]}</td>`;
+                tr.innerHTML = `<td>${nameA}</td><td>${nameB}</td>`;
                 tbody.appendChild(tr);
             });
         }
@@ -535,8 +527,14 @@
 
             // Get points from current frame
             let points = null;
-            if (frames.length > 0 && frames[currentFrameIdx]?.instances?.[0]) {
-                points = frames[currentFrameIdx].instances[0].points;
+            if (labeledFrames.length > 0 && labeledFrames[currentFrameIdx]?.instances?.[0]) {
+                const instance = labeledFrames[currentFrameIdx].instances[0];
+                points = instance.points.map(p => {
+                    if (!p || !p.visible) return null;
+                    const [x, y] = p.xy;
+                    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                    return [x, y];
+                });
             }
 
             // Get image dimensions if available
@@ -624,7 +622,9 @@
             nodeLabelsContainer.innerHTML = '';
 
             // Draw edges
-            skeleton.edges.forEach(([srcIdx, dstIdx], idx) => {
+            skeleton.edges.forEach((edge, idx) => {
+                const srcIdx = skeleton.index(edge.source.name || edge.source);
+                const dstIdx = skeleton.index(edge.destination.name || edge.destination);
                 const srcPos = nodePositions[srcIdx];
                 const dstPos = nodePositions[dstIdx];
                 if (!srcPos || !dstPos) return;
@@ -647,7 +647,8 @@
             ctx.globalAlpha = 1;
 
             // Draw nodes
-            skeleton.nodes.forEach((name, idx) => {
+            skeleton.nodes.forEach((node, idx) => {
+                const name = node.name || node;
                 const pos = nodePositions[idx];
                 if (!pos) return;
 
@@ -683,14 +684,14 @@
 
         // Frame navigation
         function updateFrameInfo() {
-            const frame = frames[currentFrameIdx];
+            const frame = labeledFrames[currentFrameIdx];
             const frameIdx = frame?.frameIdx ?? currentFrameIdx;
-            document.getElementById('frameInfo').textContent = `Frame ${frameIdx} (${currentFrameIdx + 1}/${frames.length})`;
+            document.getElementById('frameInfo').textContent = `Frame ${frameIdx} (${currentFrameIdx + 1}/${labeledFrames.length})`;
             document.getElementById('frameSlider').value = currentFrameIdx;
         }
 
         function goToFrame(idx) {
-            currentFrameIdx = Math.max(0, Math.min(frames.length - 1, idx));
+            currentFrameIdx = Math.max(0, Math.min(labeledFrames.length - 1, idx));
             updateFrameInfo();
 
             // Load image for the new frame
@@ -733,7 +734,9 @@
             if (foundNode === null) {
                 let foundEdge = null;
                 let minEdgeDist = 10;
-                skeleton.edges.forEach(([srcIdx, dstIdx], idx) => {
+                skeleton.edges.forEach((edge, idx) => {
+                    const srcIdx = skeleton.index(edge.source.name || edge.source);
+                    const dstIdx = skeleton.index(edge.destination.name || edge.destination);
                     const srcPos = nodePositions[srcIdx];
                     const dstPos = nodePositions[dstIdx];
                     if (!srcPos || !dstPos) return;
@@ -812,17 +815,35 @@
         window.addEventListener('resize', resizeCanvas);
 
         // Load functions
-        function loadFromUrl(url) {
-            initWorker();
+        async function loadFromUrl(url) {
             showLoading('Loading SLP file...');
-            worker.postMessage({ type: 'loadUrl', url });
-            updateUrl(url);
+            try {
+                const loadedLabels = await loadSlp(url, {
+                    openVideos: true,
+                    h5: { stream: 'range', filenameHint: url.split('/').pop() }
+                });
+                hideLoading();
+                handleResult(loadedLabels);
+                updateUrl(url);
+            } catch (err) {
+                hideLoading();
+                alert('Error: ' + err.message);
+            }
         }
 
-        function loadFromFile(file) {
-            initWorker();
+        async function loadFromFile(file) {
             showLoading('Loading SLP file...');
-            worker.postMessage({ type: 'loadFile', file });
+            try {
+                const loadedLabels = await loadSlp(file, {
+                    openVideos: true,
+                    h5: { filenameHint: file.name }
+                });
+                hideLoading();
+                handleResult(loadedLabels);
+            } catch (err) {
+                hideLoading();
+                alert('Error: ' + err.message);
+            }
         }
 
         function updateUrl(slpUrl) {
