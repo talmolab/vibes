@@ -299,7 +299,7 @@
     </div>
 
     <script type="module">
-        import { loadSlp } from 'https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.1.8/dist/index.js';
+        import { loadSlp } from 'https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.1.9/dist/index.js';
 
         // Edge colors
         const EDGE_COLORS = [
@@ -450,7 +450,11 @@
             const loadingForFrame = currentFrameIdx;
             if (video.backend) {
                 try {
-                    const image = await video.backend.getFrame(frame.frameIdx);
+                    let image = await video.backend.getFrame(frame.frameIdx);
+                    // Convert ImageData to ImageBitmap for canvas rendering
+                    if (image && image instanceof ImageData) {
+                        image = await createImageBitmap(image);
+                    }
                     if (image) {
                         imageCache.set(cacheKey, image);
                         // Only set currentImage if we're still on the same frame
