@@ -72,7 +72,8 @@
             position: relative;
             min-height: 500px;
         }
-        canvas { display: block; width: 100%; height: 100%; }
+        canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+        canvas:active { cursor: grabbing; }
         .info-panel {
             background: #2a2a2a;
             border-radius: 8px;
@@ -219,6 +220,7 @@
             <button id="loadUrlBtn">Load URL</button>
             <button id="loadFileBtn">Open File</button>
             <input type="file" id="fileInput" accept=".slp,.pkg.slp" style="display: none;">
+            <button id="resetViewBtn" title="Reset zoom and pan (R)">Reset View</button>
         </div>
 
         <div class="loading" id="loading">
@@ -296,6 +298,27 @@
         let imageCache = new Map();
         let hasEmbeddedImages = false;
 
+        // Zoom/pan state
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+
+        // Touch state
+        let touchStartX = null;
+        let touchStartY = null;
+        let touchStartOffsetX = null;
+        let touchStartOffsetY = null;
+        let initialPinchDistance = null;
+        let initialPinchScale = null;
+        let pinchCenterX = null;
+        let pinchCenterY = null;
+
+        // Content bounds (for constraining pan)
+        let contentBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
         // UI Elements
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -332,6 +355,11 @@
             // Clear image cache
             imageCache.clear();
             currentImage = null;
+
+            // Reset zoom/pan
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
 
             // Update UI
             const badgeHtml = hasEmbeddedImages
@@ -525,6 +553,11 @@
             ctx.fillStyle = '#0a0a0a';
             ctx.fillRect(0, 0, width, height);
 
+            // Apply zoom/pan transform
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
             // Get points from current frame
             let points = null;
             if (labeledFrames.length > 0 && labeledFrames[currentFrameIdx]?.instances?.[0]) {
@@ -616,6 +649,25 @@
             }
 
             renderSkeleton(width, height);
+
+            // Restore context after zoom/pan transform
+            ctx.restore();
+
+            // Update content bounds for pan constraints
+            if (nodePositions.length > 0) {
+                contentBounds.minX = Infinity;
+                contentBounds.minY = Infinity;
+                contentBounds.maxX = -Infinity;
+                contentBounds.maxY = -Infinity;
+                nodePositions.forEach(pos => {
+                    if (pos) {
+                        contentBounds.minX = Math.min(contentBounds.minX, pos.x);
+                        contentBounds.minY = Math.min(contentBounds.minY, pos.y);
+                        contentBounds.maxX = Math.max(contentBounds.maxX, pos.x);
+                        contentBounds.maxY = Math.max(contentBounds.maxY, pos.y);
+                    }
+                });
+            }
         }
 
         function renderSkeleton(width, height) {
@@ -669,12 +721,15 @@
 
                 ctx.globalAlpha = 1;
 
-                // Node label
+                // Node label (apply zoom/pan transform to position)
                 const label = document.createElement('div');
                 label.className = 'node-label';
                 label.textContent = name;
-                label.style.left = (pos.x + 14) + 'px';
-                label.style.top = (pos.y - 8) + 'px';
+                const labelX = pos.x * scale + offsetX + 14 * scale;
+                const labelY = pos.y * scale + offsetY - 8 * scale;
+                label.style.left = labelX + 'px';
+                label.style.top = labelY + 'px';
+                label.style.fontSize = Math.max(8, 11 * scale) + 'px';
                 if (isHovered || isSelected) {
                     label.style.background = '#667eea';
                 }
@@ -704,14 +759,19 @@
 
         // Canvas mouse interaction
         canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) return; // Don't detect hover during drag
             if (!skeleton || nodePositions.length === 0) return;
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            const screenX = e.clientX - rect.left;
+            const screenY = e.clientY - rect.top;
 
-            // Check node proximity
+            // Convert screen coordinates to content coordinates
+            const x = (screenX - offsetX) / scale;
+            const y = (screenY - offsetY) / scale;
+
+            // Check node proximity (adjust threshold for zoom level)
             let foundNode = null;
-            let minDist = 20;
+            let minDist = 20 / scale;
             nodePositions.forEach((pos, idx) => {
                 if (!pos) return;
                 const dist = Math.hypot(pos.x - x, pos.y - y);
@@ -733,7 +793,7 @@
             // Check edge proximity
             if (foundNode === null) {
                 let foundEdge = null;
-                let minEdgeDist = 10;
+                let minEdgeDist = 10 / scale;
                 skeleton.edges.forEach((edge, idx) => {
                     const srcIdx = skeleton.index(edge.source.name || edge.source);
                     const dstIdx = skeleton.index(edge.destination.name || edge.destination);
@@ -780,6 +840,181 @@
             return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
         }
 
+        // Zoom/pan helper functions
+        function constrainOffset() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            const width = rect.width;
+            const height = rect.height;
+
+            // Calculate content bounds
+            const padding = 50;
+            const contentWidth = (contentBounds.maxX - contentBounds.minX) * scale + padding * 2;
+            const contentHeight = (contentBounds.maxY - contentBounds.minY) * scale + padding * 2;
+
+            // Require at least 25% visible on each axis
+            const minVisible = 0.25;
+            const minVisibleX = contentWidth * minVisible;
+            const minVisibleY = contentHeight * minVisible;
+
+            const minOffsetX = minVisibleX - contentWidth;
+            const maxOffsetX = width - minVisibleX;
+            const minOffsetY = minVisibleY - contentHeight;
+            const maxOffsetY = height - minVisibleY;
+
+            offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, offsetX));
+            offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, offsetY));
+        }
+
+        function zoomToPoint(pointX, pointY, newScale) {
+            const rect = canvas.parentElement.getBoundingClientRect();
+
+            // Find content point under the cursor
+            const contentX = (pointX - offsetX) / scale;
+            const contentY = (pointY - offsetY) / scale;
+
+            // Calculate new offset to keep that content point at the same position
+            offsetX = pointX - contentX * newScale;
+            offsetY = pointY - contentY * newScale;
+
+            scale = newScale;
+            constrainOffset();
+        }
+
+        function resetView() {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+            render();
+        }
+
+        // Mouse wheel zoom handler
+        function onWheel(e) {
+            e.preventDefault();
+
+            const rect = canvas.parentElement.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Normalize deltaY for different input devices
+            let delta = e.deltaY;
+            if (e.deltaMode === 1) delta *= 40;
+            delta = Math.max(-100, Math.min(100, delta));
+
+            // Exponential scaling
+            const zoomFactor = Math.exp(-delta * 0.002);
+            const newScale = Math.max(0.1, Math.min(50, scale * zoomFactor));
+
+            zoomToPoint(mouseX, mouseY, newScale);
+            render();
+        }
+
+        // Mouse drag pan handlers
+        function onMouseDown(e) {
+            // Only start drag if not clicking on a node/edge
+            if (hoveredNode === null && hoveredEdge === null) {
+                isDragging = true;
+                dragStartX = e.clientX - offsetX;
+                dragStartY = e.clientY - offsetY;
+                canvas.style.cursor = 'grabbing';
+            }
+        }
+
+        function onMouseMoveDrag(e) {
+            if (isDragging) {
+                offsetX = e.clientX - dragStartX;
+                offsetY = e.clientY - dragStartY;
+                constrainOffset();
+                render();
+            }
+        }
+
+        function onMouseUp() {
+            if (isDragging) {
+                isDragging = false;
+                canvas.style.cursor = 'default';
+            }
+        }
+
+        // Touch event handlers
+        function getTouchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function getTouchCenter(touches, rect) {
+            return {
+                x: (touches[0].clientX + touches[1].clientX) / 2 - rect.left,
+                y: (touches[0].clientY + touches[1].clientY) / 2 - rect.top
+            };
+        }
+
+        function onTouchStart(e) {
+            if (e.touches.length === 2) {
+                e.preventDefault();
+                initialPinchDistance = getTouchDistance(e.touches);
+                initialPinchScale = scale;
+                const rect = canvas.parentElement.getBoundingClientRect();
+                const center = getTouchCenter(e.touches, rect);
+                pinchCenterX = center.x;
+                pinchCenterY = center.y;
+                touchStartX = null;
+                touchStartY = null;
+            } else if (e.touches.length === 1) {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                touchStartOffsetX = offsetX;
+                touchStartOffsetY = offsetY;
+            }
+        }
+
+        function onTouchMove(e) {
+            if (e.touches.length === 2 && initialPinchDistance !== null) {
+                e.preventDefault();
+                const rect = canvas.parentElement.getBoundingClientRect();
+                const currentCenter = getTouchCenter(e.touches, rect);
+                const currentDistance = getTouchDistance(e.touches);
+                const pinchRatio = currentDistance / initialPinchDistance;
+                const newScale = Math.max(0.1, Math.min(50, initialPinchScale * pinchRatio));
+
+                // Zoom towards pinch center
+                const contentX = (pinchCenterX - offsetX) / scale;
+                const contentY = (pinchCenterY - offsetY) / scale;
+
+                offsetX = pinchCenterX - contentX * newScale;
+                offsetY = pinchCenterY - contentY * newScale;
+
+                // Pan with pinch center movement
+                offsetX += currentCenter.x - pinchCenterX;
+                offsetY += currentCenter.y - pinchCenterY;
+                pinchCenterX = currentCenter.x;
+                pinchCenterY = currentCenter.y;
+
+                scale = newScale;
+                constrainOffset();
+                render();
+            } else if (e.touches.length === 1 && touchStartX !== null) {
+                e.preventDefault();
+                offsetX = touchStartOffsetX + (e.touches[0].clientX - touchStartX);
+                offsetY = touchStartOffsetY + (e.touches[0].clientY - touchStartY);
+                constrainOffset();
+                render();
+            }
+        }
+
+        function onTouchEnd(e) {
+            if (e.touches.length < 2) {
+                initialPinchDistance = null;
+                initialPinchScale = null;
+                pinchCenterX = null;
+                pinchCenterY = null;
+            }
+            if (e.touches.length === 0) {
+                touchStartX = null;
+                touchStartY = null;
+            }
+        }
+
         // Tab switching
         document.querySelectorAll('.info-tab').forEach(tab => {
             tab.addEventListener('click', () => {
@@ -811,6 +1046,26 @@
         document.getElementById('prevFrameBtn').addEventListener('click', () => goToFrame(currentFrameIdx - 1));
         document.getElementById('nextFrameBtn').addEventListener('click', () => goToFrame(currentFrameIdx + 1));
         document.getElementById('frameSlider').addEventListener('input', (e) => goToFrame(parseInt(e.target.value)));
+
+        // Reset view button
+        document.getElementById('resetViewBtn').addEventListener('click', resetView);
+
+        // Zoom/pan event listeners
+        canvas.addEventListener('wheel', onWheel, { passive: false });
+        canvas.addEventListener('mousedown', onMouseDown);
+        document.addEventListener('mousemove', onMouseMoveDrag);
+        document.addEventListener('mouseup', onMouseUp);
+        canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+        canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+        canvas.addEventListener('touchend', onTouchEnd);
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            if (e.key === 'r' || e.key === 'R') {
+                resetView();
+            }
+        });
 
         window.addEventListener('resize', resizeCanvas);
 
