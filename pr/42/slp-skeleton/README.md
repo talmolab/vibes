@@ -34,6 +34,22 @@ Interactive viewer for exploring skeleton structure from SLEAP `.slp` files. Loa
 - Supports PNG and JPEG encoded embedded frames
 - O(1) frame lookup with BGR channel handling
 
+## Changelog
+
+### v0.1.9
+- URL state persistence for frame index and zoom/pan (`frame`, `zoom`, `panX`, `panY` params)
+- Skeleton renders immediately while image loads (no waiting for slow network)
+- CSS-animated loading spinner indicator
+- Fixed race condition when loading from URL with frame param
+
+### v0.1.8
+- Nodes, edges, and labels stay constant size when zooming
+- Fixed pan constraints to allow panning in all directions
+
+### v0.1.7
+- Added zoom and pan controls (mouse wheel, drag, pinch-to-zoom)
+- Reset View button (R key shortcut)
+
 ## Initial prompt
 
 ```
