@@ -18,6 +18,7 @@ Self-contained HTML tools and applets for the web.
 - [Link Unfurl Preview](link-unfurl/) <a href="link-unfurl/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Preview how links appear when shared on social media</span>
 - [Video Event Annotator](event-annotator/) <a href="event-annotator/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Frame-accurate event segment annotation with multi-track timeline</span>
 - [SLP Viewer](slp-viewer/) <a href="slp-viewer/README" class="readme-badge">[README]</a><br><span class="vibe-desc">SLEAP pose visualization with video overlay, embedded pkg.slp support, track colors, and shareable links</span>
+- [SLP Skeleton](slp-skeleton/) <a href="slp-skeleton/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Interactive skeleton structure viewer for SLEAP .slp files with node/edge inspection</span>
 - [GitHub Stats](gh-stats/) <a href="gh-stats/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Contribution stats dashboard with commits, LOC, PRs, and activity heatmap</span>
 - [PyPI Name Checker](pypi-name-checker/) <a href="pypi-name-checker/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Check Python package name availability with suggestions</span>
 - [CORS Check](cors-check/) <a href="cors-check/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Test URL CORS status and get the right fetch code</span>
