@@ -200,6 +200,25 @@
             background: #666;
             color: #ccc;
         }
+        .canvas-loading {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #aaa;
+            font-size: 12px;
+        }
+        .canvas-loading.hidden { display: none; }
+        .canvas-spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #333;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
         @media (max-width: 900px) {
             .main-layout { grid-template-columns: 1fr; }
             .info-panel { max-height: 400px; }
@@ -232,6 +251,10 @@
             <div class="viewer-panel">
                 <canvas id="canvas"></canvas>
                 <div id="nodeLabels"></div>
+                <div class="canvas-loading hidden" id="canvasLoading">
+                    <div class="canvas-spinner"></div>
+                    <span>Loading image...</span>
+                </div>
             </div>
             <div class="info-panel">
                 <div class="info-header" id="skeletonName">Skeleton</div>
@@ -299,6 +322,7 @@
         let hasEmbeddedImages = false;
         let isImageLoading = false;
         let expectedImageSize = null; // { width, height } from video
+        const canvasLoadingEl = document.getElementById('canvasLoading');
 
         // Zoom/pan state
         let scale = 1;
@@ -345,7 +369,7 @@
         }
 
         // Handle loaded labels
-        function handleResult(loadedLabels) {
+        function handleResult(loadedLabels, skipInitialImageLoad = false) {
             labels = loadedLabels;
             skeleton = labels.skeletons[0];
             labeledFrames = labels.labeledFrames;
@@ -389,8 +413,8 @@
             mainLayout.style.display = 'grid';
             resizeCanvas();
 
-            // Load first frame image if available
-            if (hasEmbeddedImages && labeledFrames.length > 0) {
+            // Load first frame image if available (skip if we'll immediately switch frames)
+            if (hasEmbeddedImages && labeledFrames.length > 0 && !skipInitialImageLoad) {
                 loadCurrentFrameImage();
             }
         }
@@ -418,23 +442,32 @@
 
             // Show skeleton immediately while image loads
             isImageLoading = true;
+            canvasLoadingEl.classList.remove('hidden');
             currentImage = null;
             render();
 
             // Get image from video backend
+            const loadingForFrame = currentFrameIdx;
             if (video.backend) {
                 try {
                     const image = await video.backend.getFrame(frame.frameIdx);
                     if (image) {
                         imageCache.set(cacheKey, image);
-                        currentImage = image;
+                        // Only set currentImage if we're still on the same frame
+                        if (currentFrameIdx === loadingForFrame) {
+                            currentImage = image;
+                        }
                     }
                 } catch (err) {
                     console.warn('Error loading frame image:', err);
                 }
             }
-            isImageLoading = false;
-            render();
+            // Only clear loading state if we're still on the same frame
+            if (currentFrameIdx === loadingForFrame) {
+                isImageLoading = false;
+                canvasLoadingEl.classList.add('hidden');
+                render();
+            }
         }
 
         // Canvas resize
@@ -669,37 +702,6 @@
 
             // Restore context after zoom/pan transform
             ctx.restore();
-
-            // Draw loading indicator if image is loading
-            if (isImageLoading) {
-                ctx.save();
-                const indicatorX = 15;
-                const indicatorY = height - 30;
-
-                // Draw spinner
-                const spinnerRadius = 8;
-                const time = Date.now() / 1000;
-
-                ctx.strokeStyle = '#667eea';
-                ctx.lineWidth = 2;
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                const startAngle = time * 4;
-                ctx.arc(indicatorX + spinnerRadius, indicatorY, spinnerRadius, startAngle, startAngle + Math.PI * 1.5);
-                ctx.stroke();
-
-                // "Loading image..." text
-                ctx.fillStyle = '#aaa';
-                ctx.font = '12px system-ui, -apple-system, sans-serif';
-                ctx.textAlign = 'left';
-                ctx.fillText('Loading image...', indicatorX + spinnerRadius * 2 + 8, indicatorY + 4);
-                ctx.restore();
-
-                // Animate spinner
-                requestAnimationFrame(() => {
-                    if (isImageLoading) render();
-                });
-            }
 
             // Update content bounds for pan constraints
             if (nodePositions.length > 0) {
@@ -1127,7 +1129,7 @@
         window.addEventListener('resize', resizeCanvas);
 
         // Load functions
-        async function loadFromUrl(url) {
+        async function loadFromUrl(url, skipInitialImageLoad = false) {
             showLoading('Loading SLP file...');
             try {
                 const loadedLabels = await loadSlp(url, {
@@ -1135,7 +1137,7 @@
                     h5: { stream: 'range', filenameHint: url.split('/').pop() }
                 });
                 hideLoading();
-                handleResult(loadedLabels);
+                handleResult(loadedLabels, skipInitialImageLoad);
                 updateUrl(url);
             } catch (err) {
                 hideLoading();
@@ -1205,7 +1207,9 @@
 
         if (urlParam) {
             urlInput.value = urlParam;
-            loadFromUrl(urlParam).then(() => {
+            // Skip initial image load if we're going to switch to a different frame
+            const skipInitialImage = initialViewState.frame !== null && initialViewState.frame !== 0;
+            loadFromUrl(urlParam, skipInitialImage).then(() => {
                 // Apply initial view state after loading
                 // Set zoom/pan first (before goToFrame which updates URL)
                 if (initialViewState.zoom !== null) {
