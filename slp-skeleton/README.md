@@ -6,7 +6,7 @@ Interactive viewer for exploring skeleton structure from SLEAP `.slp` files. Loa
 
 ## Features
 
-- Load SLP files from URL (with lazy/streaming support) or local file
+- Load SLP files from URL (with streaming via HTTP range requests) or local file
 - Renders skeleton overlay on pose coordinates
 - **Embedded image support** - displays frame images underneath skeleton (for `.pkg.slp` files)
 - Interactive node and edge highlighting (hover/click on viewer or table)
@@ -28,15 +28,11 @@ Interactive viewer for exploring skeleton structure from SLEAP `.slp` files. Loa
 
 ## Technical Notes
 
-- Uses h5wasm via a Web Worker for HDF5 parsing
-- Detects embedded video in `videoN/video` HDF5 datasets
-- Supports PNG and JPEG encoded frames
-- Frame extraction uses range requests for efficient streaming
-
-## Known Issues
-
-- `@talmolab/sleap-io.js` streaming mode has a bug where skeleton nodes aren't populated ([issue #26](https://github.com/talmolab/sleap-io.js/issues/26))
-- Currently using direct h5wasm parsing as a workaround
+- Uses [`@talmolab/sleap-io.js`](https://github.com/talmolab/sleap-io.js) v0.1.8 for SLP parsing
+- Automatic Web Worker for HDF5 operations (keeps main thread responsive)
+- HTTP range requests for efficient streaming (downloads only needed data)
+- Supports PNG and JPEG encoded embedded frames
+- O(1) frame lookup with BGR channel handling
 
 ## Initial prompt
 
