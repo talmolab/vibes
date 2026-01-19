@@ -846,20 +846,25 @@
             const width = rect.width;
             const height = rect.height;
 
-            // Calculate content bounds
-            const padding = 50;
-            const contentWidth = (contentBounds.maxX - contentBounds.minX) * scale + padding * 2;
-            const contentHeight = (contentBounds.maxY - contentBounds.minY) * scale + padding * 2;
+            // If no content bounds yet, skip
+            if (contentBounds.minX === Infinity) return;
 
-            // Require at least 25% visible on each axis
+            // Content dimensions in screen space
+            const scaledWidth = (contentBounds.maxX - contentBounds.minX) * scale;
+            const scaledHeight = (contentBounds.maxY - contentBounds.minY) * scale;
+
+            // Require at least 25% visible on each axis (but cap at half the container)
             const minVisible = 0.25;
-            const minVisibleX = contentWidth * minVisible;
-            const minVisibleY = contentHeight * minVisible;
+            const minVisibleX = Math.min(scaledWidth * minVisible, width * 0.5);
+            const minVisibleY = Math.min(scaledHeight * minVisible, height * 0.5);
 
-            const minOffsetX = minVisibleX - contentWidth;
-            const maxOffsetX = width - minVisibleX;
-            const minOffsetY = minVisibleY - contentHeight;
-            const maxOffsetY = height - minVisibleY;
+            // Calculate bounds based on where content actually is:
+            // - Right edge of content (maxX * scale + offsetX) should be >= minVisibleX
+            // - Left edge of content (minX * scale + offsetX) should be <= width - minVisibleX
+            const minOffsetX = minVisibleX - contentBounds.maxX * scale;
+            const maxOffsetX = width - minVisibleX - contentBounds.minX * scale;
+            const minOffsetY = minVisibleY - contentBounds.maxY * scale;
+            const maxOffsetY = height - minVisibleY - contentBounds.minY * scale;
 
             offsetX = Math.max(minOffsetX, Math.min(maxOffsetX, offsetX));
             offsetY = Math.max(minOffsetY, Math.min(maxOffsetY, offsetY));
