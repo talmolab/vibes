@@ -588,20 +588,20 @@
             if (currentImage && imgWidth > 0 && imgHeight > 0) {
                 // Calculate transform to fit image in canvas with padding
                 const padding = 20;
-                const scale = Math.min((width - padding * 2) / imgWidth, (height - padding * 2) / imgHeight);
-                const offsetX = (width - imgWidth * scale) / 2;
-                const offsetY = (height - imgHeight * scale) / 2;
+                const baseScale = Math.min((width - padding * 2) / imgWidth, (height - padding * 2) / imgHeight);
+                const baseOffsetX = (width - imgWidth * baseScale) / 2;
+                const baseOffsetY = (height - imgHeight * baseScale) / 2;
 
                 // Draw image
-                ctx.drawImage(currentImage, offsetX, offsetY, imgWidth * scale, imgHeight * scale);
+                ctx.drawImage(currentImage, baseOffsetX, baseOffsetY, imgWidth * baseScale, imgHeight * baseScale);
 
                 // Calculate node positions from pose data (in image coordinates)
                 if (points && points.length > 0) {
                     points.forEach(pt => {
                         if (pt) {
                             nodePositions.push({
-                                x: pt[0] * scale + offsetX,
-                                y: pt[1] * scale + offsetY
+                                x: pt[0] * baseScale + baseOffsetX,
+                                y: pt[1] * baseScale + baseOffsetY
                             });
                         } else {
                             nodePositions.push(null);
@@ -623,13 +623,13 @@
                 const padding = 80;
                 const dataWidth = maxX - minX || 1;
                 const dataHeight = maxY - minY || 1;
-                const scale = Math.min((width - padding * 2) / dataWidth, (height - padding * 2) / dataHeight);
-                const offsetX = (width - dataWidth * scale) / 2 - minX * scale;
-                const offsetY = (height - dataHeight * scale) / 2 - minY * scale;
+                const baseScale = Math.min((width - padding * 2) / dataWidth, (height - padding * 2) / dataHeight);
+                const baseOffsetX = (width - dataWidth * baseScale) / 2 - minX * baseScale;
+                const baseOffsetY = (height - dataHeight * baseScale) / 2 - minY * baseScale;
 
                 points.forEach(pt => {
                     if (pt) {
-                        nodePositions.push({ x: pt[0] * scale + offsetX, y: pt[1] * scale + offsetY });
+                        nodePositions.push({ x: pt[0] * baseScale + baseOffsetX, y: pt[1] * baseScale + baseOffsetY });
                     } else {
                         nodePositions.push(null);
                     }
