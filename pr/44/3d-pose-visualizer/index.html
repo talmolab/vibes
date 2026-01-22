@@ -792,10 +792,9 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/shaders/CopyShader.js"></script>
 
-    <!-- MediaPipe -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/vision_bundle.min.js"></script>
+    <script type="module">
+        import { PoseLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
-    <script>
         // ==================== CONFIGURATION ====================
         const CONFIG = {
             colors: {
@@ -1412,21 +1411,30 @@
         // ==================== MEDIAPIPE SETUP ====================
         async function initMediaPipe() {
             const vision = await FilesetResolver.forVisionTasks(
-                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm'
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
             );
 
-            poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task',
-                    delegate: 'GPU'
-                },
-                runningMode: 'VIDEO',
-                numPoses: 1,
-                minPoseDetectionConfidence: 0.5,
-                minPosePresenceConfidence: 0.5,
-                minTrackingConfidence: 0.5,
-                outputSegmentationMasks: false
-            });
+            // Try GPU first, fall back to CPU
+            try {
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numPoses: 1
+                });
+            } catch (gpuError) {
+                console.warn('GPU delegate failed, falling back to CPU:', gpuError);
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task',
+                        delegate: 'CPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numPoses: 1
+                });
+            }
 
             document.getElementById('ai-status').classList.add('active');
             document.getElementById('ai-val').textContent = 'ONLINE';
@@ -1952,8 +1960,9 @@
 
             } catch (error) {
                 console.error('Initialization error:', error);
-                loadingText.textContent = 'INITIALIZATION FAILED';
+                loadingText.textContent = 'ERROR: ' + (error.message || 'Unknown error');
                 loadingText.style.color = '#ff3366';
+                loadingBar.style.background = '#ff3366';
             }
         }
 
