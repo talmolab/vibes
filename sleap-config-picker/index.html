@@ -908,42 +908,49 @@
 
         <!-- Data Summary with Frame Viewer -->
         <div id="data-summary" class="card hidden">
-            <div class="card-header">
-                <h2 class="card-title">Data Summary</h2>
-                <span class="badge success" id="file-name-badge"></span>
-            </div>
-
-            <!-- Frame Viewer -->
-            <div class="frame-viewer" id="frame-viewer">
-                <canvas id="frame-canvas" class="frame-canvas"></canvas>
-                <div class="frame-controls">
-                    <button class="small secondary" id="prev-frame-btn">&lt;</button>
-                    <input type="range" id="frame-slider" class="frame-slider" min="0" max="0" value="0">
-                    <button class="small secondary" id="next-frame-btn">&gt;</button>
-                    <span class="frame-info" id="frame-info">Frame 0 / 0</span>
+            <div class="card-header" style="cursor: pointer;" onclick="toggleCollapsible('data-summary-content')">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h2 class="card-title">Data Summary</h2>
+                    <span class="badge success" id="file-name-badge"></span>
                 </div>
+                <span class="chevron" id="data-summary-content-chevron">&#9660;</span>
             </div>
+            <div class="collapsible-content expanded" id="data-summary-content">
+                <!-- Frame Viewer -->
+                <div class="frame-viewer" id="frame-viewer">
+                    <canvas id="frame-canvas" class="frame-canvas"></canvas>
+                    <div class="frame-controls">
+                        <button class="small secondary" id="prev-frame-btn">&lt;</button>
+                        <input type="range" id="frame-slider" class="frame-slider" min="0" max="0" value="0">
+                        <button class="small secondary" id="next-frame-btn">&gt;</button>
+                        <span class="frame-info" id="frame-info">Frame 0 / 0</span>
+                    </div>
+                </div>
 
-            <div class="stats-grid" id="stats-grid"></div>
-            <div id="skeleton-info" style="margin-top: 15px;"></div>
+                <div class="stats-grid" id="stats-grid"></div>
+                <div id="skeleton-info" style="margin-top: 15px;"></div>
+            </div>
         </div>
 
         <!-- Step 2: Model Type Selection -->
         <div id="model-type-section" class="card hidden">
-            <div class="card-header">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleCollapsible('model-type-content')">
                 <h2 class="card-title">Step 2: Select Model Type</h2>
+                <span class="chevron" id="model-type-content-chevron">&#9660;</span>
             </div>
-            <div id="model-recommendation" class="info-box success"></div>
+            <div class="collapsible-content expanded" id="model-type-content">
+                <div id="model-recommendation" class="info-box success"></div>
 
-            <div class="model-type-grid" id="model-type-grid"></div>
+                <div class="model-type-grid" id="model-type-grid"></div>
 
-            <div id="topdown-info" class="info-box warning hidden">
-                <strong>Top-Down Pipeline:</strong> This requires training two models sequentially:
-                <ol style="margin: 10px 0 0; padding-left: 20px;">
-                    <li><strong>Centroid Model</strong> - Detects animal centers in full images</li>
-                    <li><strong>Centered Instance Model</strong> - Detects keypoints in cropped regions</li>
-                </ol>
-                You'll configure both models and get two YAML configs.
+                <div id="topdown-info" class="info-box warning hidden">
+                    <strong>Top-Down Pipeline:</strong> This requires training two models sequentially:
+                    <ol style="margin: 10px 0 0; padding-left: 20px;">
+                        <li><strong>Centroid Model</strong> - Detects animal centers in full images</li>
+                        <li><strong>Centered Instance Model</strong> - Detects keypoints in cropped regions</li>
+                    </ol>
+                    You'll configure both models and get two YAML configs.
+                </div>
             </div>
         </div>
 
@@ -1294,8 +1301,8 @@
                                 </span>
                             </label>
                             <select id="output-stride" onchange="updateSigmaVisualization()">
-                                <option value="1" selected>1 (Full res)</option>
-                                <option value="2">2 (Half res)</option>
+                                <option value="1">1 (Full res)</option>
+                                <option value="2" selected>2 (Half res)</option>
                                 <option value="4">4 (Quarter)</option>
                             </select>
                         </div>
@@ -1319,8 +1326,8 @@
                                 </label>
                                 <select id="paf-output-stride">
                                     <option value="1">1 (Full res)</option>
-                                    <option value="2" selected>2 (Half res)</option>
-                                    <option value="4">4 (Quarter)</option>
+                                    <option value="2">2 (Half res)</option>
+                                    <option value="4" selected>4 (Quarter)</option>
                                 </select>
                             </div>
                         </div>
@@ -1464,6 +1471,37 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </div>
                     </div>
+
+                    <!-- Pretrained Checkpoints -->
+                    <div class="toggle-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
+                        <input type="checkbox" id="load-pretrained-ckpts">
+                        <label for="load-pretrained-ckpts" style="display: inline; margin: 0;">
+                            Load Pretrained Checkpoints
+                            <span class="tooltip">?
+                                <span class="tooltip-text">Load weights from previously trained models to fine-tune or resume training.<br><br><b>Backbone weights:</b> Load encoder/decoder weights from a prior model (useful for transfer learning).<br><br><b>Head weights:</b> Load the prediction head weights (useful when fine-tuning on similar data).</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div id="pretrained-ckpts-options" class="hidden" style="margin-left: 25px; padding: 15px; background: #333; border-radius: 6px; margin-top: 10px;">
+                        <div class="form-group" style="margin: 0 0 10px;">
+                            <label style="font-size: 0.85rem;">
+                                Pretrained Backbone Weights
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Path to a .ckpt file containing backbone (encoder/decoder) weights. The model architecture must match. Leave empty to train from scratch.</span>
+                                </span>
+                            </label>
+                            <input type="text" id="pretrained-backbone-path" placeholder="e.g., ./models/prev_run/best.ckpt">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.85rem;">
+                                Pretrained Head Weights
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Path to a .ckpt file containing head (prediction layer) weights. Useful when fine-tuning on data with the same skeleton. Leave empty to initialize randomly.</span>
+                                </span>
+                            </label>
+                            <input type="text" id="pretrained-head-path" placeholder="e.g., ./models/prev_run/best.ckpt">
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Trainer Config -->
@@ -1472,6 +1510,17 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <span class="chevron" id="trainer-config-chevron">&#9660;</span>
                 </div>
                 <div class="collapsible-content expanded" id="trainer-config">
+                    <!-- Additional Parameters Toggle -->
+                    <div class="toggle-group">
+                        <input type="checkbox" id="show-additional-params">
+                        <label for="show-additional-params" style="display: inline; margin: 0;">
+                            Additional Parameters
+                            <span class="tooltip">?
+                                <span class="tooltip-text">Advanced training parameters. The defaults work well for most cases, but you can customize batch size, learning rate, optimizer, and other settings here.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div id="additional-params-options" class="hidden" style="margin-left: 25px; padding: 15px; background: #333; border-radius: 6px; margin-top: 10px; margin-bottom: 15px;">
                     <div class="grid-3">
                         <div class="form-group">
                             <label>
@@ -1563,6 +1612,98 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </div>
                     </div>
+
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>
+                                Min Steps/Epoch
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Minimum training steps per epoch. Useful for small datasets to ensure enough gradient updates.</span>
+                                </span>
+                            </label>
+                            <input type="number" id="min-steps" value="200" min="10" max="1000">
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                Random Seed
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Seed for reproducibility. Leave empty for random initialization.</span>
+                                </span>
+                            </label>
+                            <input type="number" id="random-seed" placeholder="None (random)">
+                        </div>
+                    </div>
+
+                    <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Learning Rate Scheduler
+                        <span class="tooltip">?
+                            <span class="tooltip-text">Adjusts the learning rate during training to improve convergence. A well-tuned scheduler can significantly improve final model accuracy.</span>
+                        </span>
+                    </h4>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>
+                                Scheduler Type
+                                <span class="tooltip">?
+                                    <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when validation loss stops improving. Best for most cases.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs. More predictable but requires tuning.<br><br><b>None:</b> Constant learning rate throughout training.</span>
+                                </span>
+                            </label>
+                            <select id="lr-scheduler" onchange="updateSchedulerOptions()">
+                                <option value="reduce_on_plateau" selected>Reduce on Plateau</option>
+                                <option value="step_lr">Step LR</option>
+                                <option value="none">None (Constant)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="lr-patience-group">
+                            <label>
+                                Patience
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Epochs without improvement before reducing LR (for Reduce on Plateau) or early stopping.</span>
+                                </span>
+                            </label>
+                            <input type="number" id="lr-patience" value="5" min="1" max="50">
+                        </div>
+                    </div>
+                    <!-- Step LR options (shown when Step LR is selected) -->
+                    <div id="step-lr-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Step Size (epochs)
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate is reduced every N epochs. Default: 10</span></span>
+                                </label>
+                                <input type="number" id="step-lr-step-size" value="10" min="1" max="100" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Gamma (decay factor)
+                                    <span class="tooltip">?<span class="tooltip-text">Multiply LR by this factor at each step. Default: 0.1 (reduce to 10%)</span></span>
+                                </label>
+                                <input type="number" id="step-lr-gamma" value="0.1" min="0.01" max="1" step="0.01" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Reduce on Plateau options (shown when ReduceLROnPlateau is selected) -->
+                    <div id="reduce-lr-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: block; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Factor
+                                    <span class="tooltip">?<span class="tooltip-text">Factor by which to reduce LR when plateau detected. Default: 0.5</span></span>
+                                </label>
+                                <input type="number" id="reduce-lr-factor" value="0.5" min="0.01" max="1" step="0.1" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Min LR
+                                    <span class="tooltip">?<span class="tooltip-text">Minimum learning rate. Default: 1e-8</span></span>
+                                </label>
+                                <input type="number" id="reduce-lr-min" value="1e-8" min="0" max="0.01" step="1e-9" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Cooldown
+                                    <span class="tooltip">?<span class="tooltip-text">Number of epochs to wait before resuming normal operation after LR has been reduced. Default: 3</span></span>
+                                </label>
+                                <input type="number" id="reduce-lr-cooldown" value="3" min="0" max="20" step="1" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    </div>
                     <div class="toggle-group">
                         <input type="checkbox" id="save-ckpt" checked onchange="toggleSaveCkptOptions()">
                         <label for="save-ckpt" style="display: inline; margin: 0;">Save Checkpoints</label>
@@ -1608,6 +1749,30 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <div id="advanced-options" style="margin-top: 15px;">
                         <h4 style="margin: 0 0 15px; color: #888; font-size: 0.9rem;">Additional Settings</h4>
 
+                        <!-- Memory Cache Estimate Card -->
+                        <div id="cache-memory-card" class="card" style="padding: 12px; margin-bottom: 15px; background: #222; border: 1px solid var(--border); display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: 600; color: #ccc;">💾 Image Cache Memory</span>
+                                <span id="cache-memory-status" class="badge" style="padding: 4px 10px; border-radius: 4px; font-size: 0.75rem;">-</span>
+                            </div>
+                            <div style="font-size: 0.85rem; color: #888;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div>Raw image data:</div>
+                                    <div id="cache-raw-size" style="text-align: right; color: #ccc;">-</div>
+                                    <div>With overhead (1.2×):</div>
+                                    <div id="cache-total-size" style="text-align: right; color: #ccc;">-</div>
+                                    <div id="cache-workers-row" style="display: none;">Per-worker replication:</div>
+                                    <div id="cache-workers-size" style="text-align: right; color: #ccc; display: none;">-</div>
+                                </div>
+                                <div id="cache-memory-note" style="margin-top: 8px; padding: 8px; background: rgba(234, 179, 8, 0.1); border-radius: 4px; font-size: 0.8rem; display: none;">
+                                    ⚠️ With memory caching + num_workers > 0, each worker gets a copy of the cache.
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="info-box" style="background: rgba(16, 185, 129, 0.15); border-color: #10b981; margin-bottom: 10px;">
+                            <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2+ and change <strong>Data Pipeline</strong> to "Cache to Memory" or "Cache to Disk".
+                        </div>
                         <div class="grid-2">
                             <div class="form-group">
                                 <label>
@@ -1616,7 +1781,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                         <span class="tooltip-text">Number of parallel processes for loading data.<br><br><b>0 (Default):</b> Required when using torch_dataset (reading directly from video). This is the recommended setting.<br><br><b>>0:</b> Only use with caching pipelines (cache_img_memory/disk). More workers can speed up training but use more RAM.<br><br><b>Note:</b> On Mac/Windows, only use >0 with caching enabled.</span>
                                     </span>
                                 </label>
-                                <select id="num-workers">
+                                <select id="num-workers" onchange="updateCacheMemoryEstimate()">
                                     <option value="0" selected>0 (Default)</option>
                                     <option value="2">2</option>
                                     <option value="4">4</option>
@@ -1630,102 +1795,11 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                         <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images to memory or disk for faster training.</span>
                                     </span>
                                 </label>
-                                <select id="data-pipeline">
+                                <select id="data-pipeline" onchange="updateCacheMemoryEstimate()">
                                     <option value="torch_dataset" selected>torch_dataset (Default)</option>
                                     <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
                                     <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
                                 </select>
-                            </div>
-                        </div>
-
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label>
-                                    Min Steps/Epoch
-                                    <span class="tooltip">?
-                                        <span class="tooltip-text">Minimum training steps per epoch. Useful for small datasets to ensure enough gradient updates.</span>
-                                    </span>
-                                </label>
-                                <input type="number" id="min-steps" value="200" min="10" max="1000">
-                            </div>
-                            <div class="form-group">
-                                <label>
-                                    Random Seed
-                                    <span class="tooltip">?
-                                        <span class="tooltip-text">Seed for reproducibility. Leave empty for random initialization.</span>
-                                    </span>
-                                </label>
-                                <input type="number" id="random-seed" placeholder="None (random)">
-                            </div>
-                        </div>
-
-                        <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Learning Rate Scheduler
-                            <span class="tooltip">?
-                                <span class="tooltip-text">Adjusts the learning rate during training to improve convergence. A well-tuned scheduler can significantly improve final model accuracy.</span>
-                            </span>
-                        </h4>
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label>
-                                    Scheduler Type
-                                    <span class="tooltip">?
-                                        <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when validation loss stops improving. Best for most cases.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs. More predictable but requires tuning.<br><br><b>None:</b> Constant learning rate throughout training.</span>
-                                    </span>
-                                </label>
-                                <select id="lr-scheduler" onchange="updateSchedulerOptions()">
-                                    <option value="reduce_on_plateau" selected>Reduce on Plateau</option>
-                                    <option value="step_lr">Step LR</option>
-                                    <option value="none">None (Constant)</option>
-                                </select>
-                            </div>
-                            <div class="form-group" id="lr-patience-group">
-                                <label>
-                                    Patience
-                                    <span class="tooltip">?
-                                        <span class="tooltip-text">Epochs without improvement before reducing LR (for Reduce on Plateau) or early stopping.</span>
-                                    </span>
-                                </label>
-                                <input type="number" id="lr-patience" value="5" min="1" max="50">
-                            </div>
-                        </div>
-                        <!-- Step LR options (shown when Step LR is selected) -->
-                        <div id="step-lr-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
-                            <div class="grid-2" style="gap: 10px;">
-                                <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Step Size (epochs)
-                                        <span class="tooltip">?<span class="tooltip-text">Learning rate is reduced every N epochs. Default: 10</span></span>
-                                    </label>
-                                    <input type="number" id="step-lr-step-size" value="10" min="1" max="100" style="padding: 6px;">
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Gamma (decay factor)
-                                        <span class="tooltip">?<span class="tooltip-text">Multiply LR by this factor at each step. Default: 0.1 (reduce to 10%)</span></span>
-                                    </label>
-                                    <input type="number" id="step-lr-gamma" value="0.1" min="0.01" max="1" step="0.01" style="padding: 6px;">
-                                </div>
-                            </div>
-                        </div>
-                        <!-- Reduce on Plateau options (shown when ReduceLROnPlateau is selected) -->
-                        <div id="reduce-lr-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: block; margin-bottom: 10px;">
-                            <div class="grid-2" style="gap: 10px;">
-                                <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Factor
-                                        <span class="tooltip">?<span class="tooltip-text">Factor by which to reduce LR when plateau detected. Default: 0.5</span></span>
-                                    </label>
-                                    <input type="number" id="reduce-lr-factor" value="0.5" min="0.01" max="1" step="0.1" style="padding: 6px;">
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Min LR
-                                        <span class="tooltip">?<span class="tooltip-text">Minimum learning rate. Default: 1e-8</span></span>
-                                    </label>
-                                    <input type="number" id="reduce-lr-min" value="1e-8" min="0" max="0.01" step="1e-9" style="padding: 6px;">
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Cooldown
-                                        <span class="tooltip">?<span class="tooltip-text">Number of epochs to wait before resuming normal operation after LR has been reduced. Default: 3</span></span>
-                                    </label>
-                                    <input type="number" id="reduce-lr-cooldown" value="3" min="0" max="20" step="1" style="padding: 6px;">
-                                </div>
                             </div>
                         </div>
 
@@ -1930,8 +2004,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     The anchor point is inherited from the Centroid model configuration.
                 </div>
 
-                <!-- Crop Size Section -->
-                <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Crop Configuration</h4>
+                <!-- Crop Configuration (collapsible) -->
+                <div class="collapsible-header" onclick="toggleCollapsible('ci-crop-config')">
+                    <h3>Crop Configuration</h3>
+                    <span class="chevron" id="ci-crop-config-chevron">&#9660;</span>
+                </div>
+                <div class="collapsible-content expanded" id="ci-crop-config">
                 <div class="grid-2">
                     <div class="form-group">
                         <label>
@@ -2002,8 +2080,80 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     </div>
                 </div>
 
-                <!-- Model Architecture -->
-                <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Model Architecture</h4>
+                <!-- CI Data Augmentation -->
+                <div class="toggle-group" style="margin-top: 15px;">
+                    <input type="checkbox" id="ci-use-augmentation">
+                    <label for="ci-use-augmentation" style="display: inline; margin: 0;">
+                        Enable Data Augmentation
+                        <span class="tooltip">?
+                            <span class="tooltip-text">Data augmentation for the Centered Instance model. Since crops are smaller and centered, you may want different augmentation settings than the Centroid model. Rotation and scale affect the required crop padding.</span>
+                        </span>
+                    </label>
+                </div>
+                <div id="ci-aug-preview-section" class="hidden">
+                    <div class="aug-container">
+                        <div class="aug-sliders">
+                            <h4>Geometric</h4>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span class="slider-label">Rotation</span>
+                                    <span class="slider-value" id="ci-rotation-value">±15°</span>
+                                </div>
+                                <input type="range" id="ci-aug-rotation-val" min="0" max="180" value="15" oninput="updateCIAugSliderValue('rotation')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span class="slider-label">Scale</span>
+                                    <span class="slider-value" id="ci-scale-aug-value">0.9 - 1.1</span>
+                                </div>
+                                <input type="range" id="ci-aug-scale-val" min="0" max="50" value="10" oninput="updateCIAugSliderValue('scale')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span class="slider-label">Translate</span>
+                                    <span class="slider-value" id="ci-translate-value">0%</span>
+                                </div>
+                                <input type="range" id="ci-aug-translate-val" min="0" max="30" value="0" oninput="updateCIAugSliderValue('translate')">
+                            </div>
+                            <h4>Intensity</h4>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span class="slider-label">Brightness</span>
+                                    <span class="slider-value" id="ci-brightness-value">0%</span>
+                                </div>
+                                <input type="range" id="ci-aug-brightness-val" min="0" max="50" value="0" oninput="updateCIAugSliderValue('brightness')">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span class="slider-label">Contrast</span>
+                                    <span class="slider-value" id="ci-contrast-value">0%</span>
+                                </div>
+                                <input type="range" id="ci-aug-contrast-val" min="0" max="50" value="0" oninput="updateCIAugSliderValue('contrast')">
+                            </div>
+                        </div>
+                        <div class="aug-preview-container">
+                            <div class="aug-preview-pair">
+                                <div class="aug-preview-box">
+                                    <canvas id="ci-aug-original" width="150" height="150"></canvas>
+                                    <div class="label">Original Crop</div>
+                                </div>
+                                <div class="aug-preview-box">
+                                    <canvas id="ci-aug-preview" width="150" height="150"></canvas>
+                                    <div class="label">Augmented</div>
+                                </div>
+                            </div>
+                            <button onclick="randomizeCIAugPreview()">Randomize</button>
+                        </div>
+                    </div>
+                </div>
+                </div>
+
+                <!-- Model Configuration (collapsible) -->
+                <div class="collapsible-header" onclick="toggleCollapsible('ci-model-config')">
+                    <h3>Model Configuration</h3>
+                    <span class="chevron" id="ci-model-config-chevron">&#9660;</span>
+                </div>
+                <div class="collapsible-content expanded" id="ci-model-config">
                 <div class="grid-2">
                     <div class="form-group">
                         <label>
@@ -2045,18 +2195,6 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             <option value="32">32 (RF: ~156px)</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>
-                            Output Stride
-                            <span class="tooltip">?
-                                <span class="tooltip-text">Stride of output confidence maps. Stride=1 is full resolution. Higher values reduce memory but decrease precision.</span>
-                            </span>
-                        </label>
-                        <select id="ci-output-stride">
-                            <option value="1" selected>1 (Full res)</option>
-                            <option value="2">2 (Half res)</option>
-                        </select>
-                    </div>
                 </div>
                 <div class="grid-2">
                     <div class="form-group">
@@ -2080,7 +2218,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 </div>
 
                 <!-- Head Configuration -->
-                <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Head Configuration</h4>
+                <h4 style="margin: 20px 0 10px; color: #666; font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 15px;">Head Configuration</h4>
                 <div class="grid-2">
                     <div class="form-group">
                         <label>
@@ -2099,8 +2237,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </span>
                         </label>
                         <select id="ci-output-stride" onchange="updateCISigmaVisualization()">
-                            <option value="1" selected>1 (full resolution)</option>
-                            <option value="2">2 (half resolution)</option>
+                            <option value="1">1 (full resolution)</option>
+                            <option value="2" selected>2 (half resolution)</option>
                         </select>
                     </div>
                 </div>
@@ -2140,8 +2278,55 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     </div>
                 </details>
 
-                <!-- Training Configuration for Centered Instance -->
-                <h4 style="margin: 20px 0 10px; color: #888; font-size: 0.9rem;">Training Configuration</h4>
+                <!-- CI Pretrained Checkpoints -->
+                <div class="toggle-group" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid var(--border);">
+                    <input type="checkbox" id="ci-load-pretrained-ckpts">
+                    <label for="ci-load-pretrained-ckpts" style="display: inline; margin: 0;">
+                        Load Pretrained Checkpoints
+                        <span class="tooltip">?
+                            <span class="tooltip-text">Load weights from previously trained models to fine-tune or resume training.<br><br><b>Backbone weights:</b> Load encoder/decoder weights from a prior model (useful for transfer learning).<br><br><b>Head weights:</b> Load the prediction head weights (useful when fine-tuning on similar data).</span>
+                        </span>
+                    </label>
+                </div>
+                <div id="ci-pretrained-ckpts-options" class="hidden" style="margin-left: 25px; padding: 15px; background: #333; border-radius: 6px; margin-top: 10px;">
+                    <div class="form-group" style="margin: 0 0 10px;">
+                        <label style="font-size: 0.85rem;">
+                            Pretrained Backbone Weights
+                            <span class="tooltip">?
+                                <span class="tooltip-text">Path to a .ckpt file containing backbone (encoder/decoder) weights. The model architecture must match. Leave empty to train from scratch.</span>
+                            </span>
+                        </label>
+                        <input type="text" id="ci-pretrained-backbone-path" placeholder="e.g., ./models/prev_run/best.ckpt">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label style="font-size: 0.85rem;">
+                            Pretrained Head Weights
+                            <span class="tooltip">?
+                                <span class="tooltip-text">Path to a .ckpt file containing head (prediction layer) weights. Useful when fine-tuning on data with the same skeleton. Leave empty to initialize randomly.</span>
+                            </span>
+                        </label>
+                        <input type="text" id="ci-pretrained-head-path" placeholder="e.g., ./models/prev_run/best.ckpt">
+                    </div>
+                </div>
+                </div>
+
+                <!-- Trainer Configuration (collapsible) -->
+                <div class="collapsible-header" onclick="toggleCollapsible('ci-trainer-config')">
+                    <h3>Trainer Configuration</h3>
+                    <span class="chevron" id="ci-trainer-config-chevron">&#9660;</span>
+                </div>
+                <div class="collapsible-content expanded" id="ci-trainer-config">
+                    <!-- CI Additional Parameters Toggle -->
+                    <div class="toggle-group">
+                        <input type="checkbox" id="ci-show-additional-params">
+                        <label for="ci-show-additional-params" style="display: inline; margin: 0;">
+                            Additional Parameters
+                            <span class="tooltip">?
+                                <span class="tooltip-text">Advanced training parameters. The defaults work well for most cases, but you can customize batch size, learning rate, optimizer, and other settings here.</span>
+                            </span>
+                        </label>
+                    </div>
+                    <div id="ci-additional-params-options" class="hidden" style="margin-left: 25px; padding: 15px; background: #333; border-radius: 6px; margin-top: 10px; margin-bottom: 15px;">
                 <div class="grid-3">
                     <div class="form-group">
                         <label>
@@ -2233,80 +2418,6 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </div>
                     </div>
                 </div>
-                <div class="toggle-group">
-                    <input type="checkbox" id="ci-save-ckpt" checked onchange="toggleCISaveCkptOptions()">
-                    <label for="ci-save-ckpt" style="display: inline; margin: 0;">Save Checkpoints</label>
-                </div>
-                <div id="ci-save-ckpt-options" class="toggle-options" style="margin-left: 25px; padding: 10px; background: #333; border-radius: 6px; font-size: 0.85rem;">
-                    <div class="grid-2" style="gap: 10px;">
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">Checkpoint Directory
-                                <span class="tooltip">?<span class="tooltip-text">Directory where the run folder will be created. Default: ./models</span></span>
-                            </label>
-                            <input type="text" id="ci-ckpt-dir" value="./models" placeholder="./models" style="padding: 6px;">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">Run Name
-                                <span class="tooltip">?<span class="tooltip-text">Name for this training run. Leave empty to auto-generate from timestamp + head type.</span></span>
-                            </label>
-                            <input type="text" id="ci-run-name" placeholder="Auto (timestamp_head)" style="padding: 6px;">
-                        </div>
-                    </div>
-                    <div class="grid-2" style="gap: 10px; margin-top: 10px;">
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">Save Top K
-                                <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
-                            </label>
-                            <input type="number" id="ci-ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">
-                                <input type="checkbox" id="ci-ckpt-save-last" checked style="margin-right: 5px;">
-                                Save Last Checkpoint
-                            </label>
-                        </div>
-                    </div>
-                    <div class="form-group" style="margin: 10px 0 0;">
-                        <label style="font-size: 0.8rem;">Resume from Checkpoint
-                            <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
-                        </label>
-                        <input type="text" id="ci-resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
-                    </div>
-                </div>
-
-                <!-- Advanced Training Options for CI (no longer hidden behind toggle) -->
-                <div id="ci-advanced-options" style="margin-top: 15px;">
-                    <h4 style="margin: 0 0 15px; color: #888; font-size: 0.9rem;">Additional Settings</h4>
-
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>
-                                Num Workers
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Parallel processes for loading data.<br><br><b>0:</b> Required for torch_dataset (default).<br><b>>0:</b> Only with caching pipelines.</span>
-                                </span>
-                            </label>
-                            <select id="ci-num-workers">
-                                <option value="0" selected>0 (Default)</option>
-                                <option value="2">2</option>
-                                <option value="4">4</option>
-                                <option value="8">8</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                Data Pipeline
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images for faster training.</span>
-                                </span>
-                            </label>
-                            <select id="ci-data-pipeline">
-                                <option value="torch_dataset" selected>torch_dataset (Default)</option>
-                                <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
-                                <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
-                            </select>
-                        </div>
-                    </div>
 
                     <div class="grid-2">
                         <div class="form-group">
@@ -2394,6 +2505,106 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                 </label>
                                 <input type="number" id="ci-reduce-lr-cooldown" value="3" min="0" max="20" step="1" style="padding: 6px;">
                             </div>
+                        </div>
+                    </div>
+                    </div>
+                <div class="toggle-group">
+                    <input type="checkbox" id="ci-save-ckpt" checked onchange="toggleCISaveCkptOptions()">
+                    <label for="ci-save-ckpt" style="display: inline; margin: 0;">Save Checkpoints</label>
+                </div>
+                <div id="ci-save-ckpt-options" class="toggle-options" style="margin-left: 25px; padding: 10px; background: #333; border-radius: 6px; font-size: 0.85rem;">
+                    <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.8rem;">Checkpoint Directory
+                                <span class="tooltip">?<span class="tooltip-text">Directory where the run folder will be created. Default: ./models</span></span>
+                            </label>
+                            <input type="text" id="ci-ckpt-dir" value="./models" placeholder="./models" style="padding: 6px;">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.8rem;">Run Name
+                                <span class="tooltip">?<span class="tooltip-text">Name for this training run. Leave empty to auto-generate from timestamp + head type.</span></span>
+                            </label>
+                            <input type="text" id="ci-run-name" placeholder="Auto (timestamp_head)" style="padding: 6px;">
+                        </div>
+                    </div>
+                    <div class="grid-2" style="gap: 10px; margin-top: 10px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.8rem;">Save Top K
+                                <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
+                            </label>
+                            <input type="number" id="ci-ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
+                        </div>
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.8rem;">
+                                <input type="checkbox" id="ci-ckpt-save-last" checked style="margin-right: 5px;">
+                                Save Last Checkpoint
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin: 10px 0 0;">
+                        <label style="font-size: 0.8rem;">Resume from Checkpoint
+                            <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
+                        </label>
+                        <input type="text" id="ci-resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
+                    </div>
+                </div>
+                </div>
+
+                <!-- Additional Settings -->
+                <div id="ci-advanced-options" style="margin-top: 15px;">
+                    <h4 style="margin: 0 0 15px; color: #666; font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 15px;">Additional Settings</h4>
+
+                    <!-- CI Cache Memory Estimate Card -->
+                    <div id="ci-cache-memory-card" class="card" style="padding: 12px; margin-bottom: 15px; background: #222; border: 1px solid var(--border); display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-weight: 600; color: #ccc;">💾 Image Cache Memory</span>
+                            <span id="ci-cache-memory-status" class="badge" style="padding: 4px 10px; border-radius: 4px; font-size: 0.75rem;">-</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #888;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div>Raw image data:</div>
+                                <div id="ci-cache-raw-size" style="text-align: right; color: #ccc;">-</div>
+                                <div>With overhead (1.2×):</div>
+                                <div id="ci-cache-total-size" style="text-align: right; color: #ccc;">-</div>
+                                <div id="ci-cache-workers-row" style="display: none;">Per-worker replication:</div>
+                                <div id="ci-cache-workers-size" style="text-align: right; color: #ccc; display: none;">-</div>
+                            </div>
+                            <div id="ci-cache-memory-note" style="margin-top: 8px; padding: 8px; background: rgba(234, 179, 8, 0.1); border-radius: 4px; font-size: 0.8rem; display: none;">
+                                ⚠️ With memory caching + num_workers > 0, each worker gets a copy of the cache.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="info-box" style="background: rgba(16, 185, 129, 0.15); border-color: #10b981; margin-bottom: 10px;">
+                        <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2+ and change <strong>Data Pipeline</strong> to "Cache to Memory" or "Cache to Disk".
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label>
+                                Num Workers
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Parallel processes for loading data.<br><br><b>0:</b> Required for torch_dataset (default).<br><b>>0:</b> Only with caching pipelines.</span>
+                                </span>
+                            </label>
+                            <select id="ci-num-workers" onchange="updateCICacheMemoryEstimate()">
+                                <option value="0" selected>0 (Default)</option>
+                                <option value="2">2</option>
+                                <option value="4">4</option>
+                                <option value="8">8</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>
+                                Data Pipeline
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images for faster training.</span>
+                                </span>
+                            </label>
+                            <select id="ci-data-pipeline" onchange="updateCICacheMemoryEstimate()">
+                                <option value="torch_dataset" selected>torch_dataset (Default)</option>
+                                <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
+                                <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
+                            </select>
                         </div>
                     </div>
 
@@ -2629,6 +2840,58 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             <div style="margin-top: 15px;">
                 <button class="secondary hidden" onclick="downloadAllConfigs()" id="download-all-btn">Download All Configs</button>
             </div>
+
+            <!-- CLI Commands Section -->
+            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--border);">
+                <h3 style="margin: 0 0 15px; color: var(--text);">
+                    CLI Commands
+                    <span class="tooltip">?
+                        <span class="tooltip-text">Copy these commands to train your model using the sleap-nn command line interface. Make sure to update the paths to match your system.</span>
+                    </span>
+                </h3>
+
+                <div style="background: #1a1a2e; border: 1px solid var(--border); border-radius: 8px; padding: 15px; font-family: monospace; font-size: 0.85rem;">
+                    <div style="margin-bottom: 15px;">
+                        <div style="color: #888; font-size: 0.75rem; margin-bottom: 5px;">Basic training command:</div>
+                        <code id="cli-basic" style="color: #10b981; word-break: break-all;"></code>
+                        <button onclick="copyCLI('cli-basic')" style="margin-left: 10px; padding: 2px 8px; font-size: 0.7rem;" class="small secondary">Copy</button>
+                    </div>
+
+                    <div style="margin-bottom: 15px;">
+                        <div style="color: #888; font-size: 0.75rem; margin-bottom: 5px;">With labels path override:</div>
+                        <code id="cli-override" style="color: #f59e0b; word-break: break-all;"></code>
+                        <button onclick="copyCLI('cli-override')" style="margin-left: 10px; padding: 2px 8px; font-size: 0.7rem;" class="small secondary">Copy</button>
+                    </div>
+
+                    <div id="cli-topdown-section" class="hidden" style="margin-bottom: 15px; padding-top: 15px; border-top: 1px solid #333;">
+                        <div style="color: #888; font-size: 0.75rem; margin-bottom: 5px;">Train Centered Instance model (after centroid):</div>
+                        <code id="cli-ci" style="color: #667eea; word-break: break-all;"></code>
+                        <button onclick="copyCLI('cli-ci')" style="margin-left: 10px; padding: 2px 8px; font-size: 0.7rem;" class="small secondary">Copy</button>
+                    </div>
+                </div>
+
+                <details style="margin-top: 15px;">
+                    <summary style="cursor: pointer; font-size: 0.9rem; color: var(--accent); font-weight: 500;">Video Path Replacement Examples</summary>
+                    <div style="margin-top: 10px; background: #1a1a2e; border: 1px solid var(--border); border-radius: 8px; padding: 15px; font-family: monospace; font-size: 0.8rem;">
+                        <div style="color: #888; margin-bottom: 10px;">If your video files have moved, use these options:</div>
+
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #10b981; font-weight: 600; margin-bottom: 4px;"># Replace by order (if videos moved to new location):</div>
+                            <code style="color: #ccc;">sleap-nn train config.yaml --video-paths /new/path/video1.mp4 --video-paths /new/path/video2.mp4</code>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <div style="color: #f59e0b; font-weight: 600; margin-bottom: 4px;"># Map specific old path to new path:</div>
+                            <code style="color: #ccc;">sleap-nn train config.yaml --video-path-map "/old/server/video.mp4" "/local/data/video.mp4"</code>
+                        </div>
+
+                        <div>
+                            <div style="color: #667eea; font-weight: 600; margin-bottom: 4px;"># Map path prefix (useful when moving between machines):</div>
+                            <code style="color: #ccc;">sleap-nn train config.yaml --prefix-map "/remote/server/data" "/local/data"</code>
+                        </div>
+                    </div>
+                </details>
+            </div>
         </div>
 
         <!-- Navigation -->
@@ -2713,6 +2976,21 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             return Math.ceil(expandedSize - bboxSize);
         }
 
+        // Get current augmentation values from UI (forCI=true uses CI-specific augmentation sliders)
+        function getAugmentationParams(forCI = false) {
+            if (forCI) {
+                const rotationMax = parseInt(document.getElementById('ci-aug-rotation-val')?.value) || 0;
+                const scalePercent = parseInt(document.getElementById('ci-aug-scale-val')?.value) || 0;
+                const scaleMax = 1.0 + (scalePercent / 100);
+                return { rotationMax, scaleMax };
+            } else {
+                const rotationMax = parseInt(document.getElementById('aug-rotation-val')?.value) || 0;
+                const scalePercent = parseInt(document.getElementById('aug-scale-val')?.value) || 0;
+                const scaleMax = 1.0 + (scalePercent / 100);
+                return { rotationMax, scaleMax };
+            }
+        }
+
         // Compute suggested crop size following sleap-nn logic
         // Based on sleap_nn/data/instance_cropping.py:find_instance_crop_size
         function computeSuggestedCropSize(maxBboxDim, maxStride, useAugmentation = false, userPadding = null) {
@@ -2721,8 +2999,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // User specified padding overrides auto-computed padding
                 padding = userPadding;
             } else if (useAugmentation) {
-                // Default augmentation params: rotation ±180°, scale up to 1.1
-                padding = computeAugmentationPadding(maxBboxDim, 180, 1.1);
+                // Use CI-specific augmentation values for crop size calculation
+                const ciAugEnabled = document.getElementById('ci-use-augmentation')?.checked || false;
+                const { rotationMax, scaleMax } = getAugmentationParams(ciAugEnabled);
+                padding = computeAugmentationPadding(maxBboxDim, rotationMax, scaleMax);
             }
             const sizeWithPadding = maxBboxDim + padding;
             // Round up to be divisible by max_stride
@@ -2852,6 +3132,9 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             initSliders();
             initTabs();
             initAugToggle();
+            initCIAugToggle();
+            initPretrainedCkptsToggle();
+            initAdditionalParamsToggle();
             initAnchorCanvas();
             updateSteps();
         });
@@ -3062,33 +3345,37 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const framesDataset = h5file.get('frames');
             const numFrames = framesDataset ? framesDataset.shape[0] : 0;
 
-            // Build frame mapping: frame_id -> frame_idx (video frame index)
-            const frameIdToFrameIdx = {};
-            let firstLabeledFrameId = null;  // The frame_id that corresponds to frame_idx closest to 0
-            let minFrameIdx = Infinity;
+            // Build frame mapping: frame_id -> {videoIdx, frameIdx}
+            const frameIdToFrameInfo = {};
+            let firstLabeledFrameId = null;  // The frame_id for the first labeled frame (index 0)
+            let firstLabeledVideoIdx = 0;    // Which video contains the first labeled frame
+            let firstLabeledFrameIdx = 0;    // The frame_idx within that video
 
             if (framesDataset && framesDataset.shape[0] > 0) {
                 const framesRaw = framesDataset.value;
                 const isFramesArray = Array.isArray(framesRaw) && framesRaw.length > 0 && Array.isArray(framesRaw[0]);
 
                 for (let i = 0; i < framesDataset.shape[0]; i++) {
-                    let frameId, frameIdx;
+                    let frameId, videoIdx, frameIdx;
                     try {
                         if (isFramesArray) {
                             // [frame_id, video, frame_idx, instance_id_start, instance_id_end]
                             frameId = framesRaw[i][0];
+                            videoIdx = framesRaw[i][1];
                             frameIdx = framesRaw[i][2];
                         } else if (framesRaw.frame_id) {
                             frameId = framesRaw.frame_id[i];
+                            videoIdx = framesRaw.video ? framesRaw.video[i] : 0;
                             frameIdx = framesRaw.frame_idx[i];
                         } else continue;
 
-                        frameIdToFrameIdx[frameId] = frameIdx;
+                        frameIdToFrameInfo[frameId] = { videoIdx, frameIdx };
 
-                        // Track the frame_id with lowest frame_idx (closest to video frame 0)
-                        if (frameIdx < minFrameIdx) {
-                            minFrameIdx = frameIdx;
+                        // Track the first labeled frame (frame_id = 0 or first in list)
+                        if (firstLabeledFrameId === null || frameId === 0) {
                             firstLabeledFrameId = frameId;
+                            firstLabeledVideoIdx = videoIdx;
+                            firstLabeledFrameIdx = frameIdx;
                         }
                     } catch (e) { continue; }
                 }
@@ -3199,7 +3486,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         // Store best instance for visualization - prioritize instances from first labeled frame
                         // to match what the video preview shows (frame 0)
                         if (instancePoints.length >= nodes.length * 0.5) {
-                            const thisFrameIdx = frameIdToFrameIdx[frameId] ?? Infinity;
+                            const thisFrameIdx = frameIdToFrameInfo[frameId]?.frameIdx ?? Infinity;
                             // Update sample if:
                             // 1. We don't have one yet, OR
                             // 2. This instance is from an earlier frame (closer to frame 0), OR
@@ -3346,34 +3633,125 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 avgCentroidDist,
                 tracks,
                 numTracks: tracks.length,
-                keypointVisibility
+                keypointVisibility,
+                totalInstances: bboxSizes.length,  // Total valid instances for CI training
+                // For pkg.slp: which video and frame index to load
+                firstLabeledVideoIdx,
+                firstLabeledFrameIdx
             };
         }
 
         async function loadFirstFrame(h5file) {
             // Try to load embedded video frame
+            // For pkg.slp files, frames are stored per-video and we need to find the right one
             try {
-                const video0 = h5file.get('video0/video');
-                if (video0 && video0.shape) {
-                    const [numFrames, height, width, channels] = video0.shape;
-                    // Read first frame
-                    const frameData = video0.slice([[0, 1]]);
-                    if (frameData) {
-                        firstFrame = {
-                            data: new Uint8Array(frameData),
-                            width,
-                            height,
-                            channels
-                        };
+                // Determine which video to load from
+                const videoIdx = slpData?.firstLabeledVideoIdx || 0;
+                const targetFrameIdx = slpData?.firstLabeledFrameIdx || 0;
+                const videoKey = `video${videoIdx}/video`;
 
-                        // Create ImageBitmap for reliable drawing
+                console.log(`Loading frame from video${videoIdx}, target frame_idx=${targetFrameIdx}`);
+
+                let videoDataset = h5file.get(videoKey);
+                // Fallback to video0 if the target video doesn't exist
+                if (!videoDataset) {
+                    console.log(`video${videoIdx} not found, falling back to video0`);
+                    videoDataset = h5file.get('video0/video');
+                }
+
+                const video0 = videoDataset;
+                if (video0 && video0.shape) {
+                    // Check if this is a pkg.slp (PNG-encoded frames) or raw pixel data
+                    // pkg.slp: shape is (numFrames,) with dtype=object (PNG bytes per frame)
+                    // Regular embedded: shape is (numFrames, height, width, channels)
+
+                    if (video0.shape.length === 1) {
+                        // pkg.slp format: frames stored as PNG-encoded bytes (variable-length arrays)
+                        console.log('Detected pkg.slp format (PNG-encoded frames)');
                         try {
-                            const canvas = createFrameCanvas();
-                            if (canvas) {
-                                videoFrame = await createImageBitmap(canvas);
+                            // Find the correct frame index within this video
+                            // video{N}/frame_numbers contains the original video frame indices
+                            let frameIndexInVideo = 0;
+                            const frameNumbersKey = `video${videoIdx}/frame_numbers`;
+                            const frameNumbersDataset = h5file.get(frameNumbersKey);
+                            if (frameNumbersDataset) {
+                                const frameNumbers = frameNumbersDataset.value;
+                                // Find the index where frame_numbers matches targetFrameIdx
+                                // Use Number() to handle BigInt comparison
+                                const targetNum = Number(targetFrameIdx);
+                                for (let i = 0; i < frameNumbers.length; i++) {
+                                    if (Number(frameNumbers[i]) === targetNum) {
+                                        frameIndexInVideo = i;
+                                        break;
+                                    }
+                                }
+                                console.log(`Found frame_idx ${targetFrameIdx} at index ${frameIndexInVideo} in video${videoIdx} (frame_numbers: ${Array.from(frameNumbers).slice(0, 5).join(', ')}...)`);
+                            }
+
+                            // For variable-length datasets, read the whole dataset
+                            // h5wasm returns an array of arrays for vlen data
+                            const allFrames = video0.value;
+
+                            if (allFrames && allFrames.length > 0) {
+                                // Get the correct frame's PNG data
+                                const pngData = allFrames[frameIndexInVideo] || allFrames[0];
+
+                                if (pngData && pngData.length > 0) {
+                                    // Convert int8 array to Uint8Array for Blob
+                                    const uint8Data = new Uint8Array(pngData.length);
+                                    for (let i = 0; i < pngData.length; i++) {
+                                        uint8Data[i] = pngData[i] < 0 ? pngData[i] + 256 : pngData[i];
+                                    }
+
+                                    // Create blob and decode PNG
+                                    const blob = new Blob([uint8Data], { type: 'image/png' });
+                                    const bitmap = await createImageBitmap(blob);
+
+                                    // Store frame info
+                                    firstFrame = {
+                                        data: null, // Will use bitmap directly
+                                        width: bitmap.width,
+                                        height: bitmap.height,
+                                        channels: slpData?.numChannels || 1,
+                                        bitmap: bitmap
+                                    };
+                                    videoFrame = bitmap;
+
+                                    // Update slpData dimensions if they differ (pkg.slp may have incorrect metadata)
+                                    if (slpData && (slpData.imgWidth !== bitmap.width || slpData.imgHeight !== bitmap.height)) {
+                                        console.log(`Updating dimensions from ${slpData.imgWidth}x${slpData.imgHeight} to ${bitmap.width}x${bitmap.height}`);
+                                        slpData.imgWidth = bitmap.width;
+                                        slpData.imgHeight = bitmap.height;
+                                    }
+
+                                    console.log(`Loaded pkg.slp frame: ${bitmap.width}x${bitmap.height}`);
+                                }
                             }
                         } catch (e) {
-                            console.warn('Could not create ImageBitmap from embedded frame:', e);
+                            console.warn('Could not decode pkg.slp PNG frame:', e);
+                        }
+                    } else if (video0.shape.length === 4) {
+                        // Regular embedded video: raw pixel data
+                        const [numFrames, height, width, channels] = video0.shape;
+                        // Read first frame
+                        const frameData = video0.slice([[0, 1]]);
+                        if (frameData) {
+                            firstFrame = {
+                                data: new Uint8Array(frameData),
+                                width,
+                                height,
+                                channels
+                            };
+
+                            // Create ImageBitmap for reliable drawing
+                            try {
+                                const canvas = createFrameCanvas();
+                                if (canvas) {
+                                    videoFrame = await createImageBitmap(canvas);
+                                }
+                            } catch (e) {
+                                console.warn('Could not create ImageBitmap from embedded frame:', e);
+                            }
                         }
                     }
                 }
@@ -3399,6 +3777,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 <div class="stat-item">
                     <div class="stat-value">${slpData.numFrames}</div>
                     <div class="stat-label">Labeled Frames</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">${slpData.totalInstances}</div>
+                    <div class="stat-label">Total Instances</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${slpData.imgWidth}x${slpData.imgHeight}</div>
@@ -3461,6 +3843,16 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             tempCanvas.width = firstFrame.width;
             tempCanvas.height = firstFrame.height;
             const ctx = tempCanvas.getContext('2d');
+
+            // If we have a bitmap (from pkg.slp), draw it directly
+            if (firstFrame.bitmap) {
+                ctx.drawImage(firstFrame.bitmap, 0, 0);
+                return tempCanvas;
+            }
+
+            // Otherwise, create from raw pixel data
+            if (!firstFrame.data) return null;
+
             const imageData = ctx.createImageData(firstFrame.width, firstFrame.height);
             const pixels = imageData.data;
 
@@ -3779,32 +4171,38 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 canvas.width = firstFrame.width;
                 canvas.height = firstFrame.height;
 
-                const imageData = ctx.createImageData(firstFrame.width, firstFrame.height);
-                const pixels = imageData.data;
+                // If we have a bitmap (from pkg.slp), draw it directly
+                if (firstFrame.bitmap) {
+                    ctx.drawImage(firstFrame.bitmap, 0, 0);
+                } else if (firstFrame.data) {
+                    // Draw from raw pixel data
+                    const imageData = ctx.createImageData(firstFrame.width, firstFrame.height);
+                    const pixels = imageData.data;
 
-                for (let i = 0; i < firstFrame.width * firstFrame.height; i++) {
-                    if (firstFrame.channels === 1) {
-                        // Grayscale from embedded video
-                        const val = firstFrame.data[i];
-                        pixels[i * 4] = val;
-                        pixels[i * 4 + 1] = val;
-                        pixels[i * 4 + 2] = val;
-                        pixels[i * 4 + 3] = 255;
-                    } else if (firstFrame.channels === 4) {
-                        // RGBA from video canvas capture
-                        pixels[i * 4] = firstFrame.data[i * 4];
-                        pixels[i * 4 + 1] = firstFrame.data[i * 4 + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * 4 + 2];
-                        pixels[i * 4 + 3] = 255;
-                    } else {
-                        // RGB
-                        pixels[i * 4] = firstFrame.data[i * firstFrame.channels];
-                        pixels[i * 4 + 1] = firstFrame.data[i * firstFrame.channels + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * firstFrame.channels + 2];
-                        pixels[i * 4 + 3] = 255;
+                    for (let i = 0; i < firstFrame.width * firstFrame.height; i++) {
+                        if (firstFrame.channels === 1) {
+                            // Grayscale from embedded video
+                            const val = firstFrame.data[i];
+                            pixels[i * 4] = val;
+                            pixels[i * 4 + 1] = val;
+                            pixels[i * 4 + 2] = val;
+                            pixels[i * 4 + 3] = 255;
+                        } else if (firstFrame.channels === 4) {
+                            // RGBA from video canvas capture
+                            pixels[i * 4] = firstFrame.data[i * 4];
+                            pixels[i * 4 + 1] = firstFrame.data[i * 4 + 1];
+                            pixels[i * 4 + 2] = firstFrame.data[i * 4 + 2];
+                            pixels[i * 4 + 3] = 255;
+                        } else {
+                            // RGB
+                            pixels[i * 4] = firstFrame.data[i * firstFrame.channels];
+                            pixels[i * 4 + 1] = firstFrame.data[i * firstFrame.channels + 1];
+                            pixels[i * 4 + 2] = firstFrame.data[i * firstFrame.channels + 2];
+                            pixels[i * 4 + 3] = 255;
+                        }
                     }
+                    ctx.putImageData(imageData, 0, 0);
                 }
-                ctx.putImageData(imageData, 0, 0);
 
                 // Draw skeleton overlay if we have instance data
                 drawSkeletonOverlay(ctx);
@@ -4086,13 +4484,20 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             document.getElementById('max-epochs').value = epochs;
             document.getElementById('ci-max-epochs').value = epochs;
 
-            // Augmentation for small datasets
-            const useAug = slpData.numFrames < 200;
+            // Enable augmentation by default for all model types (recommended for most training scenarios)
+            const useAug = true;
             document.getElementById('use-augmentation').checked = useAug;
+            document.getElementById('aug-preview-section').classList.toggle('hidden', !useAug);
             updateAugPreview();
 
-            // Crop size for centered instance - use proper sleap-nn logic
-            const suggestedCrop = computeSuggestedCropSize(slpData.maxMaxDim, maxStride, useAug);
+            // Enable CI augmentation by default as well
+            document.getElementById('ci-use-augmentation').checked = useAug;
+            document.getElementById('ci-aug-preview-section').classList.toggle('hidden', !useAug);
+            updateCIAugPreview();
+
+            // Crop size for centered instance - use CI max stride (not main model max stride)
+            const ciMaxStride = parseInt(document.getElementById('ci-max-stride').value) || 16;
+            const suggestedCrop = computeSuggestedCropSize(slpData.maxMaxDim, ciMaxStride, useAug);
             document.getElementById('crop-size').placeholder = `Auto (~${suggestedCrop}px)`;
 
             // Update displays
@@ -4105,6 +4510,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             updateSigmaVisualization();
             updateCISigmaVisualization();
             updateCIModelArchitecture();
+
+            // Initialize cache memory display (hidden by default until caching is enabled)
+            updateCacheMemoryEstimate();
+            updateCICacheMemoryEstimate();
         }
 
         // Slider handling
@@ -4312,6 +4721,141 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             document.getElementById('output-size-detail').textContent = outDetail;
         }
 
+        // Update cache memory estimate
+        function updateCacheMemoryEstimate() {
+            if (!slpData) return;
+
+            const dataPipeline = document.getElementById('data-pipeline')?.value || 'torch_dataset';
+            const numWorkers = parseInt(document.getElementById('num-workers')?.value) || 0;
+            const card = document.getElementById('cache-memory-card');
+
+            if (!card) return;
+
+            // Show card only when caching is enabled
+            if (dataPipeline === 'torch_dataset') {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+
+            // Calculate raw cache size: height * width * channels * num_frames
+            const bytesPerFrame = slpData.imgHeight * slpData.imgWidth * slpData.numChannels;
+            const rawCacheMB = (bytesPerFrame * slpData.numFrames) / 1e6;
+            const cacheMBWithOverhead = rawCacheMB * 1.2; // 20% overhead factor from sleap-nn
+
+            // Display raw and overhead sizes
+            document.getElementById('cache-raw-size').textContent = `${rawCacheMB.toFixed(1)} MB`;
+            document.getElementById('cache-total-size').textContent = `${cacheMBWithOverhead.toFixed(1)} MB`;
+
+            // Handle worker replication for memory caching
+            const workersRow = document.getElementById('cache-workers-row');
+            const workersSize = document.getElementById('cache-workers-size');
+            const workerNote = document.getElementById('cache-memory-note');
+            const statusBadge = document.getElementById('cache-memory-status');
+
+            let totalCacheMB = cacheMBWithOverhead;
+
+            if (dataPipeline === 'torch_dataset_cache_img_memory' && numWorkers > 0) {
+                // Each worker gets a copy of the cache in memory
+                totalCacheMB = cacheMBWithOverhead * (1 + numWorkers);
+                workersRow.style.display = 'block';
+                workersSize.style.display = 'block';
+                workersSize.textContent = `${totalCacheMB.toFixed(1)} MB (×${1 + numWorkers})`;
+                workerNote.style.display = 'block';
+            } else {
+                workersRow.style.display = 'none';
+                workersSize.style.display = 'none';
+                workerNote.style.display = 'none';
+            }
+
+            // Update status badge
+            const totalGB = totalCacheMB / 1024;
+            if (dataPipeline === 'torch_dataset_cache_img_disk') {
+                statusBadge.textContent = `${totalCacheMB.toFixed(0)} MB disk`;
+                statusBadge.style.background = 'rgba(74, 222, 128, 0.2)';
+                statusBadge.style.color = '#4ade80';
+            } else if (totalGB < 4) {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(74, 222, 128, 0.2)';
+                statusBadge.style.color = '#4ade80';
+            } else if (totalGB < 8) {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(234, 179, 8, 0.2)';
+                statusBadge.style.color = '#eab308';
+            } else {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                statusBadge.style.color = '#ef4444';
+            }
+        }
+
+        // Update CI cache memory estimate (same data but separate UI)
+        function updateCICacheMemoryEstimate() {
+            if (!slpData) return;
+
+            const dataPipeline = document.getElementById('ci-data-pipeline')?.value || 'torch_dataset';
+            const numWorkers = parseInt(document.getElementById('ci-num-workers')?.value) || 0;
+            const card = document.getElementById('ci-cache-memory-card');
+
+            if (!card) return;
+
+            // Show card only when caching is enabled
+            if (dataPipeline === 'torch_dataset') {
+                card.style.display = 'none';
+                return;
+            }
+
+            card.style.display = 'block';
+
+            // Calculate raw cache size: height * width * channels * num_frames
+            // Note: CI model caches the same full-frame images as centroid
+            const bytesPerFrame = slpData.imgHeight * slpData.imgWidth * slpData.numChannels;
+            const rawCacheMB = (bytesPerFrame * slpData.numFrames) / 1e6;
+            const cacheMBWithOverhead = rawCacheMB * 1.2;
+
+            document.getElementById('ci-cache-raw-size').textContent = `${rawCacheMB.toFixed(1)} MB`;
+            document.getElementById('ci-cache-total-size').textContent = `${cacheMBWithOverhead.toFixed(1)} MB`;
+
+            const workersRow = document.getElementById('ci-cache-workers-row');
+            const workersSize = document.getElementById('ci-cache-workers-size');
+            const workerNote = document.getElementById('ci-cache-memory-note');
+            const statusBadge = document.getElementById('ci-cache-memory-status');
+
+            let totalCacheMB = cacheMBWithOverhead;
+
+            if (dataPipeline === 'torch_dataset_cache_img_memory' && numWorkers > 0) {
+                totalCacheMB = cacheMBWithOverhead * (1 + numWorkers);
+                workersRow.style.display = 'block';
+                workersSize.style.display = 'block';
+                workersSize.textContent = `${totalCacheMB.toFixed(1)} MB (×${1 + numWorkers})`;
+                workerNote.style.display = 'block';
+            } else {
+                workersRow.style.display = 'none';
+                workersSize.style.display = 'none';
+                workerNote.style.display = 'none';
+            }
+
+            const totalGB = totalCacheMB / 1024;
+            if (dataPipeline === 'torch_dataset_cache_img_disk') {
+                statusBadge.textContent = `${totalCacheMB.toFixed(0)} MB disk`;
+                statusBadge.style.background = 'rgba(74, 222, 128, 0.2)';
+                statusBadge.style.color = '#4ade80';
+            } else if (totalGB < 4) {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(74, 222, 128, 0.2)';
+                statusBadge.style.color = '#4ade80';
+            } else if (totalGB < 8) {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(234, 179, 8, 0.2)';
+                statusBadge.style.color = '#eab308';
+            } else {
+                statusBadge.textContent = `~${totalGB.toFixed(1)} GB RAM`;
+                statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+                statusBadge.style.color = '#ef4444';
+            }
+        }
+
         // Update Centered Instance crop preview
         function updateCICropPreview() {
             if (!slpData) return;
@@ -4330,7 +4874,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             // Get suggested crop size following sleap-nn logic:
             // crop_size = ceil((max_bbox_dim + padding) / max_stride) * max_stride
             const ciMaxStride = parseInt(document.getElementById('ci-max-stride').value) || 16;
-            const useAug = document.getElementById('use-augmentation')?.checked || false;
+            // Check if CI-specific augmentation is enabled, otherwise fall back to main augmentation
+            const ciAugEnabled = document.getElementById('ci-use-augmentation')?.checked || false;
+            const mainAugEnabled = document.getElementById('use-augmentation')?.checked || false;
+            const useAug = ciAugEnabled || mainAugEnabled;
             const userCropPadding = document.getElementById('ci-crop-padding')?.value ? parseInt(document.getElementById('ci-crop-padding').value) : null;
             const suggestedCrop = computeSuggestedCropSize(slpData.maxMaxDim, ciMaxStride, useAug, userCropPadding);
 
@@ -4341,11 +4888,13 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 effectivePadding = userCropPadding;
                 paddingSource = 'user';
             } else if (useAug) {
-                effectivePadding = computeAugmentationPadding(slpData.maxMaxDim, 180, 1.1);
+                // Use CI augmentation values if CI aug is enabled, otherwise use main aug values
+                const { rotationMax, scaleMax } = getAugmentationParams(ciAugEnabled);
+                effectivePadding = computeAugmentationPadding(slpData.maxMaxDim, rotationMax, scaleMax);
                 paddingSource = 'aug';
             }
 
-            // Update suggestion text
+            // Update suggestion text and placeholder to match
             const suggestionEl = document.getElementById('crop-size-suggestion');
             if (suggestionEl) {
                 let suggestionText = `Suggested: ${suggestedCrop}px (max instance ${slpData.maxMaxDim}px`;
@@ -4354,6 +4903,11 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 }
                 suggestionText += `, rounded to stride ${ciMaxStride})`;
                 suggestionEl.textContent = suggestionText;
+            }
+            // Keep placeholder in sync with suggested value
+            const cropSizeEl = document.getElementById('crop-size');
+            if (cropSizeEl) {
+                cropSizeEl.placeholder = `Auto (~${suggestedCrop}px)`;
             }
 
             // Get actual crop size
@@ -4882,6 +5436,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             }
             updateAugmentationStateFromSliders();
             updateAugPreview();
+            // Update crop size suggestion when rotation or scale changes (affects padding)
+            if (type === 'rotation' || type === 'scale') {
+                updateCICropPreview();
+            }
         }
 
         function updateRFVisualization() {
@@ -4911,38 +5469,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const offsetX = (canvas.width - imgDisplayWidth) / 2;
             const offsetY = (canvas.height - imgDisplayHeight) / 2;
 
-            if (firstFrame) {
-                // Draw actual frame
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = firstFrame.width;
-                tempCanvas.height = firstFrame.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                const imageData = tempCtx.createImageData(firstFrame.width, firstFrame.height);
-                const pixels = imageData.data;
+            // Try to get frame canvas (handles both raw pixels and pkg.slp bitmaps)
+            const tempCanvas = createFrameCanvas();
 
-                for (let i = 0; i < firstFrame.width * firstFrame.height; i++) {
-                    if (firstFrame.channels === 1) {
-                        const val = firstFrame.data[i];
-                        pixels[i * 4] = val;
-                        pixels[i * 4 + 1] = val;
-                        pixels[i * 4 + 2] = val;
-                        pixels[i * 4 + 3] = 255;
-                    } else if (firstFrame.channels === 4) {
-                        // RGBA from video
-                        pixels[i * 4] = firstFrame.data[i * 4];
-                        pixels[i * 4 + 1] = firstFrame.data[i * 4 + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * 4 + 2];
-                        pixels[i * 4 + 3] = 255;
-                    } else {
-                        // RGB
-                        pixels[i * 4] = firstFrame.data[i * firstFrame.channels];
-                        pixels[i * 4 + 1] = firstFrame.data[i * firstFrame.channels + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * firstFrame.channels + 2];
-                        pixels[i * 4 + 3] = 255;
-                    }
-                }
-                tempCtx.putImageData(imageData, 0, 0);
-
+            if (tempCanvas) {
                 ctx.fillStyle = '#1a1a1a';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(tempCanvas, offsetX, offsetY, imgDisplayWidth, imgDisplayHeight);
@@ -4987,6 +5517,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             document.getElementById('use-augmentation').addEventListener('change', (e) => {
                 document.getElementById('aug-preview-section').classList.toggle('hidden', !e.target.checked);
                 if (e.target.checked) updateAugPreview();
+                // Update crop size suggestion when augmentation is toggled
+                updateCICropPreview();
             });
         }
 
@@ -5010,37 +5542,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         function updateAugPreview() {
             if (!slpData) return;
 
-            // Create source canvas from frame data
-            let sourceCanvas = null;
-            if (firstFrame) {
-                sourceCanvas = document.createElement('canvas');
-                sourceCanvas.width = firstFrame.width;
-                sourceCanvas.height = firstFrame.height;
-                const srcCtx = sourceCanvas.getContext('2d');
-                const imageData = srcCtx.createImageData(firstFrame.width, firstFrame.height);
-                const pixels = imageData.data;
-
-                for (let i = 0; i < firstFrame.width * firstFrame.height; i++) {
-                    if (firstFrame.channels === 1) {
-                        const val = firstFrame.data[i];
-                        pixels[i * 4] = val;
-                        pixels[i * 4 + 1] = val;
-                        pixels[i * 4 + 2] = val;
-                        pixels[i * 4 + 3] = 255;
-                    } else if (firstFrame.channels === 4) {
-                        pixels[i * 4] = firstFrame.data[i * 4];
-                        pixels[i * 4 + 1] = firstFrame.data[i * 4 + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * 4 + 2];
-                        pixels[i * 4 + 3] = 255;
-                    } else {
-                        pixels[i * 4] = firstFrame.data[i * firstFrame.channels];
-                        pixels[i * 4 + 1] = firstFrame.data[i * firstFrame.channels + 1];
-                        pixels[i * 4 + 2] = firstFrame.data[i * firstFrame.channels + 2];
-                        pixels[i * 4 + 3] = 255;
-                    }
-                }
-                srcCtx.putImageData(imageData, 0, 0);
-            }
+            // Create source canvas from frame data (handles both raw pixels and pkg.slp bitmaps)
+            const sourceCanvas = createFrameCanvas();
 
             const CANVAS_W = 150, CANVAS_H = 150;
 
@@ -5097,6 +5600,222 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     ctx.fillText('Load SLP', CANVAS_W / 2, CANVAS_H / 2);
                 }
             }
+        }
+
+        // CI Augmentation toggle and functions
+        function initCIAugToggle() {
+            document.getElementById('ci-use-augmentation').addEventListener('change', (e) => {
+                document.getElementById('ci-aug-preview-section').classList.toggle('hidden', !e.target.checked);
+                if (e.target.checked) updateCIAugPreview();
+                // Update crop size suggestion when CI augmentation is toggled
+                updateCICropPreview();
+            });
+        }
+
+        // Pretrained checkpoints toggle
+        function initPretrainedCkptsToggle() {
+            // Main/Centroid model
+            document.getElementById('load-pretrained-ckpts')?.addEventListener('change', (e) => {
+                document.getElementById('pretrained-ckpts-options').classList.toggle('hidden', !e.target.checked);
+            });
+            // Centered Instance model
+            document.getElementById('ci-load-pretrained-ckpts')?.addEventListener('change', (e) => {
+                document.getElementById('ci-pretrained-ckpts-options').classList.toggle('hidden', !e.target.checked);
+            });
+        }
+
+        // Additional training params toggle
+        function initAdditionalParamsToggle() {
+            // Main/Centroid model
+            document.getElementById('show-additional-params')?.addEventListener('change', (e) => {
+                document.getElementById('additional-params-options').classList.toggle('hidden', !e.target.checked);
+            });
+            // Centered Instance model
+            document.getElementById('ci-show-additional-params')?.addEventListener('change', (e) => {
+                document.getElementById('ci-additional-params-options').classList.toggle('hidden', !e.target.checked);
+            });
+        }
+
+        // Get CI augmentation values from sliders
+        function getCIAugValues() {
+            const rotation = parseInt(document.getElementById('ci-aug-rotation-val')?.value) || 0;
+            const scaleRange = parseInt(document.getElementById('ci-aug-scale-val')?.value) || 0;
+            const translate = parseInt(document.getElementById('ci-aug-translate-val')?.value) || 0;
+            const brightness = parseInt(document.getElementById('ci-aug-brightness-val')?.value) || 0;
+            const contrast = parseInt(document.getElementById('ci-aug-contrast-val')?.value) || 0;
+            return {
+                rotation,
+                scaleMin: 1.0 - scaleRange / 100,
+                scaleMax: 1.0 + scaleRange / 100,
+                translate,
+                brightnessMin: 1.0 - brightness / 100,
+                brightnessMax: 1.0 + brightness / 100,
+                contrastMin: 1.0 - contrast / 100,
+                contrastMax: 1.0 + contrast / 100
+            };
+        }
+
+        function updateCIAugSliderValue(type) {
+            const v = getCIAugValues();
+            if (type === 'rotation') {
+                document.getElementById('ci-rotation-value').textContent = v.rotation > 0 ? `±${v.rotation}°` : 'Off';
+            } else if (type === 'scale') {
+                const range = parseInt(document.getElementById('ci-aug-scale-val')?.value) || 0;
+                document.getElementById('ci-scale-aug-value').textContent = range > 0 ? `${v.scaleMin.toFixed(2)} - ${v.scaleMax.toFixed(2)}` : 'Off';
+            } else if (type === 'translate') {
+                const pct = parseInt(document.getElementById('ci-aug-translate-val')?.value) || 0;
+                document.getElementById('ci-translate-value').textContent = pct > 0 ? `±${pct}%` : 'Off';
+            } else if (type === 'brightness') {
+                const pct = parseInt(document.getElementById('ci-aug-brightness-val')?.value) || 0;
+                document.getElementById('ci-brightness-value').textContent = pct > 0 ? `±${pct}%` : 'Off';
+            } else if (type === 'contrast') {
+                const pct = parseInt(document.getElementById('ci-aug-contrast-val')?.value) || 0;
+                document.getElementById('ci-contrast-value').textContent = pct > 0 ? `±${pct}%` : 'Off';
+            }
+            updateCIAugPreview();
+            // Update crop size when rotation/scale changes (affects padding)
+            if (type === 'rotation' || type === 'scale') {
+                updateCICropPreview();
+            }
+        }
+
+        let currentCIAugRandom = { rotation: 0, scale: 1, translateX: 0, translateY: 0, brightness: 1, contrast: 1 };
+
+        function randomizeCIAugPreview() {
+            const v = getCIAugValues();
+            currentCIAugRandom = {
+                rotation: v.rotation > 0 ? (Math.random() * 2 - 1) * v.rotation : 0,
+                scale: v.scaleMin < 1 || v.scaleMax > 1 ? v.scaleMin + Math.random() * (v.scaleMax - v.scaleMin) : 1,
+                translateX: v.translate > 0 ? (Math.random() * 2 - 1) * v.translate : 0,
+                translateY: v.translate > 0 ? (Math.random() * 2 - 1) * v.translate : 0,
+                brightness: v.brightnessMin < 1 || v.brightnessMax > 1 ? v.brightnessMin + Math.random() * (v.brightnessMax - v.brightnessMin) : 1,
+                contrast: v.contrastMin < 1 || v.contrastMax > 1 ? v.contrastMin + Math.random() * (v.contrastMax - v.contrastMin) : 1
+            };
+            updateCIAugPreview();
+        }
+
+        function updateCIAugPreview() {
+            if (!slpData || !instancesData) return;
+
+            const CANVAS_W = 150, CANVAS_H = 150;
+            const bbox = instancesData.bbox;
+            const points = instancesData.points;
+            if (!bbox) return;
+
+            const origCanvas = document.getElementById('ci-aug-original');
+            const augCanvas = document.getElementById('ci-aug-preview');
+            if (!origCanvas || !augCanvas) return;
+
+            // Get crop size from UI or use suggested
+            const ciMaxStride = parseInt(document.getElementById('ci-max-stride')?.value) || 16;
+            const cropSizeInput = document.getElementById('crop-size');
+            const suggestedCrop = computeSuggestedCropSize(slpData.maxMaxDim, ciMaxStride, true);
+            const cropSize = cropSizeInput?.value ? parseInt(cropSizeInput.value) : suggestedCrop;
+
+            // Get anchor position
+            const anchorNode = selectedAnchor;
+            let anchorX, anchorY;
+            if (anchorNode) {
+                const anchorPt = points.find(p => p.node === anchorNode);
+                if (anchorPt) {
+                    anchorX = anchorPt.x;
+                    anchorY = anchorPt.y;
+                } else {
+                    anchorX = (bbox.minX + bbox.maxX) / 2;
+                    anchorY = (bbox.minY + bbox.maxY) / 2;
+                }
+            } else {
+                anchorX = (bbox.minX + bbox.maxX) / 2;
+                anchorY = (bbox.minY + bbox.maxY) / 2;
+            }
+
+            // Calculate crop region in source coordinates
+            const cropHalf = cropSize / 2;
+            const cropMinX = anchorX - cropHalf;
+            const cropMinY = anchorY - cropHalf;
+
+            // Scale to fit canvas
+            const scale = (CANVAS_W - 10) / cropSize;
+
+            // Helper to draw crop content (used for both original and augmented)
+            function drawCropContent(ctx, applyAug = false) {
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+                if (applyAug) {
+                    ctx.save();
+                    ctx.translate(CANVAS_W / 2, CANVAS_H / 2);
+                    ctx.rotate(currentCIAugRandom.rotation * Math.PI / 180);
+                    ctx.scale(currentCIAugRandom.scale, currentCIAugRandom.scale);
+                    ctx.translate(currentCIAugRandom.translateX * CANVAS_W / 100, currentCIAugRandom.translateY * CANVAS_H / 100);
+                    ctx.translate(-CANVAS_W / 2, -CANVAS_H / 2);
+                    ctx.filter = `brightness(${currentCIAugRandom.brightness}) contrast(${currentCIAugRandom.contrast})`;
+                }
+
+                // Draw video frame crop if available
+                if (videoFrame) {
+                    try {
+                        const srcX = Math.max(0, cropMinX);
+                        const srcY = Math.max(0, cropMinY);
+                        const srcW = Math.min(cropSize, videoFrame.width - srcX);
+                        const srcH = Math.min(cropSize, videoFrame.height - srcY);
+                        const destX = (srcX - cropMinX) * scale + 5;
+                        const destY = (srcY - cropMinY) * scale + 5;
+                        ctx.drawImage(
+                            videoFrame,
+                            srcX, srcY, srcW, srcH,
+                            destX, destY, srcW * scale, srcH * scale
+                        );
+                    } catch (e) {}
+                }
+
+                // Reset filter before drawing skeleton
+                if (applyAug) ctx.filter = 'none';
+
+                // Draw skeleton edges
+                ctx.strokeStyle = videoFrame ? 'rgba(255, 200, 50, 0.9)' : 'rgba(100, 180, 255, 0.6)';
+                ctx.lineWidth = 1.5;
+                for (const edge of slpData.skeleton.edges) {
+                    const srcName = slpData.skeleton.nodes[edge[0]];
+                    const dstName = slpData.skeleton.nodes[edge[1]];
+                    const srcPt = points.find(p => p.node === srcName);
+                    const dstPt = points.find(p => p.node === dstName);
+                    if (srcPt && dstPt) {
+                        const x1 = (srcPt.x - cropMinX) * scale + 5;
+                        const y1 = (srcPt.y - cropMinY) * scale + 5;
+                        const x2 = (dstPt.x - cropMinX) * scale + 5;
+                        const y2 = (dstPt.y - cropMinY) * scale + 5;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+
+                // Draw keypoints
+                for (const pt of points) {
+                    const x = (pt.x - cropMinX) * scale + 5;
+                    const y = (pt.y - cropMinY) * scale + 5;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = videoFrame ? 'rgba(255, 200, 50, 0.9)' : 'rgba(100, 180, 255, 0.8)';
+                    ctx.fill();
+                }
+
+                if (applyAug) ctx.restore();
+            }
+
+            // Draw original
+            const ctx = origCanvas.getContext('2d');
+            origCanvas.width = CANVAS_W;
+            origCanvas.height = CANVAS_H;
+            drawCropContent(ctx, false);
+
+            // Draw augmented version
+            const augCtx = augCanvas.getContext('2d');
+            augCanvas.width = CANVAS_W;
+            augCanvas.height = CANVAS_H;
+            drawCropContent(augCtx, true);
         }
 
         // Anchor point population
@@ -5469,7 +6188,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 maxWidth: document.getElementById('max-width')?.value ? parseInt(document.getElementById('max-width').value) : null,
                 // Model pretrained weights
                 useImageNetPretrained: document.getElementById('use-imagenet-pretrained')?.checked ?? true,
-                pretrainedBackboneWeights: document.getElementById('pretrained-backbone-weights')?.value || null,
+                pretrainedBackboneWeights: document.getElementById('pretrained-backbone-path')?.value || null,
+                pretrainedHeadWeights: document.getElementById('pretrained-head-path')?.value || null,
                 // PAF settings (bottom-up)
                 pafOutputStride: parseInt(document.getElementById('paf-output-stride')?.value) || 2,
                 confmapsLossWeight: parseFloat(document.getElementById('confmaps-loss-weight')?.value) || 1.0,
@@ -5543,9 +6263,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // Crop settings
                 minCropSize: parseInt(document.getElementById('ci-min-crop-size')?.value) || 100,
                 cropPadding: document.getElementById('ci-crop-padding')?.value ? parseInt(document.getElementById('ci-crop-padding').value) : null,
-                // Model pretrained weights (inherit from main tab settings)
+                // Model pretrained weights
                 useImageNetPretrained: document.getElementById('use-imagenet-pretrained')?.checked ?? true,
-                pretrainedBackboneWeights: document.getElementById('pretrained-backbone-weights')?.value || null,
+                pretrainedBackboneWeights: document.getElementById('ci-pretrained-backbone-path')?.value || null,
+                pretrainedHeadWeights: document.getElementById('ci-pretrained-head-path')?.value || null,
                 // Trainer
                 minSteps: parseInt(document.getElementById('ci-min-steps')?.value) || 200,
                 seed: document.getElementById('ci-random-seed')?.value ? parseInt(document.getElementById('ci-random-seed').value) : null,
@@ -5589,7 +6310,13 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // Evaluation
                 enableEval: document.getElementById('ci-enable-eval')?.checked || false,
                 evalFrequency: parseInt(document.getElementById('ci-eval-frequency')?.value) || 1,
-                evalOksStddev: parseFloat(document.getElementById('ci-eval-oks-stddev')?.value) || 0.025
+                evalOksStddev: parseFloat(document.getElementById('ci-eval-oks-stddev')?.value) || 0.025,
+                // CI-specific augmentation values
+                augRotation: parseInt(document.getElementById('ci-aug-rotation-val')?.value) || 0,
+                augScaleRange: parseInt(document.getElementById('ci-aug-scale-val')?.value) || 0,
+                augTranslate: parseInt(document.getElementById('ci-aug-translate-val')?.value) || 0,
+                augBrightness: parseInt(document.getElementById('ci-aug-brightness-val')?.value) || 0,
+                augContrast: parseInt(document.getElementById('ci-aug-contrast-val')?.value) || 0
             };
         }
 
@@ -5647,10 +6374,11 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 const ciAccelerator = document.getElementById('ci-accelerator')?.value || 'auto';
                 const ciEarlyStopping = document.getElementById('ci-early-stopping')?.checked ?? true;
                 const ciSaveCkpt = document.getElementById('ci-save-ckpt')?.checked ?? true;
+                const ciUseAug = document.getElementById('ci-use-augmentation')?.checked || false;
                 const ciAdvancedOptions = getCIAdvancedOptions();
 
                 const config2 = generateConfigYaml({
-                    headType: ciHeadType, scale: ciScale, valFraction, cropSize, useAug,
+                    headType: ciHeadType, scale: ciScale, valFraction, cropSize, useAug: ciUseAug,
                     backbone: ciBackbone, maxStride: ciMaxStride, filters: ciFilters, filtersRate: ciFiltersRate,
                     sigma: ciSigma, outputStride: ciOutputStride,
                     batchSize: ciBatchSize, maxEpochs: ciMaxEpochs, learningRate: ciLearningRate,
@@ -5918,10 +6646,11 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 const ciAccelerator = document.getElementById('ci-accelerator')?.value || 'auto';
                 const ciEarlyStopping = document.getElementById('ci-early-stopping')?.checked ?? true;
                 const ciSaveCkpt = document.getElementById('ci-save-ckpt')?.checked ?? true;
+                const ciUseAug = document.getElementById('ci-use-augmentation')?.checked || false;
                 const ciAdvancedOptions = getCIAdvancedOptions();
 
                 const config2 = generateConfigYaml({
-                    headType: ciHeadType, scale: ciScale, valFraction, cropSize, useAug,
+                    headType: ciHeadType, scale: ciScale, valFraction, cropSize, useAug: ciUseAug,
                     backbone: ciBackbone, maxStride: ciMaxStride, filters: ciFilters, filtersRate: ciFiltersRate,
                     sigma: ciSigma, outputStride: ciOutputStride,
                     batchSize: ciBatchSize, maxEpochs: ciMaxEpochs, learningRate: ciLearningRate,
@@ -5934,6 +6663,9 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 document.getElementById('download-all-btn').classList.add('hidden');
                 document.getElementById('export-tab-1').textContent = 'Configuration';
             }
+
+            // Update CLI commands
+            updateCLICommands();
         }
 
         function generateConfigYaml(params) {
@@ -6195,7 +6927,7 @@ ${preprocessingConfig}
 model_config:
   init_weights: default
   pretrained_backbone_weights: ${adv.pretrainedBackboneWeights ? `"${adv.pretrainedBackboneWeights}"` : 'null'}
-  pretrained_head_weights: null
+  pretrained_head_weights: ${adv.pretrainedHeadWeights ? `"${adv.pretrainedHeadWeights}"` : 'null'}
   backbone_config:
 ${backboneConfig}
   head_configs:
@@ -6300,6 +7032,42 @@ ${adv.lrScheduler === 'step_lr' ? `    step_lr:
         function downloadAllConfigs() {
             downloadYaml(1);
             if (isTopDown) setTimeout(() => downloadYaml(2), 500);
+        }
+
+        function copyCLI(elementId) {
+            const cmd = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(cmd)
+                .then(() => alert('Command copied!'))
+                .catch(() => {
+                    const ta = document.createElement('textarea');
+                    ta.value = cmd;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(ta);
+                    alert('Command copied!');
+                });
+        }
+
+        function updateCLICommands() {
+            // Determine config filenames
+            const configFile1 = isTopDown ? 'centroid_config.yaml' : 'training_config.yaml';
+            const configFile2 = 'centered_instance_config.yaml';
+
+            // Basic command
+            document.getElementById('cli-basic').textContent = `sleap-nn train ${configFile1}`;
+
+            // With labels path override
+            document.getElementById('cli-override').textContent =
+                `sleap-nn train ${configFile1} data_config.train_labels_path='["/path/to/your/labels.slp"]'`;
+
+            // Top-down CI command
+            if (isTopDown) {
+                document.getElementById('cli-topdown-section').classList.remove('hidden');
+                document.getElementById('cli-ci').textContent = `sleap-nn train ${configFile2}`;
+            } else {
+                document.getElementById('cli-topdown-section').classList.add('hidden');
+            }
         }
     </script>
 </body>
