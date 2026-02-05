@@ -103,6 +103,8 @@
         button.secondary:hover { background: var(--surface-hover); }
         button.success { background: var(--success); }
         button.success:hover { background: #22c55e; }
+        button.danger { background: var(--error); }
+        button.danger:hover { background: #ef4444; }
         button.small { padding: 6px 12px; font-size: 12px; }
 
         /* Form elements */
@@ -904,6 +906,36 @@
                     <p style="margin: 5px 0 0; color: #888; font-size: 0.8rem;">Supports .mp4, .avi, .mov, .mkv</p>
                 </div>
             </div>
+
+            <!-- Load existing config (shown after SLP is loaded) -->
+            <div id="config-upload-section" class="hidden" style="margin-top: 15px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <strong style="color: var(--text-dim);">Load Existing Config (Optional)</strong>
+                </div>
+                <!-- Centroid config -->
+                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                    <button class="secondary small" onclick="document.getElementById('centroid-config-input').click()" style="min-width: 140px;">
+                        Centroid Config
+                    </button>
+                    <input type="file" id="centroid-config-input" accept=".yaml,.yml" style="display: none;">
+                    <span id="centroid-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
+                    <span id="centroid-config-badge" class="badge info hidden">Loaded</span>
+                    <button id="clear-centroid-config-btn" class="small danger hidden" onclick="clearLoadedConfig('centroid')">Clear</button>
+                </div>
+                <!-- Centered Instance config -->
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <button class="secondary small" onclick="document.getElementById('ci-config-input').click()" style="min-width: 140px;">
+                        Centered Instance
+                    </button>
+                    <input type="file" id="ci-config-input" accept=".yaml,.yml" style="display: none;">
+                    <span id="ci-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
+                    <span id="ci-config-badge" class="badge info hidden">Loaded</span>
+                    <button id="clear-ci-config-btn" class="small danger hidden" onclick="clearLoadedConfig('ci')">Clear</button>
+                </div>
+                <p style="margin: 8px 0 0; color: #888; font-size: 0.8rem;">
+                    For Top-Down models, load both configs. For other models, either button works.
+                </p>
+            </div>
         </div>
 
         <!-- Data Summary with Frame Viewer -->
@@ -1644,11 +1676,13 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             <label>
                                 Scheduler Type
                                 <span class="tooltip">?
-                                    <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when validation loss stops improving. Best for most cases.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs. More predictable but requires tuning.<br><br><b>None:</b> Constant learning rate throughout training.</span>
+                                    <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when validation loss stops improving. Best for most cases.<br><br><b>Cosine Annealing + Warmup:</b> Linear warmup then cosine decay to minimum LR. Good for longer training runs.<br><br><b>Linear Warmup + Decay:</b> Linear warmup then linear decay. Simple and effective.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs. More predictable but requires tuning.<br><br><b>None:</b> Constant learning rate throughout training.</span>
                                 </span>
                             </label>
                             <select id="lr-scheduler" onchange="updateSchedulerOptions()">
                                 <option value="reduce_on_plateau" selected>Reduce on Plateau</option>
+                                <option value="cosine_annealing_warmup">Cosine Annealing + Warmup</option>
+                                <option value="linear_warmup_linear_decay">Linear Warmup + Decay</option>
                                 <option value="step_lr">Step LR</option>
                                 <option value="none">None (Constant)</option>
                             </select>
@@ -1677,6 +1711,52 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                     <span class="tooltip">?<span class="tooltip-text">Multiply LR by this factor at each step. Default: 0.1 (reduce to 10%)</span></span>
                                 </label>
                                 <input type="number" id="step-lr-gamma" value="0.1" min="0.01" max="1" step="0.01" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Cosine Annealing + Warmup options -->
+                    <div id="cosine-warmup-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Epochs
+                                    <span class="tooltip">?<span class="tooltip-text">Number of epochs for linear warmup phase. LR increases from warmup_start_lr to base LR. Default: 5</span></span>
+                                </label>
+                                <input type="number" id="cosine-warmup-epochs" value="5" min="0" max="50" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Start LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the start of warmup. Default: 0 (start from zero)</span></span>
+                                </label>
+                                <input type="number" id="cosine-warmup-start-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Min LR (eta_min)
+                                    <span class="tooltip">?<span class="tooltip-text">Minimum learning rate at the end of cosine decay. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="cosine-eta-min" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Linear Warmup + Linear Decay options -->
+                    <div id="linear-warmup-decay-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Epochs
+                                    <span class="tooltip">?<span class="tooltip-text">Number of epochs for linear warmup phase. LR increases from warmup_start_lr to base LR. Default: 5</span></span>
+                                </label>
+                                <input type="number" id="linear-warmup-epochs" value="5" min="0" max="50" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Start LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the start of warmup. Default: 0 (start from zero)</span></span>
+                                </label>
+                                <input type="number" id="linear-warmup-start-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">End LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the end of training after linear decay. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="linear-end-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
                             </div>
                         </div>
                     </div>
@@ -2450,11 +2530,13 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             <label>
                                 Scheduler Type
                                 <span class="tooltip">?
-                                    <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when loss stops improving.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs.<br><br><b>None:</b> Constant learning rate.</span>
+                                    <span class="tooltip-text"><b>Reduce on Plateau:</b> Automatically reduces LR when loss stops improving.<br><br><b>Cosine Annealing + Warmup:</b> Linear warmup then cosine decay.<br><br><b>Linear Warmup + Decay:</b> Linear warmup then linear decay.<br><br><b>Step LR:</b> Reduces LR by a fixed factor every N epochs.<br><br><b>None:</b> Constant learning rate.</span>
                                 </span>
                             </label>
                             <select id="ci-lr-scheduler" onchange="updateCISchedulerOptions()">
                                 <option value="reduce_on_plateau" selected>Reduce on Plateau</option>
+                                <option value="cosine_annealing_warmup">Cosine Annealing + Warmup</option>
+                                <option value="linear_warmup_linear_decay">Linear Warmup + Decay</option>
                                 <option value="step_lr">Step LR</option>
                                 <option value="none">None (Constant)</option>
                             </select>
@@ -2483,6 +2565,52 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                     <span class="tooltip">?<span class="tooltip-text">Multiply LR by this factor. 0.1 = reduce to 10%.</span></span>
                                 </label>
                                 <input type="number" id="ci-step-lr-gamma" value="0.1" min="0.01" max="1" step="0.01" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Cosine Annealing + Warmup options -->
+                    <div id="ci-cosine-warmup-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Epochs
+                                    <span class="tooltip">?<span class="tooltip-text">Number of epochs for linear warmup phase. Default: 5</span></span>
+                                </label>
+                                <input type="number" id="ci-cosine-warmup-epochs" value="5" min="0" max="50" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Start LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the start of warmup. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="ci-cosine-warmup-start-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Min LR (eta_min)
+                                    <span class="tooltip">?<span class="tooltip-text">Minimum LR at the end of cosine decay. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="ci-cosine-eta-min" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Linear Warmup + Decay options -->
+                    <div id="ci-linear-warmup-decay-options" class="toggle-options" style="padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none; margin-bottom: 10px;">
+                        <div class="grid-2" style="gap: 10px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Epochs
+                                    <span class="tooltip">?<span class="tooltip-text">Number of epochs for linear warmup phase. Default: 5</span></span>
+                                </label>
+                                <input type="number" id="ci-linear-warmup-epochs" value="5" min="0" max="50" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">Warmup Start LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the start of warmup. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="ci-linear-warmup-start-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
+                            </div>
+                            <div class="form-group" style="margin: 0;">
+                                <label style="font-size: 0.8rem;">End LR
+                                    <span class="tooltip">?<span class="tooltip-text">Learning rate at the end of training. Default: 0</span></span>
+                                </label>
+                                <input type="number" id="ci-linear-end-lr" value="0" min="0" max="0.01" step="1e-6" style="padding: 6px;">
                             </div>
                         </div>
                     </div>
@@ -2902,6 +3030,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/h5wasm@0.8.8/dist/iife/h5wasm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 
     <script>
         // State
@@ -2916,6 +3045,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         let videoFrame = null;  // ImageBitmap for reliable drawing (from video or embedded frame)
         let instancesData = null;  // Store parsed instance data for visualization
         let anchorCanvasData = null;  // Store transform data for anchor canvas click detection
+        let loadedCentroidConfig = null;  // Store loaded centroid YAML config
+        let loadedCIConfig = null;  // Store loaded centered instance YAML config
 
         // Receptive field computation based on sleap-nn formula
         // From: sleap_nn/example_notebooks/receptive_field_guide.py
@@ -3180,6 +3311,260 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             videoInput.addEventListener('change', () => {
                 if (videoInput.files.length) handleVideoFile(videoInput.files[0]);
             });
+
+            // Config file upload - centroid
+            const centroidConfigInput = document.getElementById('centroid-config-input');
+            centroidConfigInput.addEventListener('change', () => {
+                if (centroidConfigInput.files.length) handleConfigFile(centroidConfigInput.files[0], 'centroid');
+            });
+
+            // Config file upload - centered instance
+            const ciConfigInput = document.getElementById('ci-config-input');
+            ciConfigInput.addEventListener('change', () => {
+                if (ciConfigInput.files.length) handleConfigFile(ciConfigInput.files[0], 'ci');
+            });
+        }
+
+        async function handleConfigFile(file, configType) {
+            if (!file.name.endsWith('.yaml') && !file.name.endsWith('.yml')) {
+                alert('Please upload a YAML file (.yaml or .yml)');
+                return;
+            }
+
+            try {
+                const text = await file.text();
+                const config = jsyaml.load(text);
+                console.log(`Loaded ${configType} config:`, config);
+
+                // Detect config type from head_configs
+                const heads = config.model_config?.head_configs || {};
+                const detectedType = heads.centroid ? 'centroid' :
+                                    heads.centered_instance ? 'centered_instance' :
+                                    heads.single_instance ? 'single_instance' :
+                                    heads.bottomup ? 'bottomup' :
+                                    heads.multi_class_bottomup ? 'multi_class_bottomup' :
+                                    heads.multi_class_topdown ? 'multi_class_topdown' : 'unknown';
+
+                // Validate model type matches what user expects
+                if (configType === 'centroid' && detectedType !== 'centroid') {
+                    const proceed = confirm(`This config appears to be a "${detectedType}" model, not a centroid model. Load anyway?`);
+                    if (!proceed) return;
+                }
+                if (configType === 'ci' && detectedType !== 'centered_instance') {
+                    const proceed = confirm(`This config appears to be a "${detectedType}" model, not a centered_instance model. Load anyway?`);
+                    if (!proceed) return;
+                }
+
+                // Store config in appropriate variable based on detected type
+                const isCentroidConfig = detectedType === 'centroid';
+                const isCIConfig = detectedType === 'centered_instance';
+
+                if (configType === 'ci' || isCIConfig) {
+                    loadedCIConfig = config;
+                    document.getElementById('ci-config-badge').classList.remove('hidden');
+                    document.getElementById('ci-config-name').textContent = file.name;
+                    document.getElementById('clear-ci-config-btn').classList.remove('hidden');
+                } else {
+                    // Store as centroid/main config for centroid, single_instance, bottomup, etc.
+                    loadedCentroidConfig = config;
+                    document.getElementById('centroid-config-badge').classList.remove('hidden');
+                    document.getElementById('centroid-config-name').textContent = file.name;
+                    document.getElementById('clear-centroid-config-btn').classList.remove('hidden');
+                }
+
+                // Apply loaded config to form fields if SLP is already loaded
+                if (slpData) {
+                    applyLoadedConfig();
+                }
+            } catch (err) {
+                console.error('Error parsing YAML:', err);
+                alert('Error parsing YAML file: ' + err.message);
+            }
+        }
+
+        function clearLoadedConfig(configType) {
+            if (configType === 'centroid') {
+                loadedCentroidConfig = null;
+                document.getElementById('centroid-config-badge').classList.add('hidden');
+                document.getElementById('centroid-config-name').textContent = '';
+                document.getElementById('clear-centroid-config-btn').classList.add('hidden');
+                document.getElementById('centroid-config-input').value = '';
+            } else if (configType === 'ci') {
+                loadedCIConfig = null;
+                document.getElementById('ci-config-badge').classList.add('hidden');
+                document.getElementById('ci-config-name').textContent = '';
+                document.getElementById('clear-ci-config-btn').classList.add('hidden');
+                document.getElementById('ci-config-input').value = '';
+            } else {
+                // Clear both
+                clearLoadedConfig('centroid');
+                clearLoadedConfig('ci');
+            }
+        }
+
+        function applyLoadedConfig() {
+            // Apply centroid config to centroid tab (main tab for non-topdown)
+            if (loadedCentroidConfig) {
+                applyConfigToTab(loadedCentroidConfig, 'centroid');
+            }
+            // Apply centered instance config to CI tab
+            if (loadedCIConfig) {
+                applyConfigToTab(loadedCIConfig, 'ci');
+            }
+
+            // Trigger UI updates
+            if (typeof updateReceptiveFieldDisplay === 'function') updateReceptiveFieldDisplay();
+            if (typeof updateModelInputSize === 'function') updateModelInputSize();
+
+            console.log('Applied loaded configs to form fields');
+        }
+
+        function applyConfigToTab(config, tabType) {
+            const dc = config.data_config || {};
+            const mc = config.model_config || {};
+            const tc = config.trainer_config || {};
+            const prep = dc.preprocessing || {};
+            const aug = dc.augmentation_config || {};
+
+            // Determine prefix for element IDs ('' for centroid/main, 'ci-' for centered instance)
+            const prefix = tabType === 'ci' ? 'ci-' : '';
+            const isCITab = tabType === 'ci';
+
+            // Apply preprocessing values
+            if (prep.scale !== undefined) {
+                const scaleInput = document.getElementById(prefix + 'input-scale');
+                if (scaleInput) scaleInput.value = prep.scale;
+            }
+
+            if (prep.crop_size !== undefined && prep.crop_size !== null) {
+                const cropInput = document.getElementById('crop-size');
+                if (cropInput && isCITab) cropInput.value = prep.crop_size;
+            }
+
+            // Apply backbone config
+            const bb = mc.backbone_config || {};
+            const backboneSelect = document.getElementById(prefix + 'backbone');
+            if (bb.unet && backboneSelect) {
+                backboneSelect.value = 'unet';
+            } else if (bb.convnext && backboneSelect) {
+                backboneSelect.value = 'convnext_' + (bb.convnext.model_type || 'tiny');
+            } else if (bb.swint && backboneSelect) {
+                backboneSelect.value = 'swint_' + (bb.swint.model_type || 'tiny');
+            }
+
+            if (bb.unet) {
+                const msSelect = document.getElementById(prefix + 'max-stride');
+                if (msSelect && bb.unet.max_stride) msSelect.value = bb.unet.max_stride;
+
+                const filtersInput = document.getElementById(prefix + 'filters');
+                if (filtersInput && bb.unet.filters) filtersInput.value = bb.unet.filters;
+
+                const osSelect = document.getElementById(prefix + 'output-stride');
+                if (osSelect && bb.unet.output_stride) osSelect.value = bb.unet.output_stride;
+            }
+
+            // Apply head config (sigma, output_stride)
+            const heads = mc.head_configs || {};
+            const headConfig = heads.single_instance || heads.centroid || heads.centered_instance ||
+                              heads.bottomup || heads.multi_class_bottomup || heads.multi_class_topdown;
+            if (headConfig?.confmaps) {
+                const sigmaInput = document.getElementById(prefix + 'sigma');
+                if (sigmaInput && headConfig.confmaps.sigma) sigmaInput.value = headConfig.confmaps.sigma;
+
+                const osSelect = document.getElementById(prefix + 'output-stride');
+                if (osSelect && headConfig.confmaps.output_stride) osSelect.value = headConfig.confmaps.output_stride;
+
+                if (headConfig.confmaps.anchor_part) {
+                    // Store for later application after anchor list is populated
+                    config._anchorPart = headConfig.confmaps.anchor_part;
+                }
+            }
+
+            // Apply trainer config - handle both flat and nested structures
+            const batchSize = tc.batch_size || tc.train_data_loader?.batch_size;
+            const bsInput = document.getElementById(prefix + 'batch-size');
+            if (bsInput && batchSize) bsInput.value = batchSize;
+
+            const epochsInput = document.getElementById(prefix + 'max-epochs');
+            if (epochsInput && tc.max_epochs) epochsInput.value = tc.max_epochs;
+
+            const lrInput = document.getElementById(prefix + 'learning-rate');
+            if (lrInput && tc.optimizer?.lr) lrInput.value = tc.optimizer.lr;
+
+            // Handle optimizer_name (flat) or optimizer.name (nested)
+            const optimizerName = tc.optimizer_name || tc.optimizer?.name;
+            const optSelect = document.getElementById(prefix + 'optimizer');
+            if (optSelect && optimizerName) optSelect.value = optimizerName;
+
+            // Apply augmentation toggle
+            const augToggle = document.getElementById(prefix + 'use-augmentation');
+            if (augToggle && ((aug && (aug.intensity || aug.geometric)) || dc.use_augmentations_train)) {
+                augToggle.checked = true;
+            }
+
+            // Apply num_workers
+            const numWorkers = tc.train_data_loader?.num_workers;
+            const nwSelect = document.getElementById(prefix + 'num-workers');
+            if (nwSelect && numWorkers !== undefined) nwSelect.value = numWorkers;
+
+            // Apply data pipeline
+            const dataPipeline = dc.data_pipeline_fw;
+            const dpSelect = document.getElementById(prefix + 'data-pipeline');
+            if (dpSelect && dataPipeline) {
+                if (dataPipeline.includes('cache_img_memory')) dpSelect.value = 'torch_dataset_cache_img_memory';
+                else if (dataPipeline.includes('cache_img_disk')) dpSelect.value = 'torch_dataset_cache_img_disk';
+                else dpSelect.value = 'torch_dataset';
+            }
+
+            // Apply checkpoint settings
+            const ckptDirInput = document.getElementById(prefix + 'ckpt-dir');
+            if (ckptDirInput && tc.ckpt_dir) ckptDirInput.value = tc.ckpt_dir;
+
+            const runNameInput = document.getElementById(prefix + 'run-name');
+            if (runNameInput && tc.run_name) runNameInput.value = tc.run_name;
+
+            const saveTopKInput = document.getElementById(prefix + 'ckpt-save-top-k');
+            if (saveTopKInput && tc.model_ckpt?.save_top_k) saveTopKInput.value = tc.model_ckpt.save_top_k;
+
+            const saveLastCheckbox = document.getElementById(prefix + 'ckpt-save-last');
+            if (saveLastCheckbox && tc.model_ckpt?.save_last !== undefined) saveLastCheckbox.checked = tc.model_ckpt.save_last;
+
+            const saveCkptCheckbox = document.getElementById(prefix + 'save-ckpt');
+            if (saveCkptCheckbox && tc.save_ckpt !== undefined) saveCkptCheckbox.checked = tc.save_ckpt;
+
+            // Apply wandb settings
+            const useWandbCheckbox = document.getElementById(prefix + 'enable-wandb');
+            if (useWandbCheckbox && tc.use_wandb !== undefined) useWandbCheckbox.checked = tc.use_wandb;
+
+            // Apply wandb project
+            const wandbProjectInput = document.getElementById(prefix + 'wandb-project');
+            if (wandbProjectInput && tc.wandb?.project) wandbProjectInput.value = tc.wandb.project;
+
+            // Apply early stopping (no prefix for main tab)
+            const earlyStopCheckbox = document.getElementById(isCITab ? 'ci-early-stopping' : 'early-stopping');
+            if (earlyStopCheckbox && tc.early_stopping?.stop_training_on_plateau !== undefined) {
+                earlyStopCheckbox.checked = tc.early_stopping.stop_training_on_plateau;
+            }
+
+            // Apply OHKM
+            const ohkmCheckbox = document.getElementById(prefix + 'enable-ohkm');
+            if (ohkmCheckbox && tc.online_hard_keypoint_mining?.online_mining !== undefined) {
+                ohkmCheckbox.checked = tc.online_hard_keypoint_mining.online_mining;
+            }
+
+            // Apply min_crop_size for CI
+            if (isCITab && prep.min_crop_size) {
+                const minCropInput = document.getElementById('min-crop-size');
+                if (minCropInput) minCropInput.value = prep.min_crop_size;
+            }
+
+            // Apply validation fraction
+            if (dc.validation_fraction !== undefined) {
+                const valFracSlider = document.getElementById(prefix + 'val-fraction');
+                if (valFracSlider) valFracSlider.value = dc.validation_fraction;
+            }
+
+            console.log(`Applied ${tabType} config to form fields`);
         }
 
         async function handleVideoFile(file) {
@@ -3268,6 +3653,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 setDefaultParameters();
                 // Auto-select recommended model AFTER setDefaultParameters to ensure scale is set correctly
                 selectModelType(recommendedModel);
+                // Apply loaded configs if any were loaded before SLP
+                if (loadedCentroidConfig || loadedCIConfig) {
+                    applyLoadedConfig();
+                }
                 document.getElementById('next-btn').disabled = false;
                 document.getElementById('step1').classList.add('completed');
 
@@ -3483,21 +3872,36 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             frameBboxes[frameId].push({ minX, minY, maxX, maxY });
                         }
 
-                        // Store best instance for visualization - prioritize instances from first labeled frame
-                        // to match what the video preview shows (frame 0)
+                        // Store best instance for visualization - MUST match the frame we'll load
+                        // Only use instances from firstLabeledFrameId to ensure skeleton aligns with video
                         if (instancePoints.length >= nodes.length * 0.5) {
-                            const thisFrameIdx = frameIdToFrameInfo[frameId]?.frameIdx ?? Infinity;
+                            const thisFrameInfo = frameIdToFrameInfo[frameId];
+                            const thisVideoIdx = Number(thisFrameInfo?.videoIdx ?? -1);
+                            const thisFrameIdx = Number(thisFrameInfo?.frameIdx ?? -1);
+
+                            // Check if this instance is from the frame we'll load
+                            const isFromLoadedFrame = (thisVideoIdx === firstLabeledVideoIdx &&
+                                                       thisFrameIdx === Number(firstLabeledFrameIdx));
+
+                            // Prefer instances from the frame we'll load; fall back to any frame if needed
+                            const currentIsFromLoadedFrame = sampleInstance &&
+                                (sampleInstance.videoIdx === firstLabeledVideoIdx &&
+                                 sampleInstance.frameIdx === Number(firstLabeledFrameIdx));
+
                             // Update sample if:
                             // 1. We don't have one yet, OR
-                            // 2. This instance is from an earlier frame (closer to frame 0), OR
-                            // 3. Same frame but this instance has more keypoints
-                            if (!sampleInstance ||
-                                thisFrameIdx < sampleInstanceFrameIdx ||
-                                (thisFrameIdx === sampleInstanceFrameIdx && instancePoints.length > sampleInstance.points.length)) {
+                            // 2. This is from the loaded frame and current isn't, OR
+                            // 3. Both from same frame category, but this has more keypoints
+                            const shouldUpdate = !sampleInstance ||
+                                (isFromLoadedFrame && !currentIsFromLoadedFrame) ||
+                                (isFromLoadedFrame === currentIsFromLoadedFrame && instancePoints.length > sampleInstance.points.length);
+
+                            if (shouldUpdate) {
                                 sampleInstance = {
                                     points: instancePoints,
                                     bbox: { minX, minY, maxX, maxY },
-                                    frameIdx: thisFrameIdx
+                                    frameIdx: thisFrameIdx,
+                                    videoIdx: thisVideoIdx
                                 };
                                 sampleInstanceFrameIdx = thisFrameIdx;
                             }
@@ -3567,8 +3971,25 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const maxHeight = heights.length > 0 ? percentile(heights, 99) : 100;
 
             // Calculate overlap and centroid distance statistics
-            function bboxesOverlap(a, b) {
-                return !(a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY);
+            function bboxIoU(a, b) {
+                // Compute intersection
+                const interMinX = Math.max(a.minX, b.minX);
+                const interMinY = Math.max(a.minY, b.minY);
+                const interMaxX = Math.min(a.maxX, b.maxX);
+                const interMaxY = Math.min(a.maxY, b.maxY);
+
+                const interW = Math.max(0, interMaxX - interMinX);
+                const interH = Math.max(0, interMaxY - interMinY);
+                const interArea = interW * interH;
+
+                if (interArea === 0) return 0;
+
+                // Compute union
+                const areaA = (a.maxX - a.minX) * (a.maxY - a.minY);
+                const areaB = (b.maxX - b.minX) * (b.maxY - b.minY);
+                const unionArea = areaA + areaB - interArea;
+
+                return unionArea > 0 ? interArea / unionArea : 0;
             }
 
             function bboxCentroid(bbox) {
@@ -3584,29 +4005,33 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 return Math.sqrt((ca.x - cb.x) ** 2 + (ca.y - cb.y) ** 2);
             }
 
-            let framesWithOverlap = 0;
+            const IOU_THRESHOLD = 0.2;
+            let framesWithSignificantOverlap = 0;
             let multiInstanceFrames = 0;
+            let maxIoU = 0;
             const allCentroidDistances = [];
             for (const frameId in frameBboxes) {
                 const boxes = frameBboxes[frameId];
                 if (boxes.length > 1) {
                     multiInstanceFrames++;
-                    // Check if any pair of boxes overlap and compute centroid distances
-                    let hasOverlap = false;
+                    // Check if any pair of boxes has IoU > threshold and compute centroid distances
+                    let hasSignificantOverlap = false;
                     for (let i = 0; i < boxes.length; i++) {
                         for (let j = i + 1; j < boxes.length; j++) {
-                            if (bboxesOverlap(boxes[i], boxes[j])) {
-                                hasOverlap = true;
+                            const iou = bboxIoU(boxes[i], boxes[j]);
+                            if (iou > maxIoU) maxIoU = iou;
+                            if (iou > IOU_THRESHOLD) {
+                                hasSignificantOverlap = true;
                             }
                             // Compute centroid distance between each pair
                             const dist = centroidDistance(boxes[i], boxes[j]);
                             if (dist > 0) allCentroidDistances.push(dist);
                         }
                     }
-                    if (hasOverlap) framesWithOverlap++;
+                    if (hasSignificantOverlap) framesWithSignificantOverlap++;
                 }
             }
-            const overlapFrequency = multiInstanceFrames > 0 ? framesWithOverlap / multiInstanceFrames : 0;
+            const overlapFrequency = multiInstanceFrames > 0 ? framesWithSignificantOverlap / multiInstanceFrames : 0;
             const minCentroidDist = allCentroidDistances.length > 0 ? Math.min(...allCentroidDistances) : null;
             const avgCentroidDist = allCentroidDistances.length > 0 ? allCentroidDistances.reduce((a, b) => a + b, 0) / allCentroidDistances.length : null;
 
@@ -3627,8 +4052,9 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 maxWidth: Math.round(maxWidth),
                 maxHeight: Math.round(maxHeight),
                 overlapFrequency,
+                maxIoU,
                 multiInstanceFrames,
-                framesWithOverlap,
+                framesWithSignificantOverlap,
                 minCentroidDist,
                 avgCentroidDist,
                 tracks,
@@ -3764,12 +4190,15 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             document.getElementById('data-summary').classList.remove('hidden');
             document.getElementById('file-name-badge').textContent = slpData.filename;
 
-            // Build overlap display
+            // Build overlap display: "x% with 0.2 IoU (max: y)"
             let overlapDisplay = '-';
             let overlapClass = '';
+            let overlapTitle = 'Percentage of multi-instance frames with IoU > 0.2';
             if (slpData.maxInstancesPerFrame > 1) {
                 const overlapPct = Math.round(slpData.overlapFrequency * 100);
+                const maxIoUDisplay = slpData.maxIoU.toFixed(2);
                 overlapDisplay = `${overlapPct}%`;
+                overlapTitle = `${overlapPct}% of frames have IoU > 0.2 overlap\nMax IoU observed: ${maxIoUDisplay}`;
                 if (overlapPct > 40) overlapClass = 'style="color: #f59e0b;"'; // warning color for high overlap
             }
 
@@ -3799,8 +4228,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <div class="stat-label">Max Instance Size</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value" ${overlapClass}>${overlapDisplay}</div>
-                    <div class="stat-label">Overlap</div>
+                    <div class="stat-value" ${overlapClass} title="${overlapTitle}">${overlapDisplay}</div>
+                    <div class="stat-label">Overlap (IoU&gt;0.2)${slpData.maxInstancesPerFrame > 1 ? '<br><small style="color: var(--text-dim);">max: ' + slpData.maxIoU.toFixed(2) + '</small>' : ''}</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-value">${slpData.skeleton.nodes.length}</div>
@@ -3830,6 +4259,9 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             if (!firstFrame) {
                 document.getElementById('video-upload-section').classList.remove('hidden');
             }
+
+            // Always show config upload section
+            document.getElementById('config-upload-section').classList.remove('hidden');
 
             // Draw frame if available
             drawFramePreview();
@@ -4324,7 +4756,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             // Calculate animal size relative to frame
             const frameSize = Math.max(slpData.imgWidth, slpData.imgHeight);
             const animalRatio = slpData.avgAnimalSize / frameSize;
-            const isSmallAnimal = animalRatio < 0.15;  // Animals are < 15% of frame size
+            const isSmallAnimal = animalRatio < 0.20;  // Animals are < 20% of frame size
+            const hasHighOverlap = slpData.overlapFrequency > 0.10;  // >10% of frames have IoU > 0.2
 
             // Recommend model type based on data characteristics
             let recommendedId;
@@ -4337,16 +4770,30 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // Recommend top-down for small animals relative to frame (non-ID by default)
                 recommendedId = 'topdown';
                 recommendationReason = `animals are small relative to frame (~${Math.round(animalRatio * 100)}% of frame size)`;
-            } else {
-                // Recommend bottom-up for larger animals or crowded scenes (non-ID by default)
+            } else if (hasHighOverlap) {
+                // Recommend bottom-up for larger animals with significant overlap
                 recommendedId = 'bottomup';
-                recommendationReason = `${slpData.maxInstancesPerFrame} max animals/frame`;
+                recommendationReason = `larger animals (~${Math.round(animalRatio * 100)}% of frame) with frequent overlap (${Math.round(slpData.overlapFrequency * 100)}% of frames)`;
+            } else {
+                // Larger animals with low overlap - top-down works well
+                recommendedId = 'topdown';
+                recommendationReason = `larger animals (~${Math.round(animalRatio * 100)}% of frame) with minimal overlap`;
+            }
+
+            // Build recommendation hint based on decision factors
+            let recommendationHint = '';
+            if (isSmallAnimal && !isSingleAnimal) {
+                recommendationHint = '<br><span style="font-size: 0.85rem; color: #667eea;">Top-down works well when animals are small in the frame - cropping improves resolution.</span>';
+            } else if (hasHighOverlap && !isSingleAnimal) {
+                recommendationHint = '<br><span style="font-size: 0.85rem; color: #667eea;">Bottom-up handles overlapping animals better using Part Affinity Fields.</span>';
+            } else if (!isSmallAnimal && !hasHighOverlap && !isSingleAnimal) {
+                recommendationHint = '<br><span style="font-size: 0.85rem; color: #667eea;">With minimal overlap, top-down can efficiently crop each animal.</span>';
             }
 
             document.getElementById('model-recommendation').innerHTML = `
                 <strong>Recommendation:</strong> Based on your data (${recommendationReason}),
                 we recommend <strong>${MODEL_TYPES.find(m => m.id === recommendedId).name}</strong>.
-                ${isSmallAnimal && !isSingleAnimal ? '<br><span style="font-size: 0.85rem; color: #667eea;">Top-down works well when animals are small in the frame.</span>' : ''}
+                ${recommendationHint}
                 ${hasTracks ? '<br><span style="font-size: 0.85rem; color: #888;">Your SLP has track annotations. Identity models (Multi-Class) are also available if you need to track individuals.</span>' : '<br><span style="font-size: 0.85rem; color: #888;">Identity models (Multi-Class) require track annotations in your SLP file.</span>'}
             `;
 
@@ -4990,32 +5437,50 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 const cropMaxX = anchorX + cropHalf;
                 const cropMaxY = anchorY + cropHalf;
 
-                // Calculate transform to map crop to canvas
-                const scale = Math.min(width / cropSize, height / cropSize) * 0.9;
-                const offsetX = width / 2 - anchorX * scale;
-                const offsetY = height / 2 - anchorY * scale;
+                // Calculate scale to fit crop in canvas with padding
+                const padding = 10;
+                const scale = (Math.min(width, height) - padding * 2) / cropSize;
 
+                // Transform function: maps world coords to canvas coords (crop-relative)
                 const transform = (x, y) => ({
-                    x: x * scale + offsetX,
-                    y: y * scale + offsetY
+                    x: (x - cropMinX) * scale + padding,
+                    y: (y - cropMinY) * scale + padding
                 });
 
                 // Draw video frame crop as background if available
                 if (hasVideo) {
                     try {
-                        const srcX = Math.max(0, cropMinX);
-                        const srcY = Math.max(0, cropMinY);
+                        // Calculate source region (clamped to image bounds)
+                        const srcX = Math.max(0, Math.floor(cropMinX));
+                        const srcY = Math.max(0, Math.floor(cropMinY));
                         const srcW = Math.min(cropSize, videoFrame.width - srcX);
                         const srcH = Math.min(cropSize, videoFrame.height - srcY);
-                        const destPos = transform(srcX, srcY);
-                        ctx.drawImage(
-                            videoFrame,
-                            srcX, srcY, srcW, srcH,
-                            destPos.x, destPos.y, srcW * scale, srcH * scale
-                        );
-                        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-                        ctx.fillRect(0, 0, width, height);
-                    } catch (e) {}
+
+                        console.log('CI Crop Preview:', {
+                            videoFrame: { w: videoFrame.width, h: videoFrame.height },
+                            anchor: { x: anchorX, y: anchorY },
+                            crop: { minX: cropMinX, minY: cropMinY, size: cropSize },
+                            src: { x: srcX, y: srcY, w: srcW, h: srcH },
+                            scale, padding
+                        });
+
+                        if (srcW > 0 && srcH > 0) {
+                            // Calculate destination position (accounting for clamping offset)
+                            const destX = (srcX - cropMinX) * scale + padding;
+                            const destY = (srcY - cropMinY) * scale + padding;
+
+                            ctx.drawImage(
+                                videoFrame,
+                                srcX, srcY, srcW, srcH,
+                                destX, destY, srcW * scale, srcH * scale
+                            );
+                            // Slight darkening overlay for better skeleton visibility
+                            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+                            ctx.fillRect(destX, destY, srcW * scale, srcH * scale);
+                        }
+                    } catch (e) {
+                        console.warn('Error drawing video crop:', e);
+                    }
                 }
 
                 // Draw crop box
@@ -6213,6 +6678,14 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 reduceLrFactor: parseFloat(document.getElementById('reduce-lr-factor')?.value) || 0.5,
                 reduceLrMin: parseFloat(document.getElementById('reduce-lr-min')?.value) || 1e-8,
                 reduceLrCooldown: parseInt(document.getElementById('reduce-lr-cooldown')?.value) || 3,
+                // Cosine Annealing + Warmup params
+                cosineWarmupEpochs: parseInt(document.getElementById('cosine-warmup-epochs')?.value) || 5,
+                cosineWarmupStartLr: parseFloat(document.getElementById('cosine-warmup-start-lr')?.value) || 0,
+                cosineEtaMin: parseFloat(document.getElementById('cosine-eta-min')?.value) || 0,
+                // Linear Warmup + Decay params
+                linearWarmupEpochs: parseInt(document.getElementById('linear-warmup-epochs')?.value) || 5,
+                linearWarmupStartLr: parseFloat(document.getElementById('linear-warmup-start-lr')?.value) || 0,
+                linearEndLr: parseFloat(document.getElementById('linear-end-lr')?.value) || 0,
                 // Augmentation values (from sliders)
                 augRotation: parseInt(document.getElementById('aug-rotation-val')?.value) || 15,
                 augScaleRange: parseInt(document.getElementById('aug-scale-val')?.value) || 10,
@@ -6280,6 +6753,14 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 reduceLrFactor: parseFloat(document.getElementById('ci-reduce-lr-factor')?.value) || 0.5,
                 reduceLrMin: parseFloat(document.getElementById('ci-reduce-lr-min')?.value) || 1e-8,
                 reduceLrCooldown: parseInt(document.getElementById('ci-reduce-lr-cooldown')?.value) || 3,
+                // Cosine Annealing + Warmup params
+                cosineWarmupEpochs: parseInt(document.getElementById('ci-cosine-warmup-epochs')?.value) || 5,
+                cosineWarmupStartLr: parseFloat(document.getElementById('ci-cosine-warmup-start-lr')?.value) || 0,
+                cosineEtaMin: parseFloat(document.getElementById('ci-cosine-eta-min')?.value) || 0,
+                // Linear Warmup + Decay params
+                linearWarmupEpochs: parseInt(document.getElementById('ci-linear-warmup-epochs')?.value) || 5,
+                linearWarmupStartLr: parseFloat(document.getElementById('ci-linear-warmup-start-lr')?.value) || 0,
+                linearEndLr: parseFloat(document.getElementById('ci-linear-end-lr')?.value) || 0,
                 // OHKM
                 enableOhkm: document.getElementById('ci-enable-ohkm')?.checked || false,
                 ohkmRatio: parseFloat(document.getElementById('ci-ohkm-ratio')?.value) || 2.0,
@@ -6466,6 +6947,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const patienceGroup = document.getElementById('lr-patience-group');
             const stepLrOptions = document.getElementById('step-lr-options');
             const reduceLrOptions = document.getElementById('reduce-lr-options');
+            const cosineWarmupOptions = document.getElementById('cosine-warmup-options');
+            const linearWarmupDecayOptions = document.getElementById('linear-warmup-decay-options');
 
             // Show patience for reduce_on_plateau only
             patienceGroup.style.display = scheduler === 'reduce_on_plateau' ? 'block' : 'none';
@@ -6473,6 +6956,10 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             stepLrOptions.style.display = scheduler === 'step_lr' ? 'block' : 'none';
             // Show reduce on plateau options when reduce_on_plateau is selected
             reduceLrOptions.style.display = scheduler === 'reduce_on_plateau' ? 'block' : 'none';
+            // Show cosine annealing warmup options
+            cosineWarmupOptions.style.display = scheduler === 'cosine_annealing_warmup' ? 'block' : 'none';
+            // Show linear warmup + decay options
+            linearWarmupDecayOptions.style.display = scheduler === 'linear_warmup_linear_decay' ? 'block' : 'none';
         }
 
         // CI (Centered Instance) tab toggle functions
@@ -6516,10 +7003,14 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const patienceGroup = document.getElementById('ci-lr-patience-group');
             const stepLrOptions = document.getElementById('ci-step-lr-options');
             const reduceLrOptions = document.getElementById('ci-reduce-lr-options');
+            const cosineWarmupOptions = document.getElementById('ci-cosine-warmup-options');
+            const linearWarmupDecayOptions = document.getElementById('ci-linear-warmup-decay-options');
 
             patienceGroup.style.display = scheduler === 'reduce_on_plateau' ? 'block' : 'none';
             stepLrOptions.style.display = scheduler === 'step_lr' ? 'block' : 'none';
             reduceLrOptions.style.display = scheduler === 'reduce_on_plateau' ? 'block' : 'none';
+            cosineWarmupOptions.style.display = scheduler === 'cosine_annealing_warmup' ? 'block' : 'none';
+            linearWarmupDecayOptions.style.display = scheduler === 'linear_warmup_linear_decay' ? 'block' : 'none';
         }
 
         // Navigation
@@ -6596,29 +7087,20 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const saveCkpt = document.getElementById('save-ckpt').checked;
             const inputChannels = parseInt(document.getElementById('input-channels').value);
 
-            // Advanced options
-            const advancedOptions = {
-                numWorkers: parseInt(document.getElementById('num-workers')?.value) || 0,
-                dataPipeline: document.getElementById('data-pipeline')?.value || 'torch_dataset',
-                minSteps: parseInt(document.getElementById('min-steps')?.value) || 200,
-                seed: document.getElementById('random-seed')?.value ? parseInt(document.getElementById('random-seed').value) : null,
-                lrScheduler: document.getElementById('lr-scheduler')?.value || 'reduce_on_plateau',
-                lrPatience: parseInt(document.getElementById('lr-patience')?.value) || 5,
-                enableOhkm: document.getElementById('enable-ohkm')?.checked || false,
-                enableWandb: document.getElementById('enable-wandb')?.checked || false,
-                enableViz: document.getElementById('enable-viz')?.checked || false
-            };
+            // Advanced options - use getAdvancedOptions() to include all fields (eval, wandb details, etc.)
+            const advancedOptions = getAdvancedOptions();
 
             // Determine head type
             let headType = selectedModelType;
             if (selectedModelType === 'topdown') headType = 'centroid';
             else if (selectedModelType === 'multi_class_topdown') headType = 'centroid';
 
-            // Generate first config
+            // Generate first config (use loaded centroid config as base if available)
             const config1 = generateConfigYaml({
                 headType, scale, valFraction, useAug, backbone, maxStride, filters, sigma, outputStride,
                 batchSize, maxEpochs, learningRate, optimizer, accelerator, earlyStopping, saveCkpt,
-                anchorPart: selectedAnchor, inputChannels, advancedOptions
+                anchorPart: selectedAnchor, inputChannels, advancedOptions,
+                loadedConfig: loadedCentroidConfig
             });
             document.getElementById('yaml-output-1').textContent = config1;
 
@@ -6655,7 +7137,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     sigma: ciSigma, outputStride: ciOutputStride,
                     batchSize: ciBatchSize, maxEpochs: ciMaxEpochs, learningRate: ciLearningRate,
                     optimizer: ciOptimizer, accelerator: ciAccelerator, earlyStopping: ciEarlyStopping, saveCkpt: ciSaveCkpt,
-                    isCenteredInstance: true, anchorPart: selectedAnchor, inputChannels, advancedOptions: ciAdvancedOptions
+                    isCenteredInstance: true, anchorPart: selectedAnchor, inputChannels, advancedOptions: ciAdvancedOptions,
+                    loadedConfig: loadedCIConfig
                 });
                 document.getElementById('yaml-output-2').textContent = config2;
             } else {
@@ -6671,11 +7154,16 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         function generateConfigYaml(params) {
             const { headType, scale, valFraction, cropSize, useAug, backbone, maxStride, filters,
                     filtersRate, sigma, outputStride, batchSize, maxEpochs, learningRate, optimizer, accelerator,
-                    earlyStopping, saveCkpt, isCenteredInstance, anchorPart, inputChannels, advancedOptions } = params;
+                    earlyStopping, saveCkpt, isCenteredInstance, anchorPart, inputChannels, advancedOptions, loadedConfig } = params;
 
             const numChannels = inputChannels || slpData.numChannels;
             const adv = advancedOptions || {};
             const fRate = filtersRate || 1.5;
+
+            // Helper to get value from loaded config or use default
+            const lc = loadedConfig || {};
+            const lcData = lc.data_config || {};
+            const lcTrainer = lc.trainer_config || {};
             const pafSigma = parseFloat(document.getElementById('paf-sigma')?.value) || 15.0;
 
             // Backbone config - determine channel conversion needs
@@ -6871,13 +7359,13 @@ ${partNames}
                         const contrastPct = adv.augContrast / 100;
                         intensityParts.push(`      contrast_min: ${(1 - contrastPct).toFixed(2)}`);
                         intensityParts.push(`      contrast_max: ${(1 + contrastPct).toFixed(2)}`);
-                        intensityParts.push('      contrast_p: 0.5');
+                        intensityParts.push('      contrast_p: 1.0');
                     }
                     if (hasBrightness) {
                         const brightnessPct = adv.augBrightness / 100;
                         intensityParts.push(`      brightness_min: ${(1 - brightnessPct).toFixed(2)}`);
                         intensityParts.push(`      brightness_max: ${(1 + brightnessPct).toFixed(2)}`);
-                        intensityParts.push('      brightness_p: 0.5');
+                        intensityParts.push('      brightness_p: 1.0');
                     }
                     augParts.push(intensityParts.join('\n'));
                 }
@@ -6897,7 +7385,7 @@ ${partNames}
                         geoParts.push(`      translate_width: ${adv.augTranslate.toFixed(2)}`);
                         geoParts.push(`      translate_height: ${adv.augTranslate.toFixed(2)}`);
                     }
-                    geoParts.push('      affine_p: 0.5');
+                    geoParts.push('      affine_p: 1.0');
                     augParts.push(geoParts.join('\n'));
                 }
 
@@ -6910,13 +7398,15 @@ ${partNames}
 
 data_config:
   train_labels_path:
-    - /path/to/your/labels.slp  # UPDATE THIS PATH
-  val_labels_path: null
+    - ${lcData.train_labels_path?.[0] || '/path/to/your/labels.slp'}  # UPDATE THIS PATH
+  val_labels_path: ${lcData.val_labels_path || 'null'}
   validation_fraction: ${valFraction}
-  test_file_path: null
-  provider: LabelsReader
-  user_instances_only: true
-  data_pipeline_fw: ${adv.dataPipeline || 'torch_dataset'}
+  test_file_path: ${lcData.test_file_path || 'null'}
+  provider: ${lcData.provider || 'LabelsReader'}
+  user_instances_only: ${lcData.user_instances_only ?? true}
+  data_pipeline_fw: ${adv.dataPipeline && adv.dataPipeline !== 'torch_dataset' ? adv.dataPipeline : lcData.data_pipeline_fw || 'torch_dataset'}
+  parallel_caching: ${lcData.parallel_caching ?? 'null'}
+  cache_workers: ${lcData.cache_workers ?? 'null'}
   preprocessing:
     ensure_rgb: ${needEnsureRgb}
     ensure_grayscale: ${needEnsureGrayscale}
@@ -6937,26 +7427,26 @@ trainer_config:
   train_data_loader:
     batch_size: ${batchSize}
     shuffle: true
-    num_workers: ${adv.numWorkers || 0}
+    num_workers: ${adv.numWorkers || lcTrainer.train_data_loader?.num_workers || 0}
   val_data_loader:
     batch_size: ${batchSize}
     shuffle: false
-    num_workers: ${adv.numWorkers || 0}
+    num_workers: ${adv.numWorkers || lcTrainer.val_data_loader?.num_workers || 0}
   model_ckpt:
-    save_top_k: ${adv.ckptSaveTopK ?? 1}
-    save_last: ${adv.ckptSaveLast === true ? 'true' : adv.ckptSaveLast === false ? 'false' : 'null'}
-  trainer_devices: auto
+    save_top_k: ${adv.ckptSaveTopK ?? lcTrainer.model_ckpt?.save_top_k ?? 1}
+    save_last: ${adv.ckptSaveLast === true ? 'true' : adv.ckptSaveLast === false ? 'false' : lcTrainer.model_ckpt?.save_last ?? 'null'}
+  trainer_devices: ${lcTrainer.trainer_devices || 'auto'}
   trainer_accelerator: ${accelerator}
-  enable_progress_bar: true
-  min_train_steps_per_epoch: ${adv.minSteps || 200}
-  visualize_preds_during_training: ${adv.enableViz || false}
-  keep_viz: ${adv.vizKeepFolder || false}
+  enable_progress_bar: ${lcTrainer.enable_progress_bar ?? true}
+  min_train_steps_per_epoch: ${adv.minSteps || lcTrainer.min_train_steps_per_epoch || 200}
+  visualize_preds_during_training: ${adv.enableViz || lcTrainer.visualize_preds_during_training || false}
+  keep_viz: ${adv.vizKeepFolder || lcTrainer.keep_viz || false}
   max_epochs: ${maxEpochs}
-  seed: ${adv.seed !== null && adv.seed !== undefined ? adv.seed : 'null'}
-  use_wandb: ${adv.enableWandb || false}
+  seed: ${adv.seed !== null && adv.seed !== undefined ? adv.seed : lcTrainer.seed ?? 'null'}
+  use_wandb: ${adv.enableWandb || lcTrainer.use_wandb || false}
   save_ckpt: ${saveCkpt}
-  ckpt_dir: ${adv.ckptDir || './models'}
-  run_name: ${adv.runName ? `"${adv.runName}"` : 'null'}
+  ckpt_dir: ${adv.ckptDir && adv.ckptDir !== './models' ? adv.ckptDir : lcTrainer.ckpt_dir || './models'}
+  run_name: ${adv.runName ? `"${adv.runName}"` : lcTrainer.run_name ? `"${lcTrainer.run_name}"` : 'null'}
   resume_ckpt_path: ${adv.resumeCkptPath ? `"${adv.resumeCkptPath}"` : 'null'}
   optimizer_name: ${optimizer}
   optimizer:
@@ -6966,33 +7456,51 @@ trainer_config:
 ${adv.lrScheduler === 'step_lr' ? `    step_lr:
       step_size: ${adv.stepLrStepSize || 10}
       gamma: ${adv.stepLrGamma || 0.1}
-    reduce_lr_on_plateau: null` : adv.lrScheduler === 'none' ? `    step_lr: null
-    reduce_lr_on_plateau: null` : `    step_lr: null
+    reduce_lr_on_plateau: null
+    cosine_annealing_warmup: null
+    linear_warmup_linear_decay: null` : adv.lrScheduler === 'cosine_annealing_warmup' ? `    step_lr: null
+    reduce_lr_on_plateau: null
+    cosine_annealing_warmup:
+      warmup_epochs: ${adv.cosineWarmupEpochs || 5}
+      warmup_start_lr: ${adv.cosineWarmupStartLr || 0}
+      eta_min: ${adv.cosineEtaMin || 0}
+    linear_warmup_linear_decay: null` : adv.lrScheduler === 'linear_warmup_linear_decay' ? `    step_lr: null
+    reduce_lr_on_plateau: null
+    cosine_annealing_warmup: null
+    linear_warmup_linear_decay:
+      warmup_epochs: ${adv.linearWarmupEpochs || 5}
+      warmup_start_lr: ${adv.linearWarmupStartLr || 0}
+      end_lr: ${adv.linearEndLr || 0}` : adv.lrScheduler === 'none' ? `    step_lr: null
+    reduce_lr_on_plateau: null
+    cosine_annealing_warmup: null
+    linear_warmup_linear_decay: null` : `    step_lr: null
     reduce_lr_on_plateau:
-      threshold: 1e-6
-      threshold_mode: abs
+      threshold: ${lcTrainer.lr_scheduler?.reduce_lr_on_plateau?.threshold || 1e-6}
+      threshold_mode: ${lcTrainer.lr_scheduler?.reduce_lr_on_plateau?.threshold_mode || 'abs'}
       cooldown: ${adv.reduceLrCooldown || 3}
       patience: ${adv.lrPatience || 5}
       factor: ${adv.reduceLrFactor || 0.5}
-      min_lr: ${adv.reduceLrMin || 1e-8}`}
+      min_lr: ${adv.reduceLrMin || 1e-8}
+    cosine_annealing_warmup: null
+    linear_warmup_linear_decay: null`}
   early_stopping:
     stop_training_on_plateau: ${earlyStopping}
-    min_delta: ${adv.esMinDelta || 1e-8}
-    patience: ${adv.esPatience || 10}
+    min_delta: ${adv.esMinDelta || lcTrainer.early_stopping?.min_delta || 1e-8}
+    patience: ${adv.esPatience || lcTrainer.early_stopping?.patience || 10}
   online_hard_keypoint_mining:
-    online_mining: ${adv.enableOhkm || false}
-    hard_to_easy_ratio: ${adv.ohkmRatio || 2.0}
-    min_hard_keypoints: ${adv.ohkmMinHard || 2}
-    max_hard_keypoints: ${adv.ohkmMaxHard !== null && adv.ohkmMaxHard !== undefined ? adv.ohkmMaxHard : 'null'}
-    loss_scale: ${adv.ohkmLossScale || 5.0}${adv.enableWandb ? `
+    online_mining: ${adv.enableOhkm || lcTrainer.online_hard_keypoint_mining?.online_mining || false}
+    hard_to_easy_ratio: ${adv.ohkmRatio || lcTrainer.online_hard_keypoint_mining?.hard_to_easy_ratio || 2.0}
+    min_hard_keypoints: ${adv.ohkmMinHard || lcTrainer.online_hard_keypoint_mining?.min_hard_keypoints || 2}
+    max_hard_keypoints: ${adv.ohkmMaxHard !== null && adv.ohkmMaxHard !== undefined ? adv.ohkmMaxHard : lcTrainer.online_hard_keypoint_mining?.max_hard_keypoints ?? 'null'}
+    loss_scale: ${adv.ohkmLossScale || lcTrainer.online_hard_keypoint_mining?.loss_scale || 5.0}${(adv.enableWandb || lcTrainer.use_wandb) ? `
   wandb:
-    entity: ${adv.wandbEntity ? `"${adv.wandbEntity}"` : 'null'}
-    project: ${adv.wandbProject ? `"${adv.wandbProject}"` : '"sleap-training"'}
-    name: ${adv.wandbName ? `"${adv.wandbName}"` : 'null'}
-    api_key: ${adv.wandbApiKey ? `"${adv.wandbApiKey}"` : 'null'}
-    wandb_mode: ${adv.wandbMode ? `"${adv.wandbMode}"` : 'null'}
-    viz_enabled: ${adv.wandbVizEnabled ?? true}
-    save_viz_imgs_wandb: ${adv.wandbSaveViz || false}` : ''}${adv.enableEval ? `
+    entity: ${adv.wandbEntity ? `"${adv.wandbEntity}"` : lcTrainer.wandb?.entity ? `"${lcTrainer.wandb.entity}"` : 'null'}
+    project: ${adv.wandbProject ? `"${adv.wandbProject}"` : lcTrainer.wandb?.project ? `"${lcTrainer.wandb.project}"` : '"sleap-training"'}
+    name: ${adv.wandbName ? `"${adv.wandbName}"` : lcTrainer.wandb?.name ? `"${lcTrainer.wandb.name}"` : 'null'}
+    api_key: ${adv.wandbApiKey ? `"${adv.wandbApiKey}"` : lcTrainer.wandb?.api_key ? `"${lcTrainer.wandb.api_key}"` : 'null'}
+    wandb_mode: ${adv.wandbMode ? `"${adv.wandbMode}"` : lcTrainer.wandb?.wandb_mode ? `"${lcTrainer.wandb.wandb_mode}"` : 'null'}
+    viz_enabled: ${adv.wandbVizEnabled ?? lcTrainer.wandb?.viz_enabled ?? true}
+    save_viz_imgs_wandb: ${adv.wandbSaveViz || lcTrainer.wandb?.save_viz_imgs_wandb || false}` : ''}${adv.enableEval ? `
   eval:
     enabled: true
     frequency: ${adv.evalFrequency || 1}
