@@ -22,6 +22,7 @@ Self-contained HTML tools and applets for the web.
 - [GitHub Stats](gh-stats/) - Contribution stats dashboard with commits, LOC, PRs, and activity heatmap
 - [PyPI Name Checker](pypi-name-checker/) - Check Python package name availability with suggestions
 - [CORS Check](cors-check/) - Test URL CORS status and get the right fetch code
+- [Multiview 3D](multiview-3d/) - Synchronized multi-view pose viewer with DLT triangulation and 3D skeleton
 
 ## About
 

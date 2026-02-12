@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiview 3D</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/",
+            "h5wasm": "https://unpkg.com/h5wasm@0.8.8/dist/esm/hdf5_hl.js",
+            "yaml": "https://esm.sh/yaml@2.6.1",
+            "skia-canvas": "data:text/javascript,export class Canvas{}",
+            "child_process": "data:text/javascript,export function spawn(){}"
+        }
+    }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0; padding: 0;
+            background: #1a1a1a; color: #e0e0e0;
+            line-height: 1.6; overflow: hidden; height: 100vh;
+        }
+        .app { display: flex; flex-direction: column; height: 100vh; }
+        .header {
+            padding: 8px 16px; background: #222; border-bottom: 1px solid #333;
+            display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+        }
+        .header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+        .header .desc { color: #888; font-size: 13px; margin: 0; }
+        .header button {
+            background: #667eea; color: #fff; border: none;
+            padding: 6px 14px; border-radius: 4px; cursor: pointer;
+            font-size: 13px; white-space: nowrap;
+        }
+        .header button:hover { background: #5a6fd6; }
+        .status { font-size: 12px; color: #888; margin-left: auto; }
+        .main { flex: 1; display: flex; overflow: hidden; }
+        .video-panel {
+            flex: 3; display: grid; grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr; gap: 2px; background: #111; padding: 2px;
+            min-width: 0;
+        }
+        .video-cell {
+            position: relative; background: #000; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .video-cell canvas {
+            max-width: 100%; max-height: 100%; object-fit: contain;
+        }
+        .video-label {
+            position: absolute; top: 6px; left: 6px;
+            background: rgba(0,0,0,0.7); padding: 2px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.5px; pointer-events: none;
+        }
+        .viewer-panel {
+            flex: 2; background: #0d0d0d; border-left: 2px solid #333;
+            min-width: 0; position: relative;
+        }
+        .viewer-panel canvas { width: 100% !important; height: 100% !important; }
+        .controls-bar {
+            padding: 8px 16px; background: #222; border-top: 1px solid #333;
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+        }
+        .controls-bar button {
+            background: #444; border: none; color: #fff; padding: 5px 10px;
+            border-radius: 4px; cursor: pointer; font-size: 13px; min-width: 32px;
+        }
+        .controls-bar button:hover { background: #555; }
+        .controls-bar button:disabled { opacity: 0.4; cursor: default; }
+        .controls-bar button.playing { background: #667eea; }
+        .controls-bar input[type="range"] {
+            flex: 1; height: 4px; -webkit-appearance: none; background: #444;
+            border-radius: 2px; outline: none;
+        }
+        .controls-bar input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; width: 14px; height: 14px;
+            background: #667eea; border-radius: 50%; cursor: pointer;
+        }
+        .frame-info { font-size: 12px; color: #aaa; white-space: nowrap; min-width: 90px; text-align: right; }
+        .empty-state {
+            grid-column: 1 / -1; grid-row: 1 / -1;
+            display: flex; flex-direction: column; align-items: center;
+            justify-content: center; color: #555; text-align: center; padding: 40px;
+        }
+        .empty-state p { margin: 4px 0; }
+        .empty-state .hint { font-size: 13px; color: #444; max-width: 400px; }
+        .viewer-empty {
+            position: absolute; inset: 0; display: flex; align-items: center;
+            justify-content: center; color: #444; font-size: 14px;
+        }
+        .info-row {
+            position: absolute; bottom: 6px; left: 6px; right: 6px;
+            display: flex; gap: 8px; font-size: 10px; color: #666;
+            pointer-events: none;
+        }
+        .info-row span {
+            background: rgba(0,0,0,0.6); padding: 1px 6px; border-radius: 3px;
+        }
+        @media (max-width: 900px) {
+            .main { flex-direction: column; }
+            .viewer-panel { flex: 1; border-left: none; border-top: 2px solid #333; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="header">
+        <h1>Multiview 3D</h1>
+        <p class="desc">Synchronized multi-view pose viewer with 3D triangulation</p>
+        <button id="loadBtn">Load Session</button>
+        <input type="file" id="dirInput" webkitdirectory multiple hidden>
+        <span id="status" class="status">No session loaded</span>
+    </div>
+    <div class="main">
+        <div class="video-panel" id="videoPanel">
+            <div class="empty-state" id="emptyState">
+                <p>Load a multi-view session directory</p>
+                <p class="hint">Select a directory containing camera subdirectories (each with .mp4 and .slp files) and a calibration .toml file at the root.</p>
+            </div>
+        </div>
+        <div class="viewer-panel" id="viewerPanel">
+            <div class="viewer-empty" id="viewerEmpty">3D viewer</div>
+        </div>
+    </div>
+    <div class="controls-bar" id="controlsBar">
+        <button id="prevBtn" disabled title="Previous frame (Left arrow)">&#9664;&#9664;</button>
+        <button id="playBtn" disabled title="Play/Pause (Space)">&#9654;</button>
+        <button id="nextBtn" disabled title="Next frame (Right arrow)">&#9654;&#9654;</button>
+        <input type="range" id="frameSlider" min="0" max="0" value="0" disabled>
+        <span id="frameInfo" class="frame-info">-- / --</span>
+    </div>
+</div>
+
+<script type="module">
+import { loadSlp } from 'https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.1.9/dist/index.js';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ============================================================
+// TOML Parser (minimal, handles calibration format)
+// ============================================================
+function parseTOML(text) {
+    const result = {};
+    let section = null;
+    for (const line of text.split('\n')) {
+        const t = line.trim();
+        if (!t || t.startsWith('#')) continue;
+        const sm = t.match(/^\[(.+)\]$/);
+        if (sm) { section = sm[1]; result[section] = {}; continue; }
+        const kv = t.match(/^(\w+)\s*=\s*(.+)$/);
+        if (kv && section) {
+            result[section][kv[1]] = parseTOMLValue(kv[2]);
+        }
+    }
+    return result;
+}
+function parseTOMLValue(v) {
+    v = v.trim();
+    if (v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1);
+    if (v.startsWith('[')) {
+        const cleaned = v.replace(/,\s*]/g, ']');
+        try { return JSON.parse(cleaned); } catch(e) { return v; }
+    }
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    const n = parseFloat(v);
+    return isNaN(n) ? v : n;
+}
+
+// ============================================================
+// Linear Algebra Utilities
+// ============================================================
+function rodrigues(rvec) {
+    const [rx, ry, rz] = rvec;
+    const theta = Math.sqrt(rx*rx + ry*ry + rz*rz);
+    if (theta < 1e-10) return [[1,0,0],[0,1,0],[0,0,1]];
+    const k = [rx/theta, ry/theta, rz/theta];
+    const c = Math.cos(theta), s = Math.sin(theta), t = 1 - c;
+    return [
+        [c + k[0]*k[0]*t,       k[0]*k[1]*t - k[2]*s, k[0]*k[2]*t + k[1]*s],
+        [k[1]*k[0]*t + k[2]*s, c + k[1]*k[1]*t,       k[1]*k[2]*t - k[0]*s],
+        [k[2]*k[0]*t - k[1]*s, k[2]*k[1]*t + k[0]*s, c + k[2]*k[2]*t]
+    ];
+}
+
+function matMul3x4(A, B) {
+    // A: 3x3, B: 3x4 => result 3x4
+    const R = [[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+    for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 4; j++)
+            for (let k = 0; k < 3; k++)
+                R[i][j] += A[i][k] * B[k][j];
+    return R;
+}
+
+function buildProjectionMatrix(K, rvec, tvec) {
+    const R = rodrigues(rvec);
+    const Rt = R.map((row, i) => [...row, tvec[i]]);
+    return matMul3x4(K, Rt);
+}
+
+function getCameraPosition(rvec, tvec) {
+    const R = rodrigues(rvec);
+    // pos = -R^T * t
+    return [
+        -(R[0][0]*tvec[0] + R[1][0]*tvec[1] + R[2][0]*tvec[2]),
+        -(R[0][1]*tvec[0] + R[1][1]*tvec[1] + R[2][1]*tvec[2]),
+        -(R[0][2]*tvec[0] + R[1][2]*tvec[1] + R[2][2]*tvec[2])
+    ];
+}
+
+function getCameraRotationMatrix(rvec) {
+    const R = rodrigues(rvec);
+    // R^T (camera-to-world)
+    return [
+        [R[0][0], R[1][0], R[2][0]],
+        [R[0][1], R[1][1], R[2][1]],
+        [R[0][2], R[1][2], R[2][2]]
+    ];
+}
+
+// ============================================================
+// Jacobi Eigenvalue Solver (4x4 symmetric)
+// ============================================================
+function jacobiEigen4(S) {
+    const n = 4;
+    const A = S.map(r => [...r]);
+    const V = Array.from({length: n}, (_, i) =>
+        Array.from({length: n}, (_, j) => i === j ? 1 : 0));
+
+    for (let sweep = 0; sweep < 100; sweep++) {
+        let off = 0;
+        for (let i = 0; i < n; i++)
+            for (let j = i + 1; j < n; j++)
+                off += A[i][j] * A[i][j];
+        if (off < 1e-24) break;
+
+        for (let p = 0; p < n - 1; p++) {
+            for (let q = p + 1; q < n; q++) {
+                if (Math.abs(A[p][q]) < 1e-15) continue;
+                const d = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+                const sgn = d >= 0 ? 1 : -1;
+                const t = sgn / (Math.abs(d) + Math.sqrt(d * d + 1));
+                const c = 1 / Math.sqrt(1 + t * t);
+                const s = t * c;
+                const tau = s / (1 + c);
+
+                const aip = new Float64Array(n);
+                const aiq = new Float64Array(n);
+                for (let i = 0; i < n; i++) { aip[i] = A[i][p]; aiq[i] = A[i][q]; }
+
+                A[p][p] -= t * A[p][q];
+                A[q][q] += t * A[p][q];
+                A[p][q] = 0; A[q][p] = 0;
+
+                for (let i = 0; i < n; i++) {
+                    if (i === p || i === q) continue;
+                    const rp = aip[i] - s * (aiq[i] + tau * aip[i]);
+                    const rq = aiq[i] + s * (aip[i] - tau * aiq[i]);
+                    A[i][p] = rp; A[p][i] = rp;
+                    A[i][q] = rq; A[q][i] = rq;
+                }
+                for (let i = 0; i < n; i++) {
+                    const vp = V[i][p], vq = V[i][q];
+                    V[i][p] = vp - s * (vq + tau * vp);
+                    V[i][q] = vq + s * (vp - tau * vq);
+                }
+            }
+        }
+    }
+    return {
+        eigenvalues: Array.from({length: n}, (_, i) => A[i][i]),
+        V // columns are eigenvectors
+    };
+}
+
+// ============================================================
+// DLT Triangulation
+// ============================================================
+function triangulateDLT(points2d, projMatrices) {
+    // points2d: [[x,y] or null, ...], projMatrices: [3x4, ...]
+    const A = [];
+    for (let i = 0; i < points2d.length; i++) {
+        if (!points2d[i]) continue;
+        const [x, y] = points2d[i];
+        const P = projMatrices[i];
+        A.push([x*P[2][0]-P[0][0], x*P[2][1]-P[0][1], x*P[2][2]-P[0][2], x*P[2][3]-P[0][3]]);
+        A.push([y*P[2][0]-P[1][0], y*P[2][1]-P[1][1], y*P[2][2]-P[1][2], y*P[2][3]-P[1][3]]);
+    }
+    if (A.length < 4) return null; // Need >= 2 views
+
+    // A^T * A (4x4)
+    const ATA = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+    for (let i = 0; i < 4; i++)
+        for (let j = 0; j < 4; j++)
+            for (let k = 0; k < A.length; k++)
+                ATA[i][j] += A[k][i] * A[k][j];
+
+    const { eigenvalues, V } = jacobiEigen4(ATA);
+    let minIdx = 0;
+    for (let i = 1; i < 4; i++)
+        if (eigenvalues[i] < eigenvalues[minIdx]) minIdx = i;
+
+    const v = [V[0][minIdx], V[1][minIdx], V[2][minIdx], V[3][minIdx]];
+    if (Math.abs(v[3]) < 1e-10) return null;
+    return [v[0]/v[3], v[1]/v[3], v[2]/v[3]];
+}
+
+function triangulateFrame(framePoints, projMatrices, numNodes) {
+    // framePoints: { camName: [[x,y]|null, ...] }, projMatrices: { camName: 3x4 }
+    const camNames = Object.keys(framePoints);
+    const points3d = [];
+    for (let n = 0; n < numNodes; n++) {
+        const pts = [];
+        const mats = [];
+        for (const cam of camNames) {
+            if (framePoints[cam] && framePoints[cam][n] && projMatrices[cam]) {
+                pts.push(framePoints[cam][n]);
+                mats.push(projMatrices[cam]);
+            }
+        }
+        points3d.push(pts.length >= 2 ? triangulateDLT(pts, mats) : null);
+    }
+    return points3d;
+}
+
+// ============================================================
+// Edge Colors
+// ============================================================
+const EDGE_COLORS = [
+    '#667eea', '#4ade80', '#fbbf24', '#f472b6',
+    '#06b6d4', '#f97316', '#a855f7', '#ef4444',
+    '#26c6da', '#9ccc65', '#e91e63', '#00bcd4',
+];
+const CAM_COLORS = { back: '#42a5f5', mid: '#66bb6a', side: '#ffa726', top: '#ab47bc' };
+function edgeColor(i) { return EDGE_COLORS[i % EDGE_COLORS.length]; }
+function camColor(name) { return CAM_COLORS[name] || '#888'; }
+
+// ============================================================
+// Application State
+// ============================================================
+const state = {
+    cameras: {},        // { name: { labels, videoEl, canvas, ctx, projMatrix, K, rvec, tvec } }
+    cameraOrder: [],    // sorted camera names
+    skeleton: null,
+    frameIndices: [],   // annotated frame indices
+    currentIdx: 0,      // index into frameIndices
+    fps: 30,
+    totalVideoFrames: 0,
+    isPlaying: false,
+    playInterval: null,
+    points3d: null,     // current frame triangulated points
+    scene: null,
+    threeCamera: null,
+    renderer: null,
+    controls: null,
+    skeletonGroup: null,
+    cameraHelpers: [],
+};
+
+// ============================================================
+// File Loading
+// ============================================================
+function organizeFiles(fileList) {
+    const result = { cameras: {}, calibration: null };
+    for (const file of fileList) {
+        const parts = file.webkitRelativePath.split('/');
+        if (parts.length === 2 && file.name.endsWith('.toml') && file.name.includes('calibration')) {
+            result.calibration = file;
+        }
+        if (parts.length === 3) {
+            const cam = parts[1];
+            if (!result.cameras[cam]) result.cameras[cam] = {};
+            if (file.name.endsWith('.mp4') && !file.name.includes('calibration')) {
+                result.cameras[cam].video = file;
+            } else if (file.name.endsWith('.slp')) {
+                result.cameras[cam].slp = file;
+            }
+        }
+    }
+    return result;
+}
+
+async function loadSession(fileList) {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = 'Organizing files...';
+
+    const organized = organizeFiles(fileList);
+    if (!organized.calibration) {
+        statusEl.textContent = 'Error: No calibration .toml found';
+        return;
+    }
+
+    // Parse calibration
+    statusEl.textContent = 'Parsing calibration...';
+    const tomlText = await organized.calibration.text();
+    const calib = parseTOML(tomlText);
+
+    // Build camera calibration map
+    const calibMap = {};
+    for (const key of Object.keys(calib)) {
+        if (!key.startsWith('cam_')) continue;
+        const c = calib[key];
+        if (c.name) calibMap[c.name] = c;
+    }
+
+    // Load each camera view
+    const videoPanel = document.getElementById('videoPanel');
+    videoPanel.innerHTML = '';
+    state.cameras = {};
+    state.cameraOrder = [];
+
+    const camNames = Object.keys(organized.cameras).filter(n =>
+        organized.cameras[n].video && organized.cameras[n].slp
+    );
+    camNames.sort();
+
+    for (const camName of camNames) {
+        const files = organized.cameras[camName];
+        statusEl.textContent = `Loading ${camName}...`;
+
+        // Load SLP
+        let labels;
+        try {
+            labels = await loadSlp(files.slp, {
+                openVideos: false,
+                h5: { filenameHint: files.slp.name }
+            });
+        } catch (e) {
+            console.warn(`Failed to load SLP for ${camName}:`, e);
+            continue;
+        }
+
+        // Create video element
+        const videoEl = document.createElement('video');
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        videoEl.preload = 'auto';
+        const blobUrl = URL.createObjectURL(files.video);
+        videoEl.src = blobUrl;
+        await new Promise((resolve, reject) => {
+            videoEl.onloadedmetadata = resolve;
+            videoEl.onerror = reject;
+        });
+
+        // Create canvas cell
+        const cell = document.createElement('div');
+        cell.className = 'video-cell';
+        const canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        cell.appendChild(canvas);
+
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.style.color = camColor(camName);
+        label.textContent = camName;
+        cell.appendChild(label);
+
+        videoPanel.appendChild(cell);
+
+        // Build projection matrix if calibration available
+        const cal = calibMap[camName];
+        let projMatrix = null;
+        if (cal) {
+            projMatrix = buildProjectionMatrix(cal.matrix, cal.rotation, cal.translation);
+        }
+
+        state.cameras[camName] = {
+            labels, videoEl, canvas,
+            ctx: canvas.getContext('2d'),
+            projMatrix,
+            K: cal?.matrix, rvec: cal?.rotation, tvec: cal?.translation,
+            size: cal?.size,
+        };
+        state.cameraOrder.push(camName);
+    }
+
+    if (state.cameraOrder.length === 0) {
+        statusEl.textContent = 'Error: No camera views loaded';
+        return;
+    }
+
+    // Get skeleton from first camera
+    state.skeleton = state.cameras[state.cameraOrder[0]].labels.skeletons[0];
+
+    // Build frame index map (union of all annotated frames)
+    const frameSet = new Set();
+    for (const cam of state.cameraOrder) {
+        for (const lf of state.cameras[cam].labels.labeledFrames) {
+            frameSet.add(lf.frameIdx);
+        }
+    }
+    state.frameIndices = [...frameSet].sort((a, b) => a - b);
+
+    // Determine total video frames and fps
+    const firstVideo = state.cameras[state.cameraOrder[0]].videoEl;
+    state.totalVideoFrames = Math.round(firstVideo.duration * state.fps);
+
+    // Enable controls
+    const slider = document.getElementById('frameSlider');
+    slider.max = state.frameIndices.length - 1;
+    slider.disabled = false;
+    document.getElementById('prevBtn').disabled = false;
+    document.getElementById('playBtn').disabled = false;
+    document.getElementById('nextBtn').disabled = false;
+
+    // Init 3D viewer
+    init3DViewer();
+
+    // Go to first frame
+    state.currentIdx = 0;
+    await seekToFrame(state.currentIdx);
+
+    statusEl.textContent =
+        `${state.cameraOrder.length} cameras, ${state.frameIndices.length} frames, ` +
+        `${state.skeleton.nodes.length} nodes`;
+}
+
+// ============================================================
+// Frame Navigation & Rendering
+// ============================================================
+async function seekToFrame(idx) {
+    if (idx < 0 || idx >= state.frameIndices.length) return;
+    state.currentIdx = idx;
+    const frameIdx = state.frameIndices[idx];
+    const time = frameIdx / state.fps;
+
+    // Seek all videos
+    const seekPromises = state.cameraOrder.map(cam => {
+        const v = state.cameras[cam].videoEl;
+        return new Promise(resolve => {
+            if (Math.abs(v.currentTime - time) < 0.001) { resolve(); return; }
+            v.onseeked = () => resolve();
+            v.currentTime = time;
+        });
+    });
+    await Promise.all(seekPromises);
+
+    // Draw all views
+    const framePoints = {};
+    for (const cam of state.cameraOrder) {
+        const c = state.cameras[cam];
+        const { ctx, canvas, videoEl } = c;
+
+        // Draw video frame
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+        // Get annotation for this frame
+        const lf = c.labels.labeledFrames.find(f => f.frameIdx === frameIdx);
+        let points = null;
+        if (lf?.instances?.[0]) {
+            points = lf.instances[0].points.map(p => {
+                if (!p || !p.visible) return null;
+                const [x, y] = p.xy;
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+                return [x, y];
+            });
+            framePoints[cam] = points;
+        }
+
+        // Draw skeleton overlay
+        if (points) drawSkeleton(ctx, points, canvas.width, canvas.height);
+    }
+
+    // Triangulate
+    if (Object.keys(framePoints).length >= 2) {
+        const projMats = {};
+        for (const cam of Object.keys(framePoints)) {
+            if (state.cameras[cam].projMatrix) projMats[cam] = state.cameras[cam].projMatrix;
+        }
+        state.points3d = triangulateFrame(framePoints, projMats, state.skeleton.nodes.length);
+    } else {
+        state.points3d = null;
+    }
+
+    // Update 3D viewer
+    update3DSkeleton();
+
+    // Update UI
+    document.getElementById('frameSlider').value = idx;
+    document.getElementById('frameInfo').textContent =
+        `${frameIdx} (${idx + 1}/${state.frameIndices.length})`;
+}
+
+function drawSkeleton(ctx, points, w, h) {
+    const sk = state.skeleton;
+    if (!sk) return;
+
+    // Draw edges
+    sk.edges.forEach((edge, i) => {
+        const srcIdx = sk.nodes.indexOf(edge.source);
+        const dstIdx = sk.nodes.indexOf(edge.destination);
+        if (srcIdx < 0 || dstIdx < 0) return;
+        const src = points[srcIdx], dst = points[dstIdx];
+        if (!src || !dst) return;
+
+        ctx.strokeStyle = edgeColor(i);
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(src[0], src[1]);
+        ctx.lineTo(dst[0], dst[1]);
+        ctx.stroke();
+    });
+
+    // Draw nodes
+    ctx.globalAlpha = 1;
+    points.forEach((pt, i) => {
+        if (!pt) return;
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(pt[0], pt[1], 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+}
+
+// ============================================================
+// Three.js 3D Viewer
+// ============================================================
+function init3DViewer() {
+    const container = document.getElementById('viewerPanel');
+    const emptyEl = document.getElementById('viewerEmpty');
+    if (emptyEl) emptyEl.remove();
+
+    // Clean up existing
+    if (state.renderer) {
+        state.renderer.dispose();
+        container.querySelector('canvas')?.remove();
+    }
+
+    const rect = container.getBoundingClientRect();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+
+    const camera = new THREE.PerspectiveCamera(60, rect.width / rect.height, 0.1, 10000);
+    camera.position.set(0, -150, -300);
+    camera.up.set(0, -1, 0); // CV convention: Y down
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(rect.width, rect.height);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.1;
+    controls.target.set(0, 0, 0);
+
+    // Grid
+    const grid = new THREE.GridHelper(300, 15, 0x333333, 0x222222);
+    grid.rotation.x = Math.PI / 2; // XZ plane to XY plane
+    scene.add(grid);
+
+    // Axes
+    const axes = new THREE.AxesHelper(50);
+    scene.add(axes);
+
+    // Camera frustums
+    for (const cam of state.cameraOrder) {
+        const c = state.cameras[cam];
+        if (!c.rvec || !c.tvec) continue;
+
+        const pos = getCameraPosition(c.rvec, c.tvec);
+        const Rt = getCameraRotationMatrix(c.rvec);
+
+        const group = new THREE.Group();
+
+        // Frustum wireframe
+        const fSize = 15, fDepth = 25;
+        const verts = new Float32Array([
+            0,0,0, -fSize,-fSize,fDepth,
+            0,0,0, fSize,-fSize,fDepth,
+            0,0,0, fSize,fSize,fDepth,
+            0,0,0, -fSize,fSize,fDepth,
+            -fSize,-fSize,fDepth, fSize,-fSize,fDepth,
+            fSize,-fSize,fDepth, fSize,fSize,fDepth,
+            fSize,fSize,fDepth, -fSize,fSize,fDepth,
+            -fSize,fSize,fDepth, -fSize,-fSize,fDepth,
+        ]);
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+        const color = new THREE.Color(camColor(cam));
+        const mat = new THREE.LineBasicMaterial({ color, opacity: 0.7, transparent: true });
+        group.add(new THREE.LineSegments(geom, mat));
+
+        // Camera label (sprite)
+        const spriteMat = new THREE.SpriteMaterial({
+            map: createTextTexture(cam, camColor(cam)),
+            depthTest: false,
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.position.set(0, -20, 0);
+        sprite.scale.set(30, 15, 1);
+        group.add(sprite);
+
+        // Position and orient using the rotation matrix
+        const m4 = new THREE.Matrix4();
+        m4.set(
+            Rt[0][0], Rt[0][1], Rt[0][2], pos[0],
+            Rt[1][0], Rt[1][1], Rt[1][2], pos[1],
+            Rt[2][0], Rt[2][1], Rt[2][2], pos[2],
+            0, 0, 0, 1
+        );
+        group.applyMatrix4(m4);
+
+        scene.add(group);
+    }
+
+    // Skeleton group (updated per frame)
+    const skeletonGroup = new THREE.Group();
+    scene.add(skeletonGroup);
+
+    state.scene = scene;
+    state.threeCamera = camera;
+    state.renderer = renderer;
+    state.controls = controls;
+    state.skeletonGroup = skeletonGroup;
+
+    // Auto-fit camera to scene
+    fitCamera();
+
+    // Render loop
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    // Resize handler
+    const ro = new ResizeObserver(() => {
+        const r = container.getBoundingClientRect();
+        camera.aspect = r.width / r.height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(r.width, r.height);
+    });
+    ro.observe(container);
+}
+
+function createTextTexture(text, color) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, 128, 64);
+    ctx.fillStyle = color;
+    ctx.font = 'bold 28px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 64, 32);
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+}
+
+function fitCamera() {
+    // Position camera to see all camera positions and origin
+    const positions = [];
+    positions.push([0, 0, 0]);
+    for (const cam of state.cameraOrder) {
+        const c = state.cameras[cam];
+        if (c.rvec && c.tvec) {
+            positions.push(getCameraPosition(c.rvec, c.tvec));
+        }
+    }
+
+    let cx = 0, cy = 0, cz = 0;
+    for (const p of positions) { cx += p[0]; cy += p[1]; cz += p[2]; }
+    cx /= positions.length; cy /= positions.length; cz /= positions.length;
+
+    let maxDist = 0;
+    for (const p of positions) {
+        const d = Math.sqrt((p[0]-cx)**2 + (p[1]-cy)**2 + (p[2]-cz)**2);
+        if (d > maxDist) maxDist = d;
+    }
+
+    state.controls.target.set(cx, cy, cz);
+    const dist = Math.max(maxDist * 2.5, 100);
+    state.threeCamera.position.set(cx, cy - dist * 0.5, cz - dist);
+    state.controls.update();
+}
+
+function update3DSkeleton() {
+    if (!state.skeletonGroup) return;
+
+    // Clear previous
+    while (state.skeletonGroup.children.length) {
+        const child = state.skeletonGroup.children[0];
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+        state.skeletonGroup.remove(child);
+    }
+
+    if (!state.points3d || !state.skeleton) return;
+
+    const sk = state.skeleton;
+    const validPts = state.points3d.filter(p => p !== null);
+    if (validPts.length === 0) return;
+
+    // Compute centroid for auto-centering
+    let cx = 0, cy = 0, cz = 0;
+    for (const p of validPts) { cx += p[0]; cy += p[1]; cz += p[2]; }
+    cx /= validPts.length; cy /= validPts.length; cz /= validPts.length;
+
+    // Draw edges
+    sk.edges.forEach((edge, i) => {
+        const srcIdx = sk.nodes.indexOf(edge.source);
+        const dstIdx = sk.nodes.indexOf(edge.destination);
+        if (srcIdx < 0 || dstIdx < 0) return;
+        const src = state.points3d[srcIdx], dst = state.points3d[dstIdx];
+        if (!src || !dst) return;
+
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute([
+            ...src, ...dst
+        ], 3));
+        const mat = new THREE.LineBasicMaterial({ color: edgeColor(i), linewidth: 2 });
+        state.skeletonGroup.add(new THREE.LineSegments(geom, mat));
+    });
+
+    // Draw nodes
+    state.points3d.forEach((pt, i) => {
+        if (!pt) return;
+        const geom = new THREE.SphereGeometry(1.5, 8, 6);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(pt[0], pt[1], pt[2]);
+        state.skeletonGroup.add(mesh);
+    });
+
+    // Smoothly move orbit target toward skeleton centroid (first frame only snaps)
+    if (!state._hasAutoFocused) {
+        state.controls.target.set(cx, cy, cz);
+        const dist = 150;
+        state.threeCamera.position.set(cx + dist * 0.3, cy - dist * 0.5, cz - dist);
+        state.controls.update();
+        state._hasAutoFocused = true;
+    }
+}
+
+// ============================================================
+// Playback Controls
+// ============================================================
+function startPlayback() {
+    if (state.isPlaying) return;
+    state.isPlaying = true;
+    document.getElementById('playBtn').textContent = '\u23F8';
+    document.getElementById('playBtn').classList.add('playing');
+
+    state.playInterval = setInterval(async () => {
+        let next = state.currentIdx + 1;
+        if (next >= state.frameIndices.length) next = 0;
+        await seekToFrame(next);
+    }, 1000 / state.fps);
+}
+
+function stopPlayback() {
+    state.isPlaying = false;
+    if (state.playInterval) clearInterval(state.playInterval);
+    state.playInterval = null;
+    document.getElementById('playBtn').textContent = '\u25B6';
+    document.getElementById('playBtn').classList.remove('playing');
+}
+
+// ============================================================
+// Event Handlers
+// ============================================================
+document.getElementById('loadBtn').addEventListener('click', () => {
+    document.getElementById('dirInput').click();
+});
+
+document.getElementById('dirInput').addEventListener('change', async (e) => {
+    if (e.target.files.length > 0) {
+        await loadSession(e.target.files);
+    }
+});
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+    stopPlayback();
+    seekToFrame(state.currentIdx - 1);
+});
+
+document.getElementById('nextBtn').addEventListener('click', () => {
+    stopPlayback();
+    seekToFrame(state.currentIdx + 1);
+});
+
+document.getElementById('playBtn').addEventListener('click', () => {
+    if (state.isPlaying) stopPlayback();
+    else startPlayback();
+});
+
+document.getElementById('frameSlider').addEventListener('input', (e) => {
+    stopPlayback();
+    seekToFrame(parseInt(e.target.value));
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'ArrowLeft') { stopPlayback(); seekToFrame(state.currentIdx - 1); }
+    else if (e.key === 'ArrowRight') { stopPlayback(); seekToFrame(state.currentIdx + 1); }
+    else if (e.key === ' ') { e.preventDefault(); state.isPlaying ? stopPlayback() : startPlayback(); }
+});
+
+// ============================================================
+// URL-based Session Loading (for testing / programmatic use)
+// ============================================================
+async function loadSessionFromUrl(baseUrl, camNames, tomlName) {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = 'Fetching calibration...';
+
+    // Fetch TOML
+    const tomlResp = await fetch(`${baseUrl}/${tomlName}`);
+    const tomlText = await tomlResp.text();
+    const calib = parseTOML(tomlText);
+
+    const calibMap = {};
+    for (const key of Object.keys(calib)) {
+        if (!key.startsWith('cam_')) continue;
+        const c = calib[key];
+        if (c.name) calibMap[c.name] = c;
+    }
+
+    const videoPanel = document.getElementById('videoPanel');
+    videoPanel.innerHTML = '';
+    state.cameras = {};
+    state.cameraOrder = [];
+
+    for (const camName of camNames) {
+        statusEl.textContent = `Loading ${camName}...`;
+
+        // Fetch SLP (needs absolute URL for h5wasm worker)
+        const slpUrl = new URL(`${baseUrl}/${camName}/minimal_${camName}_proofread.slp`, window.location.href).href;
+        let labels;
+        try {
+            labels = await loadSlp(slpUrl, {
+                openVideos: false,
+                h5: { stream: 'range', filenameHint: `minimal_${camName}_proofread.slp` }
+            });
+        } catch (e) {
+            console.warn(`Failed to load SLP for ${camName}:`, e);
+            continue;
+        }
+
+        // Create video element from URL
+        const videoUrl = `${baseUrl}/${camName}/minimal_${camName}.mp4`;
+        const videoEl = document.createElement('video');
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        videoEl.crossOrigin = 'anonymous';
+        videoEl.preload = 'auto';
+        videoEl.src = videoUrl;
+        await new Promise((resolve, reject) => {
+            videoEl.onloadedmetadata = resolve;
+            videoEl.onerror = () => reject(new Error(`Failed to load video for ${camName}`));
+            setTimeout(reject, 10000);
+        });
+
+        // Create canvas cell
+        const cell = document.createElement('div');
+        cell.className = 'video-cell';
+        const canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth;
+        canvas.height = videoEl.videoHeight;
+        cell.appendChild(canvas);
+        const label = document.createElement('div');
+        label.className = 'video-label';
+        label.style.color = camColor(camName);
+        label.textContent = camName;
+        cell.appendChild(label);
+        videoPanel.appendChild(cell);
+
+        const cal = calibMap[camName];
+        let projMatrix = null;
+        if (cal) projMatrix = buildProjectionMatrix(cal.matrix, cal.rotation, cal.translation);
+
+        state.cameras[camName] = {
+            labels, videoEl, canvas,
+            ctx: canvas.getContext('2d'),
+            projMatrix,
+            K: cal?.matrix, rvec: cal?.rotation, tvec: cal?.translation,
+            size: cal?.size,
+        };
+        state.cameraOrder.push(camName);
+    }
+
+    if (state.cameraOrder.length === 0) {
+        statusEl.textContent = 'Error: No camera views loaded';
+        return;
+    }
+
+    state.skeleton = state.cameras[state.cameraOrder[0]].labels.skeletons[0];
+
+    const frameSet = new Set();
+    for (const cam of state.cameraOrder) {
+        for (const lf of state.cameras[cam].labels.labeledFrames) {
+            frameSet.add(lf.frameIdx);
+        }
+    }
+    state.frameIndices = [...frameSet].sort((a, b) => a - b);
+
+    const firstVideo = state.cameras[state.cameraOrder[0]].videoEl;
+    state.totalVideoFrames = Math.round(firstVideo.duration * state.fps);
+
+    const slider = document.getElementById('frameSlider');
+    slider.max = state.frameIndices.length - 1;
+    slider.disabled = false;
+    document.getElementById('prevBtn').disabled = false;
+    document.getElementById('playBtn').disabled = false;
+    document.getElementById('nextBtn').disabled = false;
+
+    init3DViewer();
+    state.currentIdx = 0;
+    await seekToFrame(state.currentIdx);
+
+    statusEl.textContent =
+        `${state.cameraOrder.length} cameras, ${state.frameIndices.length} frames, ` +
+        `${state.skeleton.nodes.length} nodes`;
+}
+
+// Check URL params for auto-load
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('session')) {
+    const sessionUrl = urlParams.get('session');
+    const cams = (urlParams.get('cameras') || 'back,mid,top').split(',');
+    const toml = urlParams.get('toml') || 'calibration_excluding_side.toml';
+    loadSessionFromUrl(sessionUrl, cams, toml);
+}
+
+// Expose for programmatic loading (Playwright testing)
+window.loadSessionFromFiles = loadSession;
+window.loadSessionFromUrl = loadSessionFromUrl;
+window.seekToFrame = seekToFrame;
+</script>
+</body>
+</html>
