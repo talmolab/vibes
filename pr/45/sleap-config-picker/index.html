@@ -328,6 +328,7 @@
             border-radius: 6px;
             padding: 15px;
             margin: 15px 0;
+            overflow: visible;
         }
         .model-params {
             display: flex;
@@ -912,28 +913,41 @@
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
                     <strong style="color: var(--text-dim);">Load Existing Config (Optional)</strong>
                 </div>
-                <!-- Centroid config -->
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
-                    <button class="secondary small" onclick="document.getElementById('centroid-config-input').click()" style="min-width: 140px;">
-                        Centroid Config
+                <!-- Generic config button (shown for non-top-down models) -->
+                <div id="generic-config-row" style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                    <button class="secondary small" onclick="document.getElementById('generic-config-input').click()" style="min-width: 140px;">
+                        Config
                     </button>
-                    <input type="file" id="centroid-config-input" accept=".yaml,.yml" style="display: none;">
-                    <span id="centroid-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
-                    <span id="centroid-config-badge" class="badge info hidden">Loaded</span>
-                    <button id="clear-centroid-config-btn" class="small danger hidden" onclick="clearLoadedConfig('centroid')">Clear</button>
+                    <input type="file" id="generic-config-input" accept=".yaml,.yml" style="display: none;">
+                    <span id="generic-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
+                    <span id="generic-config-badge" class="badge info hidden">Loaded</span>
+                    <button id="clear-generic-config-btn" class="small danger hidden" onclick="clearLoadedConfig('generic')">Clear</button>
                 </div>
-                <!-- Centered Instance config -->
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button class="secondary small" onclick="document.getElementById('ci-config-input').click()" style="min-width: 140px;">
-                        Centered Instance
-                    </button>
-                    <input type="file" id="ci-config-input" accept=".yaml,.yml" style="display: none;">
-                    <span id="ci-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
-                    <span id="ci-config-badge" class="badge info hidden">Loaded</span>
-                    <button id="clear-ci-config-btn" class="small danger hidden" onclick="clearLoadedConfig('ci')">Clear</button>
+                <!-- Top-down specific config buttons (hidden by default) -->
+                <div id="topdown-config-rows" class="hidden">
+                    <!-- Centroid config -->
+                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+                        <button class="secondary small" onclick="document.getElementById('centroid-config-input').click()" style="min-width: 140px;">
+                            Centroid Config
+                        </button>
+                        <input type="file" id="centroid-config-input" accept=".yaml,.yml" style="display: none;">
+                        <span id="centroid-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
+                        <span id="centroid-config-badge" class="badge info hidden">Loaded</span>
+                        <button id="clear-centroid-config-btn" class="small danger hidden" onclick="clearLoadedConfig('centroid')">Clear</button>
+                    </div>
+                    <!-- Centered Instance config -->
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <button class="secondary small" onclick="document.getElementById('ci-config-input').click()" style="min-width: 140px;">
+                            Centered Instance
+                        </button>
+                        <input type="file" id="ci-config-input" accept=".yaml,.yml" style="display: none;">
+                        <span id="ci-config-name" style="color: var(--text-dim); font-size: 0.85rem;"></span>
+                        <span id="ci-config-badge" class="badge info hidden">Loaded</span>
+                        <button id="clear-ci-config-btn" class="small danger hidden" onclick="clearLoadedConfig('ci')">Clear</button>
+                    </div>
                 </div>
-                <p style="margin: 8px 0 0; color: #888; font-size: 0.8rem;">
-                    For Top-Down models, load both configs. For other models, either button works.
+                <p id="config-help-text" style="margin: 8px 0 0; color: #888; font-size: 0.8rem;">
+                    Load a previous config to use as baseline for your new training.
                 </p>
             </div>
         </div>
@@ -1006,8 +1020,8 @@
                     <h3>Data Configuration</h3>
                     <span class="chevron" id="data-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="data-config">
-                    <div class="grid-3">
+                <div class="collapsible-content" id="data-config">
+                    <div class="grid-2">
                         <div class="form-group">
                             <label>
                                 Input Scale
@@ -1022,51 +1036,61 @@
                                 <span>1.0</span>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>
-                                Validation Fraction
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Fraction of labeled frames held out for validation. Used to monitor training progress and for early stopping. 10-20% is typical. More data = can use smaller fraction.</span>
-                                </span>
-                            </label>
-                            <input type="range" id="val-fraction" min="0.05" max="0.3" step="0.05" value="0.1">
-                            <div class="range-labels">
-                                <span>5%</span>
-                                <span id="val-fraction-value">10%</span>
-                                <span>30%</span>
+                    </div>
+
+                    <!-- Additional Data Parameters (collapsed by default) -->
+                    <div onclick="toggleCollapsible('additional-data-params')" style="margin-top: 15px; padding: 8px 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                        <span class="chevron" id="additional-data-params-chevron" style="font-size: 0.7rem;">&#9660;</span>
+                        <span style="font-size: 0.9rem; color: var(--text-dim);">Additional Data Parameters</span>
+                    </div>
+                    <div class="collapsible-content" id="additional-data-params" style="margin-top: 10px;">
+                        <div class="grid-3">
+                            <div class="form-group">
+                                <label>
+                                    Validation Fraction
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Fraction of labeled frames held out for validation. Used to monitor training progress and for early stopping. 10-20% is typical. More data = can use smaller fraction.</span>
+                                    </span>
+                                </label>
+                                <input type="range" id="val-fraction" min="0.05" max="0.3" step="0.05" value="0.1">
+                                <div class="range-labels">
+                                    <span>5%</span>
+                                    <span id="val-fraction-value">10%</span>
+                                    <span>30%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    Input Channels
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Number of color channels. Grayscale (1) is more efficient for single-channel videos. RGB (3) required for pretrained backbones.</span>
+                                    </span>
+                                </label>
+                                <select id="input-channels">
+                                    <option value="1">Grayscale (1 channel)</option>
+                                    <option value="3">RGB (3 channels)</option>
+                                </select>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label>
-                                Input Channels
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Number of color channels. Grayscale (1) is more efficient for single-channel videos. RGB (3) required for pretrained backbones.</span>
-                                </span>
-                            </label>
-                            <select id="input-channels">
-                                <option value="1">Grayscale (1 channel)</option>
-                                <option value="3">RGB (3 channels)</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="grid-2" style="margin-top: 10px;">
-                        <div class="form-group">
-                            <label>
-                                Max Height
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Maximum height to resize/pad images to before scaling. Leave empty to use original image height. Applied before scale.</span>
-                                </span>
-                            </label>
-                            <input type="number" id="max-height" placeholder="None (use original)" min="32" max="4096" step="16">
-                        </div>
-                        <div class="form-group">
-                            <label>
-                                Max Width
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Maximum width to resize/pad images to before scaling. Leave empty to use original image width. Applied before scale.</span>
-                                </span>
-                            </label>
-                            <input type="number" id="max-width" placeholder="None (use original)" min="32" max="4096" step="16">
+                        <div class="grid-2" style="margin-top: 10px;">
+                            <div class="form-group">
+                                <label>
+                                    Max Height
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Maximum height to resize/pad images to before scaling. Leave empty to use original image height. Applied before scale.</span>
+                                    </span>
+                                </label>
+                                <input type="number" id="max-height" placeholder="None (use original)" min="32" max="4096" step="16">
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    Max Width
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Maximum width to resize/pad images to before scaling. Leave empty to use original image width. Applied before scale.</span>
+                                    </span>
+                                </label>
+                                <input type="number" id="max-width" placeholder="None (use original)" min="32" max="4096" step="16">
+                            </div>
                         </div>
                     </div>
 
@@ -1101,8 +1125,16 @@
                         </label>
                     </div>
 
+                    <!-- Augmentation Settings Toggle -->
+                    <div id="aug-toggle-section" class="hidden">
+                        <div onclick="toggleCollapsible('aug-preview-section')" style="padding: 8px 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                            <span class="chevron" id="aug-preview-section-chevron" style="font-size: 0.7rem;">&#9660;</span>
+                            <span style="font-size: 0.9rem; color: var(--text-dim);">Augmentation Preview</span>
+                        </div>
+                    </div>
+
                     <!-- Augmentation - Slider Layout (PR28 style) -->
-                    <div id="aug-preview-section" class="hidden">
+                    <div id="aug-preview-section" class="collapsible-content">
                         <div class="aug-container">
                             <!-- Left: Sliders -->
                             <div class="aug-sliders">
@@ -1162,6 +1194,28 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Anchor Point Selector (for centroid/top-down models) -->
+                    <div class="anchor-selector hidden" id="anchor-selector">
+                        <h4 style="margin: 15px 0 10px; color: #ccc;">
+                            Anchor Part
+                            <span class="tooltip">?
+                                <span class="tooltip-text">The anchor part is used to center the crop around each instance. Choose a body part that is consistently visible and near the center of the animal. The percentage shows how often each keypoint is labeled (not NaN) across all instances.</span>
+                            </span>
+                        </h4>
+                        <p style="font-size: 0.85rem; color: #888; margin: 0 0 10px;">Click a keypoint on the skeleton to select it as anchor. The percentage shows visibility (% of labeled/non-NaN instances):</p>
+                        <div class="anchor-preview">
+                            <div style="position: relative;">
+                                <canvas id="anchor-preview-canvas" class="anchor-preview-canvas" width="280" height="240"></canvas>
+                                <div id="anchor-canvas-tooltip" class="anchor-canvas-tooltip" style="display: none;"></div>
+                            </div>
+                            <div>
+                                <div class="anchor-list" id="anchor-list">
+                                    <!-- Populated by JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Model Config -->
@@ -1169,7 +1223,7 @@
                     <h3>Model Configuration</h3>
                     <span class="chevron" id="model-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="model-config">
+                <div class="collapsible-content" id="model-config">
                     <!-- Receptive Field Note -->
                     <div class="info-box">
                         <strong>Receptive Field Tip:</strong> The receptive field (RF) determines how much context the model sees.
@@ -1300,12 +1354,12 @@
                         </div>
                     </div>
 
-                    <div class="grid-3">
+                    <div class="grid-2">
                         <div class="form-group">
                             <label>
                                 Base Filters
                                 <span class="tooltip">?
-                                    <span class="tooltip-text">Number of filters in the first encoder block. Each subsequent block multiplies by filters_rate (1.5×). More filters = more capacity but slower training and more memory. Start with 24-32 for most cases.</span>
+                                    <span class="tooltip-text">Number of filters in the first encoder block. Each subsequent block multiplies by filters_rate. More filters = more capacity but slower training and more memory. Start with 24-32 for most cases.</span>
                                 </span>
                             </label>
                             <select id="filters">
@@ -1316,6 +1370,17 @@
                                 <option value="64">64 (Heavy)</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>
+                                Filters Rate
+                                <span class="tooltip">?
+                                    <span class="tooltip-text">Multiplier for filters per encoder block. E.g., rate=1.5 with base=32: 32→48→72→108. Higher values increase capacity but also memory usage.</span>
+                                </span>
+                            </label>
+                            <input type="number" id="filters-rate" value="1.5" min="1" max="2" step="0.1">
+                        </div>
+                    </div>
+                    <div class="grid-2">
                         <div class="form-group">
                             <label>
                                 Sigma
@@ -1336,6 +1401,8 @@
                                 <option value="1">1 (Full res)</option>
                                 <option value="2" selected>2 (Half res)</option>
                                 <option value="4">4 (Quarter)</option>
+                                <option value="8">8 (1/8 res)</option>
+                                <option value="16">16 (1/16 res)</option>
                             </select>
                         </div>
                     </div>
@@ -1360,6 +1427,8 @@
                                     <option value="1">1 (Full res)</option>
                                     <option value="2">2 (Half res)</option>
                                     <option value="4" selected>4 (Quarter)</option>
+                                    <option value="8">8 (1/8 res)</option>
+                                    <option value="16">16 (1/16 res)</option>
                                 </select>
                             </div>
                         </div>
@@ -1460,18 +1529,18 @@
                             </div>
                         </div>
                         <!-- Model Input Size with padding info -->
-                        <div id="model-input-size-info" style="margin-top: 10px; background: #252525; padding: 10px; border-radius: 6px; font-size: 0.85rem;">
-                            <div style="color: #888; margin-bottom: 5px;">Model Input Size:</div>
+                        <div id="model-input-size-info" style="margin-top: 10px; background: #252525; padding: 10px; border-radius: 6px; font-size: 0.85rem; overflow: visible;">
+                            <div style="color: #888; margin-bottom: 5px;">
+                                Model Input Size
+                                <span class="tooltip" style="margin-left: 4px;">?
+                                    <span class="tooltip-text">Images are padded to be divisible by max_stride. UNet uses repeated 2× downsampling/upsampling, so dimensions must be divisible by 2^num_blocks to avoid size mismatches.</span>
+                                </span>
+                            </div>
                             <div id="input-size-display" style="color: #e0e0e0;">
                                 <span id="input-size-scaled">-</span>
                                 <span style="color: #888;"> → </span>
                                 <span id="input-size-padded" style="color: #10b981;">-</span>
                                 <span style="color: #888; font-size: 0.75rem;"> (padded)</span>
-                            </div>
-                            <div style="color: #666; font-size: 0.75rem; margin-top: 5px;">
-                                <span class="tooltip" style="cursor: help;">ℹ️ Why padding?
-                                    <span class="tooltip-text">Images are padded to be divisible by max_stride. This is required because UNet uses repeated 2× downsampling/upsampling, so dimensions must be divisible by 2^num_blocks to avoid size mismatches between encoder and decoder outputs.</span>
-                                </span>
                             </div>
                         </div>
                         <details style="margin-top: 10px;">
@@ -1480,28 +1549,6 @@
 Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </details>
-                    </div>
-
-                    <!-- Anchor Point Selector (for centroid/centered_instance) -->
-                    <div class="anchor-selector hidden" id="anchor-selector">
-                        <h4 style="margin: 0 0 10px; color: #ccc;">
-                            Anchor Part
-                            <span class="tooltip">?
-                                <span class="tooltip-text">The anchor part is used to center the crop around each instance. Choose a body part that is consistently visible and near the center of the animal. The percentage shows how often each keypoint is labeled (not NaN) across all instances.</span>
-                            </span>
-                        </h4>
-                        <p style="font-size: 0.85rem; color: #888; margin: 0 0 10px;">Click a keypoint on the skeleton to select it as anchor. The percentage shows visibility (% of labeled/non-NaN instances):</p>
-                        <div class="anchor-preview">
-                            <div style="position: relative;">
-                                <canvas id="anchor-preview-canvas" class="anchor-preview-canvas" width="280" height="240"></canvas>
-                                <div id="anchor-canvas-tooltip" class="anchor-canvas-tooltip" style="display: none;"></div>
-                            </div>
-                            <div>
-                                <div class="anchor-list" id="anchor-list">
-                                    <!-- Populated by JS -->
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <!-- Pretrained Checkpoints -->
@@ -1541,7 +1588,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <h3>Training Configuration</h3>
                     <span class="chevron" id="trainer-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="trainer-config">
+                <div class="collapsible-content" id="trainer-config">
                     <!-- Additional Parameters Toggle -->
                     <div class="toggle-group">
                         <input type="checkbox" id="show-additional-params">
@@ -1783,6 +1830,29 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </div>
                     </div>
+
+                    <!-- Checkpoint Options -->
+                    <h5 style="margin: 15px 0 10px; color: #888; font-size: 0.85rem;">Checkpoint Options</h5>
+                    <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.85rem;">Save Top K
+                                <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
+                            </label>
+                            <input type="number" id="ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
+                        </div>
+                        <div class="form-group" style="margin: 0; display: flex; align-items: center;">
+                            <label style="font-size: 0.85rem;">
+                                <input type="checkbox" id="ckpt-save-last" checked style="margin-right: 5px;">
+                                Save Last Checkpoint
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin: 10px 0 0;">
+                        <label style="font-size: 0.85rem;">Resume from Checkpoint
+                            <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
+                        </label>
+                        <input type="text" id="resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
+                    </div>
                     </div>
                     <div class="toggle-group">
                         <input type="checkbox" id="save-ckpt" checked onchange="toggleSaveCkptOptions()">
@@ -1802,26 +1872,6 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                 </label>
                                 <input type="text" id="run-name" placeholder="Auto (timestamp_head)" style="padding: 6px;">
                             </div>
-                        </div>
-                        <div class="grid-2" style="gap: 10px; margin-top: 10px;">
-                            <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 0.8rem;">Save Top K
-                                    <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
-                                </label>
-                                <input type="number" id="ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
-                            </div>
-                            <div class="form-group" style="margin: 0;">
-                                <label style="font-size: 0.8rem;">
-                                    <input type="checkbox" id="ckpt-save-last" checked style="margin-right: 5px;">
-                                    Save Last Checkpoint
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-group" style="margin: 10px 0 0;">
-                            <label style="font-size: 0.8rem;">Resume from Checkpoint
-                                <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
-                            </label>
-                            <input type="text" id="resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
                         </div>
                     </div>
 
@@ -1851,7 +1901,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </div>
 
                         <div class="info-box" style="background: rgba(16, 185, 129, 0.15); border-color: #10b981; margin-bottom: 10px;">
-                            <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2+ and change <strong>Data Pipeline</strong> to "Cache to Memory" or "Cache to Disk".
+                            <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2 or more and change <strong>Data Pipeline</strong> to "Cache to Memory" or "Cache to Disk".
                         </div>
                         <div class="grid-2">
                             <div class="form-group">
@@ -1875,7 +1925,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                         <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images to memory or disk for faster training.</span>
                                     </span>
                                 </label>
-                                <select id="data-pipeline" onchange="updateCacheMemoryEstimate()">
+                                <select id="data-pipeline" onchange="updateCacheMemoryEstimate(); toggleDiskCacheOptions()">
                                     <option value="torch_dataset" selected>torch_dataset (Default)</option>
                                     <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
                                     <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
@@ -1883,43 +1933,105 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </div>
 
-                        <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Hard Keypoint Mining</h4>
-                        <div class="toggle-group">
-                            <input type="checkbox" id="enable-ohkm" onchange="toggleOhkmOptions()">
-                            <label for="enable-ohkm" style="display: inline; margin: 0;">
-                                Enable OHKM
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Online Hard Keypoint Mining focuses training on difficult keypoints. Can improve accuracy for challenging body parts.</span>
-                                </span>
-                            </label>
-                        </div>
-                        <div id="ohkm-options" class="toggle-options" style="margin-left: 25px; padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none;">
+                        <!-- Disk Cache Options (shown only when Cache to Disk is selected) -->
+                        <div id="disk-cache-options" style="display: none; margin-top: 10px; padding: 12px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                            <div style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">Disk Cache Settings</div>
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem;">
+                                    Cache Path
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Directory to save cached images. If empty, uses the checkpoint directory. Creates train_imgs/ and val_imgs/ subdirectories.</span>
+                                    </span>
+                                </label>
+                                <input type="text" id="cache-img-path" placeholder="Auto (checkpoint directory)" style="padding: 6px; width: 100%;">
+                            </div>
                             <div class="grid-2" style="gap: 10px;">
                                 <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Hard-to-Easy Ratio
-                                        <span class="tooltip">?<span class="tooltip-text">Min ratio of keypoint loss vs lowest loss to be considered "hard". Higher = stricter threshold. Default: 2.0</span></span>
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="parallel-caching" checked style="margin-right: 5px;">
+                                        Parallel Caching
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Use multiple threads to cache images in parallel. Significantly faster for large datasets.</span>
+                                        </span>
                                     </label>
-                                    <input type="number" id="ohkm-ratio" value="2.0" min="1" max="10" step="0.1" style="padding: 6px;">
                                 </div>
                                 <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Loss Scale
-                                        <span class="tooltip">?<span class="tooltip-text">Factor to scale hard keypoint losses. Higher = more focus on hard parts. Default: 5.0</span></span>
+                                    <label style="font-size: 0.85rem;">
+                                        Cache Workers
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Number of threads for parallel caching. 0 = auto (min of 4 or CPU count).</span>
+                                        </span>
                                     </label>
-                                    <input type="number" id="ohkm-loss-scale" value="5.0" min="1" max="20" step="0.5" style="padding: 6px;">
+                                    <select id="cache-workers" style="padding: 4px;">
+                                        <option value="0" selected>0 (Auto)</option>
+                                        <option value="2">2</option>
+                                        <option value="4">4</option>
+                                        <option value="8">8</option>
+                                    </select>
                                 </div>
                             </div>
                             <div class="grid-2" style="gap: 10px; margin-top: 10px;">
                                 <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Min Hard Keypoints
-                                        <span class="tooltip">?<span class="tooltip-text">Min keypoints considered "hard" even if below ratio threshold. Default: 2</span></span>
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="use-existing-imgs" style="margin-right: 5px;">
+                                        Use Existing Cache
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">If cached images already exist in the path, use them instead of re-caching. Useful for resuming training.</span>
+                                        </span>
                                     </label>
-                                    <input type="number" id="ohkm-min-hard" value="2" min="1" max="20" step="1" style="padding: 6px;">
                                 </div>
                                 <div class="form-group" style="margin: 0;">
-                                    <label style="font-size: 0.8rem;">Max Hard Keypoints
-                                        <span class="tooltip">?<span class="tooltip-text">Max keypoints to apply hard scaling to. Leave empty for no limit.</span></span>
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="delete-cache-after-training" checked style="margin-right: 5px;">
+                                        Delete Cache After Training
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Remove cached images after training completes. Disable to keep cache for future runs.</span>
+                                        </span>
                                     </label>
-                                    <input type="number" id="ohkm-max-hard" placeholder="None" min="1" max="100" step="1" style="padding: 6px;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- OHKM section - hidden for centroid models (top-down) -->
+                        <div id="ohkm-section">
+                            <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Hard Keypoint Mining</h4>
+                            <div class="toggle-group">
+                                <input type="checkbox" id="enable-ohkm" onchange="toggleOhkmOptions()">
+                                <label for="enable-ohkm" style="display: inline; margin: 0;">
+                                    Enable OHKM
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Online Hard Keypoint Mining focuses training on difficult keypoints. Can improve accuracy for challenging body parts.</span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div id="ohkm-options" class="toggle-options" style="margin-left: 25px; padding: 10px; background: #3a3a3a; border-radius: 6px; font-size: 0.85rem; display: none;">
+                                <div class="grid-2" style="gap: 10px;">
+                                    <div class="form-group" style="margin: 0;">
+                                        <label style="font-size: 0.8rem;">Hard-to-Easy Ratio
+                                            <span class="tooltip">?<span class="tooltip-text">Min ratio of keypoint loss vs lowest loss to be considered "hard". Higher = stricter threshold. Default: 2.0</span></span>
+                                        </label>
+                                        <input type="number" id="ohkm-ratio" value="2.0" min="1" max="10" step="0.1" style="padding: 6px;">
+                                    </div>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label style="font-size: 0.8rem;">Loss Scale
+                                            <span class="tooltip">?<span class="tooltip-text">Factor to scale hard keypoint losses. Higher = more focus on hard parts. Default: 5.0</span></span>
+                                        </label>
+                                        <input type="number" id="ohkm-loss-scale" value="5.0" min="1" max="20" step="0.5" style="padding: 6px;">
+                                    </div>
+                                </div>
+                                <div class="grid-2" style="gap: 10px; margin-top: 10px;">
+                                    <div class="form-group" style="margin: 0;">
+                                        <label style="font-size: 0.8rem;">Min Hard Keypoints
+                                            <span class="tooltip">?<span class="tooltip-text">Min keypoints considered "hard" even if below ratio threshold. Default: 2</span></span>
+                                        </label>
+                                        <input type="number" id="ohkm-min-hard" value="2" min="1" max="20" step="1" style="padding: 6px;">
+                                    </div>
+                                    <div class="form-group" style="margin: 0;">
+                                        <label style="font-size: 0.8rem;">Max Hard Keypoints
+                                            <span class="tooltip">?<span class="tooltip-text">Max keypoints to apply hard scaling to. Leave empty for no limit.</span></span>
+                                        </label>
+                                        <input type="number" id="ohkm-max-hard" placeholder="None" min="1" max="100" step="1" style="padding: 6px;">
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2008,7 +2120,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <div style="margin-top: 15px;">
                         <div class="toggle-group">
                             <input type="checkbox" id="enable-eval" onchange="toggleEvalOptions()">
-                            <label for="enable-eval" style="display: inline; margin: 0;">Enable OKS Evaluation
+                            <label for="enable-eval" style="display: inline; margin: 0;">Enable epoch-end evaluation
                                 <span class="tooltip">?
                                     <span class="tooltip-text">Run Object Keypoint Similarity (OKS) evaluation during training. OKS measures pose estimation accuracy accounting for keypoint scale. Adds compute overhead but provides useful metrics.</span>
                                 </span>
@@ -2084,12 +2196,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     The anchor point is inherited from the Centroid model configuration.
                 </div>
 
-                <!-- Crop Configuration (collapsible) -->
-                <div class="collapsible-header" onclick="toggleCollapsible('ci-crop-config')">
-                    <h3>Crop Configuration</h3>
-                    <span class="chevron" id="ci-crop-config-chevron">&#9660;</span>
+                <!-- Data Configuration (collapsible) -->
+                <div class="collapsible-header" onclick="toggleCollapsible('ci-data-config')">
+                    <h3>Data Configuration</h3>
+                    <span class="chevron" id="ci-data-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="ci-crop-config">
+                <div class="collapsible-content" id="ci-data-config">
                 <div class="grid-2">
                     <div class="form-group">
                         <label>
@@ -2170,7 +2282,16 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </span>
                     </label>
                 </div>
-                <div id="ci-aug-preview-section" class="hidden">
+
+                <!-- CI Augmentation Settings Toggle -->
+                <div id="ci-aug-toggle-section" class="hidden">
+                    <div onclick="toggleCollapsible('ci-aug-preview-section')" style="padding: 8px 0; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;">
+                        <span class="chevron" id="ci-aug-preview-section-chevron" style="font-size: 0.7rem;">&#9660;</span>
+                        <span style="font-size: 0.9rem; color: var(--text-dim);">Augmentation Settings</span>
+                    </div>
+                </div>
+
+                <div id="ci-aug-preview-section" class="collapsible-content">
                     <div class="aug-container">
                         <div class="aug-sliders">
                             <h4>Geometric</h4>
@@ -2226,6 +2347,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </div>
                     </div>
                 </div>
+
                 </div>
 
                 <!-- Model Configuration (collapsible) -->
@@ -2233,7 +2355,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <h3>Model Configuration</h3>
                     <span class="chevron" id="ci-model-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="ci-model-config">
+                <div class="collapsible-content" id="ci-model-config">
                 <div class="grid-2">
                     <div class="form-group">
                         <label>
@@ -2395,7 +2517,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     <h3>Trainer Configuration</h3>
                     <span class="chevron" id="ci-trainer-config-chevron">&#9660;</span>
                 </div>
-                <div class="collapsible-content expanded" id="ci-trainer-config">
+                <div class="collapsible-content" id="ci-trainer-config">
                     <!-- CI Additional Parameters Toggle -->
                     <div class="toggle-group">
                         <input type="checkbox" id="ci-show-additional-params">
@@ -2635,6 +2757,29 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             </div>
                         </div>
                     </div>
+
+                    <!-- Checkpoint Options -->
+                    <h5 style="margin: 15px 0 10px; color: #888; font-size: 0.85rem;">Checkpoint Options</h5>
+                    <div class="grid-2" style="gap: 10px;">
+                        <div class="form-group" style="margin: 0;">
+                            <label style="font-size: 0.85rem;">Save Top K
+                                <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
+                            </label>
+                            <input type="number" id="ci-ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
+                        </div>
+                        <div class="form-group" style="margin: 0; display: flex; align-items: center;">
+                            <label style="font-size: 0.85rem;">
+                                <input type="checkbox" id="ci-ckpt-save-last" checked style="margin-right: 5px;">
+                                Save Last Checkpoint
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin: 10px 0 0;">
+                        <label style="font-size: 0.85rem;">Resume from Checkpoint
+                            <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
+                        </label>
+                        <input type="text" id="ci-resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
+                    </div>
                     </div>
                 <div class="toggle-group">
                     <input type="checkbox" id="ci-save-ckpt" checked onchange="toggleCISaveCkptOptions()">
@@ -2655,88 +2800,127 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                             <input type="text" id="ci-run-name" placeholder="Auto (timestamp_head)" style="padding: 6px;">
                         </div>
                     </div>
-                    <div class="grid-2" style="gap: 10px; margin-top: 10px;">
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">Save Top K
-                                <span class="tooltip">?<span class="tooltip-text">Number of best checkpoints to save based on validation loss. Set to -1 to save all.</span></span>
-                            </label>
-                            <input type="number" id="ci-ckpt-save-top-k" value="1" min="-1" max="10" style="padding: 6px;">
-                        </div>
-                        <div class="form-group" style="margin: 0;">
-                            <label style="font-size: 0.8rem;">
-                                <input type="checkbox" id="ci-ckpt-save-last" checked style="margin-right: 5px;">
-                                Save Last Checkpoint
-                            </label>
-                        </div>
-                    </div>
-                    <div class="form-group" style="margin: 10px 0 0;">
-                        <label style="font-size: 0.8rem;">Resume from Checkpoint
-                            <span class="tooltip">?<span class="tooltip-text">Path to a checkpoint file (.ckpt) to resume training from. Leave empty to start fresh.</span></span>
-                        </label>
-                        <input type="text" id="ci-resume-ckpt-path" placeholder="None (start fresh)" style="padding: 6px; width: 100%;">
-                    </div>
-                </div>
                 </div>
 
-                <!-- Additional Settings -->
-                <div id="ci-advanced-options" style="margin-top: 15px;">
-                    <h4 style="margin: 0 0 15px; color: #666; font-size: 0.85rem; border-top: 1px solid var(--border); padding-top: 15px;">Additional Settings</h4>
+                    <!-- Additional Settings -->
+                    <div id="ci-advanced-options" style="margin-top: 15px;">
+                        <h4 style="margin: 0 0 15px; color: #888; font-size: 0.9rem;">Additional Settings</h4>
 
-                    <!-- CI Cache Memory Estimate Card -->
-                    <div id="ci-cache-memory-card" class="card" style="padding: 12px; margin-bottom: 15px; background: #222; border: 1px solid var(--border); display: none;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <span style="font-weight: 600; color: #ccc;">💾 Image Cache Memory</span>
-                            <span id="ci-cache-memory-status" class="badge" style="padding: 4px 10px; border-radius: 4px; font-size: 0.75rem;">-</span>
-                        </div>
-                        <div style="font-size: 0.85rem; color: #888;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <div>Raw image data:</div>
-                                <div id="ci-cache-raw-size" style="text-align: right; color: #ccc;">-</div>
-                                <div>With overhead (1.2×):</div>
-                                <div id="ci-cache-total-size" style="text-align: right; color: #ccc;">-</div>
-                                <div id="ci-cache-workers-row" style="display: none;">Per-worker replication:</div>
-                                <div id="ci-cache-workers-size" style="text-align: right; color: #ccc; display: none;">-</div>
+                        <!-- CI Cache Memory Estimate Card -->
+                        <div id="ci-cache-memory-card" class="card" style="padding: 12px; margin-bottom: 15px; background: #222; border: 1px solid var(--border); display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span style="font-weight: 600; color: #ccc;">Image Cache Memory</span>
+                                <span id="ci-cache-memory-status" class="badge" style="padding: 4px 10px; border-radius: 4px; font-size: 0.75rem;">-</span>
                             </div>
-                            <div id="ci-cache-memory-note" style="margin-top: 8px; padding: 8px; background: rgba(234, 179, 8, 0.1); border-radius: 4px; font-size: 0.8rem; display: none;">
-                                ⚠️ With memory caching + num_workers > 0, each worker gets a copy of the cache.
+                            <div style="font-size: 0.85rem; color: #888;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                    <div>Raw image data:</div>
+                                    <div id="ci-cache-raw-size" style="text-align: right; color: #ccc;">-</div>
+                                    <div>With overhead (1.2×):</div>
+                                    <div id="ci-cache-total-size" style="text-align: right; color: #ccc;">-</div>
+                                    <div id="ci-cache-workers-row" style="display: none;">Per-worker replication:</div>
+                                    <div id="ci-cache-workers-size" style="text-align: right; color: #ccc; display: none;">-</div>
+                                </div>
+                                <div id="ci-cache-memory-note" style="margin-top: 8px; padding: 8px; background: rgba(234, 179, 8, 0.1); border-radius: 4px; font-size: 0.8rem; display: none;">
+                                    With memory caching + num_workers > 0, each worker gets a copy of the cache.
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="info-box" style="background: rgba(16, 185, 129, 0.15); border-color: #10b981; margin-bottom: 10px;">
-                        <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2+ and change <strong>Data Pipeline</strong> to "Cache to Memory" or "Cache to Disk".
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label>
-                                Num Workers
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">Parallel processes for loading data.<br><br><b>0:</b> Required for torch_dataset (default).<br><b>>0:</b> Only with caching pipelines.</span>
-                                </span>
-                            </label>
-                            <select id="ci-num-workers" onchange="updateCICacheMemoryEstimate()">
-                                <option value="0" selected>0 (Default)</option>
-                                <option value="2">2</option>
-                                <option value="4">4</option>
-                                <option value="8">8</option>
-                            </select>
+                        <div class="info-box" style="background: rgba(16, 185, 129, 0.15); border-color: #10b981; margin-bottom: 10px;">
+                            <strong>Speed Tip:</strong> To improve training speed, set <strong>Num Workers</strong> to 2+ and use "Cache to Memory" or "Cache to Disk".
                         </div>
-                        <div class="form-group">
-                            <label>
-                                Data Pipeline
-                                <span class="tooltip">?
-                                    <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images for faster training.</span>
-                                </span>
-                            </label>
-                            <select id="ci-data-pipeline" onchange="updateCICacheMemoryEstimate()">
-                                <option value="torch_dataset" selected>torch_dataset (Default)</option>
-                                <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
-                                <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
-                            </select>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label>
+                                    Num Workers
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Parallel processes for loading data.<br><br><b>0:</b> Required for torch_dataset (default).<br><b>>0:</b> Only with caching pipelines.</span>
+                                    </span>
+                                </label>
+                                <select id="ci-num-workers" onchange="updateCICacheMemoryEstimate()">
+                                    <option value="0" selected>0 (Default)</option>
+                                    <option value="2">2</option>
+                                    <option value="4">4</option>
+                                    <option value="8">8</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    Data Pipeline
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">How data is loaded. torch_dataset loads directly from video. Caching options preload images for faster training.</span>
+                                    </span>
+                                </label>
+                                <select id="ci-data-pipeline" onchange="updateCICacheMemoryEstimate(); toggleCIDiskCacheOptions()">
+                                    <option value="torch_dataset" selected>torch_dataset (Default)</option>
+                                    <option value="torch_dataset_cache_img_memory">Cache to Memory</option>
+                                    <option value="torch_dataset_cache_img_disk">Cache to Disk</option>
+                                </select>
+                            </div>
                         </div>
-                    </div>
 
-                    <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Hard Keypoint Mining</h4>
+                        <!-- Disk Cache Options (shown only when Cache to Disk is selected) -->
+                        <div id="ci-disk-cache-options" style="display: none; margin-top: 10px; padding: 12px; background: #2a2a2a; border-radius: 6px; border: 1px solid #444;">
+                            <div style="font-size: 0.85rem; color: #888; margin-bottom: 10px;">Disk Cache Settings</div>
+                            <div class="form-group" style="margin-bottom: 10px;">
+                                <label style="font-size: 0.85rem;">
+                                    Cache Path
+                                    <span class="tooltip">?
+                                        <span class="tooltip-text">Directory to save cached images. If empty, uses the checkpoint directory. Creates train_imgs/ and val_imgs/ subdirectories.</span>
+                                    </span>
+                                </label>
+                                <input type="text" id="ci-cache-img-path" placeholder="Auto (checkpoint directory)" style="padding: 6px; width: 100%;">
+                            </div>
+                            <div class="grid-2" style="gap: 10px;">
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="ci-parallel-caching" checked style="margin-right: 5px;">
+                                        Parallel Caching
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Use multiple threads to cache images in parallel. Significantly faster for large datasets.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">
+                                        Cache Workers
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Number of threads for parallel caching. 0 = auto (min of 4 or CPU count).</span>
+                                        </span>
+                                    </label>
+                                    <select id="ci-cache-workers" style="padding: 4px;">
+                                        <option value="0" selected>0 (Auto)</option>
+                                        <option value="2">2</option>
+                                        <option value="4">4</option>
+                                        <option value="8">8</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid-2" style="gap: 10px; margin-top: 10px;">
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="ci-use-existing-imgs" style="margin-right: 5px;">
+                                        Use Existing Cache
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">If cached images already exist in the path, use them instead of re-caching. Useful for resuming training.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="margin: 0;">
+                                    <label style="font-size: 0.85rem;">
+                                        <input type="checkbox" id="ci-delete-cache-after-training" checked style="margin-right: 5px;">
+                                        Delete Cache After Training
+                                        <span class="tooltip">?
+                                            <span class="tooltip-text">Remove cached images after training completes. Disable to keep cache for future runs.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Hard Keypoint Mining -->
+                        <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Hard Keypoint Mining</h4>
                     <div class="toggle-group">
                         <input type="checkbox" id="ci-enable-ohkm" onchange="toggleCIOhkmOptions()">
                         <label for="ci-enable-ohkm" style="display: inline; margin: 0;">
@@ -2769,7 +2953,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </div>
                     </div>
 
-                    <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Logging</h4>
+                    <!-- Logging -->
+                    <h4 style="margin: 20px 0 10px; color: #888; font-size: 0.9rem;">Logging</h4>
                     <div class="toggle-group">
                         <input type="checkbox" id="ci-enable-wandb" onchange="toggleCIWandbOptions()">
                         <label for="ci-enable-wandb" style="display: inline; margin: 0;">
@@ -2835,10 +3020,11 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                         </div>
                     </div>
 
-                    <h4 style="margin: 15px 0 10px; color: #888; font-size: 0.9rem;">Evaluation</h4>
+                    <!-- Evaluation -->
+                    <h4 style="margin: 20px 0 10px; color: #888; font-size: 0.9rem;">Evaluation</h4>
                     <div class="toggle-group">
                         <input type="checkbox" id="ci-enable-eval" onchange="toggleCIEvalOptions()">
-                        <label for="ci-enable-eval" style="display: inline; margin: 0;">Enable OKS Evaluation
+                        <label for="ci-enable-eval" style="display: inline; margin: 0;">Enable epoch-end evaluation
                             <span class="tooltip">?
                                 <span class="tooltip-text">Run Object Keypoint Similarity (OKS) evaluation during training. OKS measures pose estimation accuracy accounting for keypoint scale. Adds compute overhead but provides useful metrics.</span>
                             </span>
@@ -2857,6 +3043,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                                 <input type="number" id="ci-eval-oks-stddev" value="0.025" min="0.001" max="0.5" step="0.005" style="padding: 6px;">
                             </div>
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -3168,13 +3355,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         }
 
         // More accurate parameter estimation accounting for output_stride
-        function estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints) {
+        function estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate = 1.5) {
             const downBlocks = Math.log2(maxStride);
             const upBlocks = Math.log2(maxStride / outputStride);
             let totalParams = 0;
             let ch = inChannels;
             let f = filters;
-            const filtersRate = 1.5;
 
             // Encoder blocks
             for (let i = 0; i < downBlocks; i++) {
@@ -3312,6 +3498,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 if (videoInput.files.length) handleVideoFile(videoInput.files[0]);
             });
 
+            // Config file upload - generic (for non-top-down models)
+            const genericConfigInput = document.getElementById('generic-config-input');
+            genericConfigInput.addEventListener('change', () => {
+                if (genericConfigInput.files.length) handleConfigFile(genericConfigInput.files[0], 'generic');
+            });
+
             // Config file upload - centroid
             const centroidConfigInput = document.getElementById('centroid-config-input');
             centroidConfigInput.addEventListener('change', () => {
@@ -3370,6 +3562,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                     document.getElementById('centroid-config-badge').classList.remove('hidden');
                     document.getElementById('centroid-config-name').textContent = file.name;
                     document.getElementById('clear-centroid-config-btn').classList.remove('hidden');
+                    // Also update generic config UI if that's the source
+                    if (configType === 'generic') {
+                        document.getElementById('generic-config-badge').classList.remove('hidden');
+                        document.getElementById('generic-config-name').textContent = file.name;
+                        document.getElementById('clear-generic-config-btn').classList.remove('hidden');
+                    }
                 }
 
                 // Apply loaded config to form fields if SLP is already loaded
@@ -3395,10 +3593,23 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 document.getElementById('ci-config-name').textContent = '';
                 document.getElementById('clear-ci-config-btn').classList.add('hidden');
                 document.getElementById('ci-config-input').value = '';
+            } else if (configType === 'generic') {
+                // Generic clears the main config and its own UI
+                loadedCentroidConfig = null;
+                document.getElementById('generic-config-badge').classList.add('hidden');
+                document.getElementById('generic-config-name').textContent = '';
+                document.getElementById('clear-generic-config-btn').classList.add('hidden');
+                document.getElementById('generic-config-input').value = '';
+                // Also clear centroid UI in case it was synced
+                document.getElementById('centroid-config-badge').classList.add('hidden');
+                document.getElementById('centroid-config-name').textContent = '';
+                document.getElementById('clear-centroid-config-btn').classList.add('hidden');
+                document.getElementById('centroid-config-input').value = '';
             } else {
-                // Clear both
+                // Clear all
                 clearLoadedConfig('centroid');
                 clearLoadedConfig('ci');
+                clearLoadedConfig('generic');
             }
         }
 
@@ -4470,13 +4681,14 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             if (!slpData) return;
 
             const filters = parseInt(document.getElementById('ci-filters')?.value) || 32;
+            const filtersRate = parseFloat(document.getElementById('ci-filters-rate')?.value) || 1.5;
             const maxStride = parseInt(document.getElementById('ci-max-stride')?.value) || 16;
             const outputStride = parseInt(document.getElementById('ci-output-stride')?.value) || 1;
             const inChannels = parseInt(document.getElementById('ci-input-channels')?.value) || 1;
             const numKeypoints = slpData.skeleton.nodes.length;
 
             // Calculate params
-            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints);
+            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate);
             const downBlocks = Math.log2(maxStride);
             const upBlocks = Math.log2(maxStride) - Math.log2(outputStride);
 
@@ -4490,15 +4702,18 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             if (archEl) {
                 const ciModelType = selectedModelType === 'multi_class_topdown' ? 'multi_class_topdown' : 'centered_instance';
                 const numClasses = slpData?.numTracks || 0;
-                archEl.innerHTML = generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, 1.5, ciModelType, 0, numClasses);
+                archEl.innerHTML = generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate, ciModelType, 0, numClasses);
             }
         }
 
         // Generate UNet architecture diagram as visual HTML (PR28 style)
         // modelType: 'single_instance', 'centroid', 'centered_instance', 'bottomup', 'multi_class_bottomup', 'multi_class_topdown'
-        function generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate = 1.5, modelType = 'single_instance', numEdges = 0, numClasses = 0) {
+        function generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate = 1.5, modelType = 'single_instance', numEdges = 0, numClasses = 0, pafOutputStride = null) {
             const downBlocks = Math.log2(maxStride);
-            const upBlocks = Math.log2(maxStride / outputStride);
+            // Use the smaller output stride to determine decoder depth (need to decode to the finest level required)
+            const effectivePafStride = pafOutputStride || outputStride;
+            const minOutputStride = Math.min(outputStride, effectivePafStride);
+            const upBlocks = Math.log2(maxStride / minOutputStride);
 
             // Build encoder layers: channels = filters * rate^block
             let encoderLayers = [];
@@ -4560,35 +4775,49 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             });
 
             // Head(s) - output channels depend on model type
-            const headInputCh = decoderLayers.length > 0 ? decoderLayers[decoderLayers.length - 1].outCh : bottleneckCh;
+            // Calculate input channels for each head based on their output stride
+            // Heads tap into decoder at the level matching their output stride
+            const getHeadInputCh = (headOutputStride) => {
+                const headDecoderLevel = Math.log2(maxStride / headOutputStride);
+                // Find decoder layer at this level, or use bottleneck if stride matches max_stride
+                if (headOutputStride >= maxStride) return bottleneckCh;
+                const decoderIdx = decoderLayers.findIndex(d => d.toStride === headOutputStride);
+                if (decoderIdx >= 0) return decoderLayers[decoderIdx].outCh;
+                // Fallback: calculate based on formula
+                return Math.floor(filters * Math.pow(filtersRate, Math.log2(headOutputStride)));
+            };
+
+            const confmapsInputCh = getHeadInputCh(outputStride);
+            const pafInputCh = pafOutputStride ? getHeadInputCh(pafOutputStride) : confmapsInputCh;
+
             html += '<div class="arrow">↓</div>';
 
             // Build head output description based on model type
             // Multi-head models have SEPARATE output tensors, not combined
             if (modelType === 'centroid') {
-                html += `<div class="layer-box head">Head: ${headInputCh} → 1 (centroid confmap) @ stride ${outputStride}</div>`;
+                html += `<div class="layer-box head">Head: ${confmapsInputCh} → 1 (centroid confmap) @ stride ${outputStride}</div>`;
             } else if (modelType === 'bottomup') {
                 // Bottom-up has TWO SEPARATE heads with their own output tensors
                 const pafChannels = numEdges * 2;
                 html += `<div style="display: flex; gap: 8px; flex-wrap: wrap;">`;
-                html += `<div class="layer-box head" style="flex: 1; min-width: 120px;">Confmaps Head<br>${headInputCh} → ${numKeypoints} ch</div>`;
-                html += `<div class="layer-box head" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">PAFs Head<br>${headInputCh} → ${pafChannels} ch</div>`;
+                html += `<div class="layer-box head" style="flex: 1; min-width: 140px;">Confmaps Head<br>${confmapsInputCh} in → ${numKeypoints} ch @ s${outputStride}</div>`;
+                html += `<div class="layer-box head" style="flex: 1; min-width: 140px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">PAFs Head<br>${pafInputCh} in → ${pafChannels} ch @ s${effectivePafStride}</div>`;
                 html += `</div>`;
             } else if (modelType === 'multi_class_bottomup') {
                 // Multi-class bottom-up has TWO SEPARATE heads
                 html += `<div style="display: flex; gap: 8px; flex-wrap: wrap;">`;
-                html += `<div class="layer-box head" style="flex: 1; min-width: 120px;">Confmaps Head<br>${headInputCh} → ${numKeypoints} ch</div>`;
-                html += `<div class="layer-box head" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">Class Maps Head<br>${headInputCh} → ${numClasses} ch</div>`;
+                html += `<div class="layer-box head" style="flex: 1; min-width: 120px;">Confmaps Head<br>${confmapsInputCh} → ${numKeypoints} ch</div>`;
+                html += `<div class="layer-box head" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">Class Maps Head<br>${confmapsInputCh} → ${numClasses} ch</div>`;
                 html += `</div>`;
             } else if (modelType === 'multi_class_topdown') {
                 // Multi-class top-down has confmaps head + class vectors (FC layers)
                 html += `<div style="display: flex; gap: 8px; flex-wrap: wrap;">`;
-                html += `<div class="layer-box head" style="flex: 1; min-width: 120px;">Confmaps Head<br>${headInputCh} → ${numKeypoints} ch</div>`;
+                html += `<div class="layer-box head" style="flex: 1; min-width: 120px;">Confmaps Head<br>${confmapsInputCh} → ${numKeypoints} ch</div>`;
                 html += `<div class="layer-box head" style="flex: 1; min-width: 120px; background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);">Class Vector Head<br>FC → ${numClasses} classes</div>`;
                 html += `</div>`;
             } else {
                 // single_instance, centered_instance - single head
-                html += `<div class="layer-box head">Head: ${headInputCh} → ${numKeypoints} (confmaps) @ stride ${outputStride}</div>`;
+                html += `<div class="layer-box head">Head: ${confmapsInputCh} → ${numKeypoints} (confmaps) @ stride ${outputStride}</div>`;
             }
 
             html += '</div>';
@@ -4837,6 +5066,22 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             document.getElementById('topdown-info').classList.toggle('hidden', !isTopDown);
             document.getElementById('next-btn').disabled = false;
 
+            // Toggle config upload buttons based on model type
+            const genericConfigRow = document.getElementById('generic-config-row');
+            const topdownConfigRows = document.getElementById('topdown-config-rows');
+            const configHelpText = document.getElementById('config-help-text');
+            if (genericConfigRow) genericConfigRow.classList.toggle('hidden', isTopDown);
+            if (topdownConfigRows) topdownConfigRows.classList.toggle('hidden', !isTopDown);
+            if (configHelpText) {
+                configHelpText.textContent = isTopDown
+                    ? 'For Top-Down models, load both Centroid and Centered Instance configs.'
+                    : 'Load a previous config to use as baseline for your new training.';
+            }
+
+            // Hide OHKM section for centroid models (top-down) - only applies to models with multiple keypoints
+            const ohkmSection = document.getElementById('ohkm-section');
+            if (ohkmSection) ohkmSection.classList.toggle('hidden', isTopDown);
+
             // Check for edges if bottomup is selected
             let warningEl = document.getElementById('bottomup-warning');
             if (!warningEl) {
@@ -4934,12 +5179,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             // Enable augmentation by default for all model types (recommended for most training scenarios)
             const useAug = true;
             document.getElementById('use-augmentation').checked = useAug;
-            document.getElementById('aug-preview-section').classList.toggle('hidden', !useAug);
+            document.getElementById('aug-toggle-section').classList.toggle('hidden', !useAug);
             updateAugPreview();
 
             // Enable CI augmentation by default as well
             document.getElementById('ci-use-augmentation').checked = useAug;
-            document.getElementById('ci-aug-preview-section').classList.toggle('hidden', !useAug);
+            document.getElementById('ci-aug-toggle-section').classList.toggle('hidden', !useAug);
             updateCIAugPreview();
 
             // Crop size for centered instance - use CI max stride (not main model max stride)
@@ -4981,9 +5226,14 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             });
 
             document.getElementById('filters').addEventListener('change', updateModelInfo);
+            document.getElementById('filters-rate').addEventListener('change', updateModelInfo);
             document.getElementById('output-stride').addEventListener('change', () => {
                 updateEffectiveSize();
                 updateModelInfo(); // Decoder blocks depend on output_stride
+            });
+
+            document.getElementById('paf-output-stride').addEventListener('change', () => {
+                updateModelInfo(); // Update diagram with new PAF output stride
             });
 
             document.getElementById('backbone').addEventListener('change', (e) => {
@@ -5540,6 +5790,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
 
         function updateModelInfo() {
             const filters = parseInt(document.getElementById('filters').value);
+            const filtersRate = parseFloat(document.getElementById('filters-rate')?.value) || 1.5;
             const maxStride = parseInt(document.getElementById('max-stride').value);
             const outputStride = parseInt(document.getElementById('output-stride').value) || 1;
             const inChannels = slpData ? parseInt(document.getElementById('input-channels').value) : 1;
@@ -5551,7 +5802,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const downBlocks = Math.log2(maxStride);
             const upBlocks = Math.log2(maxStride / outputStride);
 
-            const params = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints);
+            const params = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate);
 
             document.getElementById('total-params').textContent = '~' + formatParams(params);
             document.getElementById('down-blocks').textContent = downBlocks;
@@ -5563,7 +5814,8 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             if (isTopDown) currentModelType = 'centroid';  // Main tab for top-down shows centroid model
             const numEdges = slpData?.skeleton?.edges?.length || 0;
             const numClasses = slpData?.numTracks || 0;
-            document.getElementById('arch-diagram').innerHTML = generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, 1.5, currentModelType, numEdges, numClasses);
+            const pafOutputStride = parseInt(document.getElementById('paf-output-stride')?.value) || null;
+            document.getElementById('arch-diagram').innerHTML = generateUNetDiagram(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate, currentModelType, numEdges, numClasses, pafOutputStride);
 
             // Update GPU memory estimation
             updateGPUMemory();
@@ -5589,6 +5841,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const batchSize = parseInt(document.getElementById('batch-size').value) || 4;
             const scale = parseFloat(document.getElementById('scale').value) || 1.0;
             const filters = parseInt(document.getElementById('filters').value) || 32;
+            const filtersRate = parseFloat(document.getElementById('filters-rate')?.value) || 1.5;
             const maxStride = parseInt(document.getElementById('max-stride').value) || 16;
             const outputStride = parseInt(document.getElementById('output-stride').value) || 1;
             const numKeypoints = slpData.skeleton.nodes.length;
@@ -5629,7 +5882,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
 
             // Use consistent parameter estimation
             const inChannels = parseInt(document.getElementById('input-channels').value) || 1;
-            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints);
+            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate);
             const downBlocks = Math.log2(maxStride);
             const upBlocks = Math.log2(maxStride / outputStride);
 
@@ -5643,12 +5896,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             // Activations (rough: proportional to feature map sizes across layers)
             let actBytes = 0;
             let h = imgH, w = imgW;
-            f = filters;
+            let f = filters;
             for (let i = 0; i <= downBlocks; i++) {
                 actBytes += batchSize * h * w * f * 4;
                 h = Math.ceil(h / 2);
                 w = Math.ceil(w / 2);
-                f = Math.floor(f * 1.5);
+                f = Math.floor(f * filtersRate);
             }
             actBytes *= 2; // Encoder + decoder
 
@@ -5691,6 +5944,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const batchSize = parseInt(document.getElementById('ci-batch-size').value) || 4;
             const scale = parseFloat(document.getElementById('ci-scale').value) || 1.0;
             const filters = parseInt(document.getElementById('ci-filters').value) || 32;
+            const filtersRate = parseFloat(document.getElementById('ci-filters-rate')?.value) || 1.5;
             const maxStride = parseInt(document.getElementById('ci-max-stride').value) || 16;
             const outputStride = parseInt(document.getElementById('ci-output-stride').value) || 1;
             const numKeypoints = slpData.skeleton.nodes.length;
@@ -5705,7 +5959,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const imgH = padding.paddedHeight;
             const imgW = padding.paddedWidth;
 
-            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints);
+            const totalParams = estimateParamsAccurate(filters, maxStride, outputStride, inChannels, numKeypoints, filtersRate);
             const downBlocks = Math.log2(maxStride);
 
             // Memory estimates (in bytes, fp32 = 4 bytes)
@@ -5722,7 +5976,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 actBytes += batchSize * h * w * f * 4;
                 h = Math.ceil(h / 2);
                 w = Math.ceil(w / 2);
-                f = Math.floor(f * 1.5);
+                f = Math.floor(f * filtersRate);
             }
             actBytes *= 2;
 
@@ -5980,7 +6234,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         // Augmentation toggle
         function initAugToggle() {
             document.getElementById('use-augmentation').addEventListener('change', (e) => {
-                document.getElementById('aug-preview-section').classList.toggle('hidden', !e.target.checked);
+                document.getElementById('aug-toggle-section').classList.toggle('hidden', !e.target.checked);
                 if (e.target.checked) updateAugPreview();
                 // Update crop size suggestion when augmentation is toggled
                 updateCICropPreview();
@@ -6070,7 +6324,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         // CI Augmentation toggle and functions
         function initCIAugToggle() {
             document.getElementById('ci-use-augmentation').addEventListener('change', (e) => {
-                document.getElementById('ci-aug-preview-section').classList.toggle('hidden', !e.target.checked);
+                document.getElementById('ci-aug-toggle-section').classList.toggle('hidden', !e.target.checked);
                 if (e.target.checked) updateCIAugPreview();
                 // Update crop size suggestion when CI augmentation is toggled
                 updateCICropPreview();
@@ -6649,8 +6903,16 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // Data
                 numWorkers: parseInt(document.getElementById('num-workers')?.value) || 0,
                 dataPipeline: document.getElementById('data-pipeline')?.value || 'torch_dataset',
+                // Disk cache options
+                cacheImgPath: document.getElementById('cache-img-path')?.value || null,
+                parallelCaching: document.getElementById('parallel-caching')?.checked ?? true,
+                cacheWorkers: parseInt(document.getElementById('cache-workers')?.value) || 0,
+                useExistingImgs: document.getElementById('use-existing-imgs')?.checked || false,
+                deleteCacheAfterTraining: document.getElementById('delete-cache-after-training')?.checked ?? true,
                 maxHeight: document.getElementById('max-height')?.value ? parseInt(document.getElementById('max-height').value) : null,
                 maxWidth: document.getElementById('max-width')?.value ? parseInt(document.getElementById('max-width').value) : null,
+                // Model
+                filtersRate: parseFloat(document.getElementById('filters-rate')?.value) || 1.5,
                 // Model pretrained weights
                 useImageNetPretrained: document.getElementById('use-imagenet-pretrained')?.checked ?? true,
                 pretrainedBackboneWeights: document.getElementById('pretrained-backbone-path')?.value || null,
@@ -6731,6 +6993,12 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
                 // Data
                 numWorkers: parseInt(document.getElementById('ci-num-workers')?.value) || 0,
                 dataPipeline: document.getElementById('ci-data-pipeline')?.value || 'torch_dataset',
+                // Disk cache options
+                cacheImgPath: document.getElementById('ci-cache-img-path')?.value || null,
+                parallelCaching: document.getElementById('ci-parallel-caching')?.checked ?? true,
+                cacheWorkers: parseInt(document.getElementById('ci-cache-workers')?.value) || 0,
+                useExistingImgs: document.getElementById('ci-use-existing-imgs')?.checked || false,
+                deleteCacheAfterTraining: document.getElementById('ci-delete-cache-after-training')?.checked ?? true,
                 maxHeight: null,  // CI uses crop_size, not max_height/max_width
                 maxWidth: null,
                 // Crop settings
@@ -6813,6 +7081,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const backbone = document.getElementById('backbone').value;
             const maxStride = parseInt(document.getElementById('max-stride').value) || 16;
             const filters = parseInt(document.getElementById('filters').value) || 32;
+            const filtersRate = parseFloat(document.getElementById('filters-rate')?.value) || 1.5;
             const sigma = parseFloat(document.getElementById('sigma').value) || 5.0;
             const outputStride = parseInt(document.getElementById('output-stride').value) || 1;
             const batchSize = parseInt(document.getElementById('batch-size').value) || 4;
@@ -6826,7 +7095,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const advancedOptions = getAdvancedOptions();
 
             const config1 = generateConfigYaml({
-                headType, scale, valFraction, useAug, backbone, maxStride, filters, sigma, outputStride,
+                headType, scale, valFraction, useAug, backbone, maxStride, filters, filtersRate, sigma, outputStride,
                 batchSize, maxEpochs, learningRate, optimizer, accelerator, earlyStopping, saveCkpt,
                 anchorPart: selectedAnchor, inputChannels, advancedOptions
             });
@@ -6920,6 +7189,19 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
         function toggleOhkmOptions() {
             const show = document.getElementById('enable-ohkm').checked;
             document.getElementById('ohkm-options').style.display = show ? 'block' : 'none';
+        }
+
+        function toggleDiskCacheOptions() {
+            const pipeline = document.getElementById('data-pipeline')?.value;
+            const show = pipeline === 'torch_dataset_cache_img_disk';
+            document.getElementById('disk-cache-options').style.display = show ? 'block' : 'none';
+        }
+
+        function toggleCIDiskCacheOptions() {
+            const pipeline = document.getElementById('ci-data-pipeline')?.value;
+            const show = pipeline === 'torch_dataset_cache_img_disk';
+            const el = document.getElementById('ci-disk-cache-options');
+            if (el) el.style.display = show ? 'block' : 'none';
         }
 
         function toggleSaveCkptOptions() {
@@ -7076,6 +7358,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
             const backbone = document.getElementById('backbone').value;
             const maxStride = parseInt(document.getElementById('max-stride').value);
             const filters = parseInt(document.getElementById('filters').value);
+            const filtersRate = parseFloat(document.getElementById('filters-rate')?.value) || 1.5;
             const sigma = parseFloat(document.getElementById('sigma').value);
             const outputStride = parseInt(document.getElementById('output-stride').value);
             const batchSize = parseInt(document.getElementById('batch-size').value);
@@ -7097,7 +7380,7 @@ Input → [Encoder] → [Middle] → [Decoder] → Head → Output
 
             // Generate first config (use loaded centroid config as base if available)
             const config1 = generateConfigYaml({
-                headType, scale, valFraction, useAug, backbone, maxStride, filters, sigma, outputStride,
+                headType, scale, valFraction, useAug, backbone, maxStride, filters, filtersRate, sigma, outputStride,
                 batchSize, maxEpochs, learningRate, optimizer, accelerator, earlyStopping, saveCkpt,
                 anchorPart: selectedAnchor, inputChannels, advancedOptions,
                 loadedConfig: loadedCentroidConfig
@@ -7405,8 +7688,11 @@ data_config:
   provider: ${lcData.provider || 'LabelsReader'}
   user_instances_only: ${lcData.user_instances_only ?? true}
   data_pipeline_fw: ${adv.dataPipeline && adv.dataPipeline !== 'torch_dataset' ? adv.dataPipeline : lcData.data_pipeline_fw || 'torch_dataset'}
-  parallel_caching: ${lcData.parallel_caching ?? 'null'}
-  cache_workers: ${lcData.cache_workers ?? 'null'}
+  cache_img_path: ${adv.dataPipeline === 'torch_dataset_cache_img_disk' && adv.cacheImgPath ? `"${adv.cacheImgPath}"` : lcData.cache_img_path || 'null'}
+  use_existing_imgs: ${adv.dataPipeline === 'torch_dataset_cache_img_disk' ? adv.useExistingImgs : lcData.use_existing_imgs ?? false}
+  delete_cache_imgs_after_training: ${adv.dataPipeline === 'torch_dataset_cache_img_disk' ? adv.deleteCacheAfterTraining : lcData.delete_cache_imgs_after_training ?? true}
+  parallel_caching: ${adv.dataPipeline?.includes('cache') ? adv.parallelCaching : lcData.parallel_caching ?? true}
+  cache_workers: ${adv.dataPipeline?.includes('cache') ? adv.cacheWorkers : lcData.cache_workers ?? 0}
   preprocessing:
     ensure_rgb: ${needEnsureRgb}
     ensure_grayscale: ${needEnsureGrayscale}
