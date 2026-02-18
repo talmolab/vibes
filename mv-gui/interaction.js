@@ -116,43 +116,40 @@ class InteractionManager {
     // ======================================================================
 
     /**
-     * Convert mouse coordinates on an overlay canvas to video pixel
-     * coordinates.
+     * Convert mouse coordinates to video pixel coordinates.
      *
-     * Because the overlay canvas dimensions match the video dimensions the
-     * default mapping is 1:1. When CSS zoom/pan transforms are applied
-     * (view.zoom.scale, view.zoom.offsetX/Y) we need to undo them so the
-     * returned coordinates are always in the original video pixel space.
+     * Uses clientX/clientY with getBoundingClientRect() which correctly
+     * accounts for CSS transforms (zoom/pan). The bounding rect reflects
+     * the actual on-screen position after all transforms, so dividing by
+     * rect dimensions gives the correct mapping regardless of zoom state.
      *
-     * @param {number} canvasX - event.offsetX on the overlay canvas
-     * @param {number} canvasY - event.offsetY on the overlay canvas
+     * @param {number} clientX - event.clientX (viewport coordinate)
+     * @param {number} clientY - event.clientY (viewport coordinate)
      * @param {string} viewName - Camera view name (e.g. 'back')
      * @returns {number[]} [videoX, videoY] in video pixel coordinates
      */
-    canvasToVideo(canvasX, canvasY, viewName) {
+    canvasToVideo(clientX, clientY, viewName) {
         const state = this._getState();
-        if (!state) return [canvasX, canvasY];
+        if (!state) return [clientX, clientY];
 
         const view = this._findView(state, viewName);
-        if (!view) return [canvasX, canvasY];
+        if (!view) return [clientX, clientY];
 
         const canvas = view.overlayCanvas;
-        if (!canvas) return [canvasX, canvasY];
+        if (!canvas) return [clientX, clientY];
 
-        // event.offsetX/offsetY are in the element's LOCAL coordinate space
-        // (the browser applies the inverse CSS transform automatically).
-        // We need to convert from CSS layout pixels to canvas intrinsic
-        // coordinates (= video pixel space).
-        //
-        // Use offsetWidth/offsetHeight (CSS layout size, EXCLUDES CSS
-        // transforms) instead of getBoundingClientRect() (which INCLUDES
-        // transforms and would give wrong ratios when zoomed).
-        const cssW = canvas.offsetWidth;
-        const cssH = canvas.offsetHeight;
-        if (cssW === 0 || cssH === 0) return [canvasX, canvasY];
+        // getBoundingClientRect() includes CSS transforms (zoom/pan),
+        // so the position and size reflect what's actually on screen.
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return [clientX, clientY];
 
-        const videoX = canvasX * (canvas.width / cssW);
-        const videoY = canvasY * (canvas.height / cssH);
+        // Position within the displayed (transformed) canvas
+        const displayX = clientX - rect.left;
+        const displayY = clientY - rect.top;
+
+        // Convert from display pixels to canvas intrinsic pixels (= video pixels)
+        const videoX = displayX * (canvas.width / rect.width);
+        const videoY = displayY * (canvas.height / rect.height);
         return [videoX, videoY];
     }
 
@@ -185,17 +182,17 @@ class InteractionManager {
 
         // Compute a scale-aware hit threshold. The base threshold (12) is
         // in CSS pixels. Convert to video pixels so the clickable area
-        // feels consistent regardless of the display size.
-        // Use offsetWidth (excludes CSS transforms) for correct ratio when zoomed.
+        // feels consistent regardless of the display size and zoom level.
+        // Use getBoundingClientRect() which includes CSS transforms.
         let threshold = this.hitThreshold;
         const state = this._getState();
         if (state) {
             const view = this._findView(state, viewName);
             if (view && view.overlayCanvas) {
-                const cssW = view.overlayCanvas.offsetWidth;
-                if (cssW > 0) {
-                    const cssToVideo = view.overlayCanvas.width / cssW;
-                    threshold = this.hitThreshold * cssToVideo;
+                const rect = view.overlayCanvas.getBoundingClientRect();
+                if (rect.width > 0) {
+                    const displayToVideo = view.overlayCanvas.width / rect.width;
+                    threshold = this.hitThreshold * displayToVideo;
                 }
             }
         }
@@ -251,14 +248,14 @@ class InteractionManager {
         const unlinkedList = fg.getUnlinkedInstances(viewName);
         if (!unlinkedList || unlinkedList.length === 0) return null;
 
-        // Compute threshold (use offsetWidth to exclude CSS transforms)
+        // Compute threshold using getBoundingClientRect() which includes CSS transforms
         let threshold = this.hitThreshold;
         const view = this._findView(state, viewName);
         if (view && view.overlayCanvas) {
-            const cssW = view.overlayCanvas.offsetWidth;
-            if (cssW > 0) {
-                const cssToVideo = view.overlayCanvas.width / cssW;
-                threshold = this.hitThreshold * cssToVideo;
+            const rect = view.overlayCanvas.getBoundingClientRect();
+            if (rect.width > 0) {
+                const displayToVideo = view.overlayCanvas.width / rect.width;
+                threshold = this.hitThreshold * displayToVideo;
             }
         }
 
@@ -389,7 +386,7 @@ class InteractionManager {
         const state = this._getState();
         if (!state) return;
 
-        const [vx, vy] = this.canvasToVideo(e.offsetX, e.offsetY, viewName);
+        const [vx, vy] = this.canvasToVideo(e.clientX, e.clientY, viewName);
         const frameIdx = state.currentFrame;
 
         // --- Right-click: toggle node visibility ---
@@ -477,7 +474,7 @@ class InteractionManager {
         const state = this._getState();
         if (!state) return;
 
-        const [vx, vy] = this.canvasToVideo(e.offsetX, e.offsetY, viewName);
+        const [vx, vy] = this.canvasToVideo(e.clientX, e.clientY, viewName);
 
         if (this.isDragging && this.dragInfo && this.dragInfo.viewName === viewName) {
             // Update the drag position
@@ -946,26 +943,32 @@ class InteractionManager {
     }
 
     /**
-     * Delete the currently selected instance group. The actual deletion is
-     * left to the application via the onSelectionChanged callback - we
-     * simply clear our selection and notify. A real implementation would
-     * call a dedicated deletion callback; here we clear selection as a
-     * safe default.
+     * Delete the currently selected instance group from the session data model.
+     * Removes it from Session.instanceGroups and the associated FrameGroup,
+     * then notifies the application via the onInstanceDeleted callback.
      *
      * @private
      */
     _deleteSelected() {
         if (!this.selectedInstanceGroup) return;
 
-        // Store reference before clearing
         const group = this.selectedInstanceGroup;
+        const state = this._getState();
+        if (!state || !state.session) return;
 
-        // Clear selection first
+        const frameIdx = state.currentFrame;
+
+        // Clear selection before modifying data
         this.clearSelection();
 
-        // The application should handle actual deletion. For now we just
-        // trigger a redraw. A dedicated onInstanceDeleted callback could
-        // be added if needed.
+        // Remove the instance group from the session data model
+        state.session.removeInstanceGroup(frameIdx, group);
+
+        // Notify the application (e.g. to update 3D viewport, info panel, timeline)
+        if (this.callbacks.onInstanceDeleted) {
+            this.callbacks.onInstanceDeleted(frameIdx, group);
+        }
+
         this._requestRedraw();
     }
 

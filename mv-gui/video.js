@@ -775,13 +775,20 @@ class VideoController {
         const z = view.zoom;
         const transform = "translate(" + z.offsetX + "px, " + z.offsetY + "px) scale(" + z.scale + ")";
 
-        if (view.canvas) {
-            view.canvas.style.transform = transform;
-            view.canvas.style.transformOrigin = "0 0";
-        }
-        if (view.overlayCanvas) {
-            view.overlayCanvas.style.transform = transform;
-            view.overlayCanvas.style.transformOrigin = "0 0";
+        // Apply transform to the canvas-wrapper if available, otherwise to individual canvases
+        const wrapper = view.wrapper || (view.canvas ? view.canvas.parentElement : null);
+        if (wrapper && wrapper.classList.contains('canvas-wrapper')) {
+            wrapper.style.transform = transform;
+            wrapper.style.transformOrigin = "0 0";
+        } else {
+            if (view.canvas) {
+                view.canvas.style.transform = transform;
+                view.canvas.style.transformOrigin = "0 0";
+            }
+            if (view.overlayCanvas) {
+                view.overlayCanvas.style.transform = transform;
+                view.overlayCanvas.style.transformOrigin = "0 0";
+            }
         }
 
         // Toggle zoomed indicator on the cell

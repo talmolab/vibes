@@ -293,6 +293,9 @@ function buildVideoGrid(gridElement, cameraNames) {
         label.className = 'view-label';
         label.textContent = name;
 
+        const wrapper = document.createElement('div');
+        wrapper.className = 'canvas-wrapper';
+
         const canvas = document.createElement('canvas');
         canvas.id = 'canvas-' + name;
 
@@ -300,9 +303,10 @@ function buildVideoGrid(gridElement, cameraNames) {
         overlayCanvas.className = 'overlay-canvas';
         overlayCanvas.id = 'overlay-' + name;
 
+        wrapper.appendChild(canvas);
+        wrapper.appendChild(overlayCanvas);
         cell.appendChild(label);
-        cell.appendChild(canvas);
-        cell.appendChild(overlayCanvas);
+        cell.appendChild(wrapper);
         gridElement.appendChild(cell);
 
         views.push({
@@ -310,8 +314,372 @@ function buildVideoGrid(gridElement, cameraNames) {
             canvas: canvas,
             overlayCanvas: overlayCanvas,
             cell: cell,
+            wrapper: wrapper,
         });
     }
 
     return views;
+}
+
+// ============================================
+// Calibration TOML export
+// ============================================
+
+/**
+ * Export cameras as a SLEAP-3d compatible calibration TOML string.
+ *
+ * Format:
+ *   [cam_N]
+ *   name = "camera_name"
+ *   size = [width, height]
+ *   matrix = [[fx, 0.0, cx], [0.0, fy, cy], [0.0, 0.0, 1.0]]
+ *   distortions = [k1, k2, p1, p2, k3]
+ *   rotation = [rx, ry, rz]
+ *   translation = [tx, ty, tz]
+ *
+ * @param {Camera[]} cameras
+ * @returns {string} TOML content
+ */
+function exportCalibrationTOML(cameras) {
+    let toml = '';
+    for (let i = 0; i < cameras.length; i++) {
+        const c = cameras[i];
+        toml += '[cam_' + i + ']\n';
+        toml += 'name = "' + c.name + '"\n';
+        toml += 'size = ' + JSON.stringify(c.size) + '\n';
+        toml += 'matrix = ' + JSON.stringify(c.matrix) + '\n';
+        toml += 'distortions = ' + JSON.stringify(c.dist) + '\n';
+        toml += 'rotation = ' + JSON.stringify(c.rvec) + '\n';
+        toml += 'translation = ' + JSON.stringify(c.tvec) + '\n';
+        toml += '\n';
+    }
+    return toml;
+}
+
+// ============================================
+// SLEAP skeleton serialization
+// ============================================
+
+/**
+ * Serialize a Skeleton into the SLEAP metadata JSON format.
+ * Follows the jsonpickle-style encoding used by sleap-io.
+ *
+ * @param {Skeleton} skeleton
+ * @returns {{ skeletons: Object[], nodes: Object[] }}
+ */
+function serializeSkeleton(skeleton) {
+    const nodes = skeleton.nodes.map(function (name) {
+        return { name: name };
+    });
+
+    const links = skeleton.edges.map(function (edge) {
+        return {
+            source: edge[0],
+            target: edge[1],
+            type: { 'py/tuple': [1] },
+        };
+    });
+
+    const skeletons = [{
+        links: links,
+        name: skeleton.name,
+        graph: { name: skeleton.name },
+    }];
+
+    return { skeletons: skeletons, nodes: nodes };
+}
+
+// ============================================
+// SLP-compatible JSON export
+// ============================================
+
+/**
+ * Export the full session as a SLEAP-compatible JSON file.
+ * This is a JSON representation of the SLP HDF5 structure that can be
+ * converted to a real .slp file via a Python script.
+ *
+ * The JSON includes:
+ * - metadata (skeleton, version, provenance)
+ * - videos (references)
+ * - tracks
+ * - frames, instances, points (structured arrays)
+ * - sessions (calibration + 3D data)
+ *
+ * @param {Session} session
+ * @param {Object[]} views - View objects with name, videoWidth, videoHeight
+ * @returns {Object} The full export data object
+ */
+function buildSlpExportData(session, views) {
+    const skelData = serializeSkeleton(session.skeleton);
+
+    // Metadata
+    const metadata = {
+        version: '2.0.0',
+        skeletons: skelData.skeletons,
+        nodes: skelData.nodes,
+        provenance: { source: 'mv-gui', exported_at: new Date().toISOString() },
+    };
+
+    // Videos
+    const videos = views.map(function (v, i) {
+        return {
+            filename: v.name + '.mp4',
+            backend: {
+                type: 'MediaVideo',
+                shape: [0, v.videoHeight || 0, v.videoWidth || 0, 1],
+                filename: v.name + '.mp4',
+            },
+        };
+    });
+
+    // Tracks
+    const tracks = session.tracks.slice();
+
+    // Build frames, instances, points arrays
+    const frames = [];
+    const instances = [];
+    const points = [];
+    const predPoints = [];
+
+    let frameId = 0;
+    let instanceId = 0;
+
+    // Map camera name → video index
+    const camToVideoIdx = {};
+    session.cameras.forEach(function (cam, i) {
+        camToVideoIdx[cam.name] = i;
+    });
+
+    // Iterate all frame groups (sorted by frame index)
+    const sortedFrameIndices = Array.from(session.frameGroups.keys()).sort(function (a, b) { return a - b; });
+
+    for (let fi = 0; fi < sortedFrameIndices.length; fi++) {
+        const frameIdx = sortedFrameIndices[fi];
+        const fg = session.frameGroups.get(frameIdx);
+
+        // For each camera that has instances in this frame
+        for (const [camName, camInstances] of fg.instances) {
+            const videoIdx = camToVideoIdx[camName] !== undefined ? camToVideoIdx[camName] : 0;
+
+            const instIdStart = instanceId;
+
+            for (let ii = 0; ii < camInstances.length; ii++) {
+                const inst = camInstances[ii];
+                const isUser = inst.type === 'user';
+                const pointIdStart = isUser ? points.length : predPoints.length;
+
+                // Write points
+                const numNodes = session.skeleton.nodes.length;
+                for (let n = 0; n < numNodes; n++) {
+                    const pt = inst.points[n];
+                    const entry = {
+                        x: pt ? pt[0] : NaN,
+                        y: pt ? pt[1] : NaN,
+                        visible: pt != null,
+                        complete: pt != null,
+                    };
+                    if (isUser) {
+                        points.push(entry);
+                    } else {
+                        entry.score = inst.score || 0;
+                        predPoints.push(entry);
+                    }
+                }
+
+                const pointIdEnd = isUser ? points.length : predPoints.length;
+
+                instances.push({
+                    instance_id: instanceId,
+                    instance_type: isUser ? 0 : 1,
+                    frame_id: frameId,
+                    skeleton: 0,
+                    track: inst.trackIdx >= 0 ? inst.trackIdx : -1,
+                    from_predicted: -1,
+                    score: inst.score || 0,
+                    point_id_start: pointIdStart,
+                    point_id_end: pointIdEnd,
+                    tracking_score: 0,
+                });
+
+                instanceId++;
+            }
+
+            frames.push({
+                frame_id: frameId,
+                video: videoIdx,
+                frame_idx: frameIdx,
+                instance_id_start: instIdStart,
+                instance_id_end: instanceId,
+            });
+
+            frameId++;
+        }
+    }
+
+    // Sessions JSON (calibration + 3D data)
+    const calibration = {};
+    session.cameras.forEach(function (cam, i) {
+        calibration['camera_' + i] = {
+            name: cam.name,
+            matrix: cam.matrix,
+            distortions: cam.dist,
+            rotation: cam.rvec,
+            translation: cam.tvec,
+        };
+    });
+
+    const camcorderToVideoIdxMap = {};
+    session.cameras.forEach(function (cam, i) {
+        camcorderToVideoIdxMap['camera_' + i] = i;
+    });
+
+    // Build frame_group_dicts with 3D triangulated data
+    const frameGroupDicts = [];
+    for (const [frameIdx, trackMap] of session.instanceGroups) {
+        const instanceGroupsData = [];
+        for (const [trackIdx, groups] of trackMap) {
+            for (const group of groups) {
+                const camToLfAndInst = {};
+                for (const [camName, inst] of group.instances) {
+                    const camIdx = session.cameras.findIndex(function (c) { return c.name === camName; });
+                    if (camIdx >= 0) {
+                        camToLfAndInst[String(camIdx)] = [frameIdx, 0];
+                    }
+                }
+                instanceGroupsData.push({
+                    camcorder_to_lf_and_inst_idx_map: camToLfAndInst,
+                    score: 1.0,
+                    points: group.points3d || [],
+                });
+            }
+        }
+
+        const labeledFrameByCamera = {};
+        session.cameras.forEach(function (cam, i) {
+            labeledFrameByCamera[String(i)] = frameIdx;
+        });
+
+        frameGroupDicts.push({
+            frame_idx: frameIdx,
+            instance_groups: instanceGroupsData,
+            labeled_frame_by_camera: labeledFrameByCamera,
+        });
+    }
+
+    const sessions = [{
+        calibration: calibration,
+        camcorder_to_video_idx_map: camcorderToVideoIdxMap,
+        frame_group_dicts: frameGroupDicts,
+    }];
+
+    return {
+        format_id: 1.4,
+        metadata: metadata,
+        videos: videos,
+        tracks: tracks,
+        suggestions: [],
+        sessions: sessions,
+        frames: frames,
+        instances: instances,
+        points: points,
+        pred_points: predPoints,
+    };
+}
+
+/**
+ * Export 3D triangulated points as a JSON representation of the points3d.h5 structure.
+ * Can be converted to HDF5 via a Python script.
+ *
+ * @param {Session} session
+ * @returns {Object} { points_3d, frame_indices, track_names, node_names, reprojection_errors }
+ */
+function buildPoints3dExportData(session) {
+    const nodeNames = session.skeleton.nodes.slice();
+    const trackNames = session.tracks.slice();
+    const numNodes = nodeNames.length;
+    const numTracks = trackNames.length;
+
+    const frameIndices = [];
+    const points3dFrames = [];
+    const errorFrames = [];
+
+    // Collect frames that have triangulated data, sorted
+    const sortedFrameIndices = Array.from(session.instanceGroups.keys()).sort(function (a, b) { return a - b; });
+
+    for (let fi = 0; fi < sortedFrameIndices.length; fi++) {
+        const frameIdx = sortedFrameIndices[fi];
+        const trackMap = session.instanceGroups.get(frameIdx);
+
+        // Build a per-track array for this frame
+        const framePts = new Array(numTracks);
+        const frameErr = new Array(numTracks);
+        let hasData = false;
+
+        for (let t = 0; t < numTracks; t++) {
+            framePts[t] = new Array(numNodes);
+            frameErr[t] = new Array(numNodes);
+            for (let n = 0; n < numNodes; n++) {
+                framePts[t][n] = [NaN, NaN, NaN];
+                frameErr[t][n] = NaN;
+            }
+        }
+
+        if (trackMap) {
+            for (const [trackIdx, groups] of trackMap) {
+                if (trackIdx >= numTracks) continue;
+                for (const group of groups) {
+                    if (group.points3d) {
+                        hasData = true;
+                        for (let n = 0; n < Math.min(numNodes, group.points3d.length); n++) {
+                            framePts[trackIdx][n] = group.points3d[n];
+                        }
+                    }
+                }
+            }
+        }
+
+        if (hasData) {
+            frameIndices.push(frameIdx);
+            points3dFrames.push(framePts);
+            errorFrames.push(frameErr);
+        }
+    }
+
+    return {
+        points_3d: points3dFrames,
+        frame_indices: frameIndices,
+        track_names: trackNames,
+        node_names: nodeNames,
+        reprojection_errors: errorFrames,
+    };
+}
+
+/**
+ * Download data as a JSON file.
+ * @param {Object} data - Data to serialize
+ * @param {string} filename - Download filename
+ */
+function downloadJSON(data, filename) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Download data as a TOML file.
+ * @param {string} tomlContent - TOML string
+ * @param {string} filename - Download filename
+ */
+function downloadTOML(tomlContent, filename) {
+    const blob = new Blob([tomlContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
 }

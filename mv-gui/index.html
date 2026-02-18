@@ -28,7 +28,10 @@
                 <div class="menu-dropdown-item" id="menuLoadCalibration">Load Calibration...</div>
                 <div class="menu-dropdown-item" id="menuLoadSession">Load Session...</div>
                 <div class="menu-separator"></div>
-                <div class="menu-dropdown-item" id="menuExportLabels">Export Labels</div>
+                <div class="menu-dropdown-item" id="menuExportLabels">Export Labels (JSON)</div>
+                <div class="menu-dropdown-item" id="menuExportSlp">Export SLP Data</div>
+                <div class="menu-dropdown-item" id="menuExportPoints3d">Export 3D Points</div>
+                <div class="menu-dropdown-item" id="menuExportCalib">Export Calibration (TOML)</div>
             </div>
         </div>
         <div class="menu-item" data-menu="edit">
@@ -100,23 +103,31 @@
             <div class="video-grid" id="videoGrid">
                 <div class="video-cell" id="cell-back">
                     <span class="view-label">back</span>
-                    <canvas id="canvas-back"></canvas>
-                    <canvas class="overlay-canvas" id="overlay-back"></canvas>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-back"></canvas>
+                        <canvas class="overlay-canvas" id="overlay-back"></canvas>
+                    </div>
                 </div>
                 <div class="video-cell" id="cell-mid">
                     <span class="view-label">mid</span>
-                    <canvas id="canvas-mid"></canvas>
-                    <canvas class="overlay-canvas" id="overlay-mid"></canvas>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-mid"></canvas>
+                        <canvas class="overlay-canvas" id="overlay-mid"></canvas>
+                    </div>
                 </div>
                 <div class="video-cell" id="cell-side">
                     <span class="view-label">side</span>
-                    <canvas id="canvas-side"></canvas>
-                    <canvas class="overlay-canvas" id="overlay-side"></canvas>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-side"></canvas>
+                        <canvas class="overlay-canvas" id="overlay-side"></canvas>
+                    </div>
                 </div>
                 <div class="video-cell" id="cell-top">
                     <span class="view-label">top</span>
-                    <canvas id="canvas-top"></canvas>
-                    <canvas class="overlay-canvas" id="overlay-top"></canvas>
+                    <div class="canvas-wrapper">
+                        <canvas id="canvas-top"></canvas>
+                        <canvas class="overlay-canvas" id="overlay-top"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -196,7 +207,9 @@
                                 <th>Name</th>
                                 <th>Frames</th>
                                 <th>Size</th>
-                                <th>Labels</th>
+                                <th>Labeled</th>
+                                <th>Groups</th>
+                                <th>Score</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -252,10 +265,15 @@
                             <tr>
                                 <th>#</th>
                                 <th>Name</th>
+                                <th style="width:30px"></th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
+                    <div class="panel-button-row" style="margin-top:6px">
+                        <input type="text" id="newNodeName" placeholder="New node name" style="flex:1;padding:3px 6px;font-size:12px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:3px;">
+                        <button class="panel-btn" id="btnAddNode" title="Add skeleton node">+ Node</button>
+                    </div>
                 </div>
 
                 <div class="info-section">
@@ -265,10 +283,16 @@
                             <tr>
                                 <th>Source</th>
                                 <th>Destination</th>
+                                <th style="width:30px"></th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
+                    <div class="panel-button-row" style="margin-top:6px">
+                        <select id="edgeSrcSelect" style="flex:1;padding:3px;font-size:12px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:3px;"></select>
+                        <select id="edgeDstSelect" style="flex:1;padding:3px;font-size:12px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:3px;"></select>
+                        <button class="panel-btn" id="btnAddEdge" title="Add skeleton edge">+ Edge</button>
+                    </div>
                 </div>
             </div>
 
@@ -441,6 +465,7 @@ async function init() {
         // 4. Setup all UI components
         setupUI();
         setupPanelTabs();
+        setupSkeletonEditing();
         setupInteraction();
         setupTimeline();
         setup3DViewport();
@@ -485,6 +510,9 @@ async function initVideos() {
         overlayCanvas.width = vw;
         overlayCanvas.height = vh;
 
+        // Get the canvas-wrapper parent for zoom transforms
+        const wrapper = canvas.parentElement;
+
         const view = {
             name: name,
             decoder: decoder,
@@ -494,6 +522,7 @@ async function initVideos() {
             overlayCtx: overlayCtx,
             videoWidth: vw,
             videoHeight: vh,
+            wrapper: wrapper,
         };
 
         state.views.push(view);
@@ -817,6 +846,25 @@ function setupInteraction() {
             setStatus('Toggled visibility: ' + nodeName + ' in ' + viewName);
         },
 
+        onInstanceDeleted: function (frameIdx, group) {
+            const trackName = state.session.tracks[group.trackIdx] || 'Track ' + group.trackIdx;
+            setStatus('Deleted instance: ' + trackName, 'success');
+
+            // Update timeline modification state
+            if (timeline) {
+                timeline.setFrameModified(frameIdx, true);
+            }
+
+            // Update 3D viewport
+            if (viewport3d) {
+                const groups = getInstanceGroupsForFrame(frameIdx);
+                viewport3d.update(groups, state.session);
+            }
+
+            // Refresh info panel
+            updateInfoPanel();
+        },
+
         requestRedraw: function () {
             drawAllOverlays(state.currentFrame);
         },
@@ -989,6 +1037,30 @@ function setupMenus() {
     document.getElementById('menuExportLabels').addEventListener('click', function () {
         closeMenus();
         exportLabels();
+    });
+
+    document.getElementById('menuExportSlp').addEventListener('click', function () {
+        closeMenus();
+        if (!state.session) { setStatus('No session to export', 'error'); return; }
+        const data = buildSlpExportData(state.session, state.views);
+        downloadJSON(data, 'labels_export.slp.json');
+        setStatus('SLP data exported (JSON format)', 'success');
+    });
+
+    document.getElementById('menuExportPoints3d').addEventListener('click', function () {
+        closeMenus();
+        if (!state.session) { setStatus('No session to export', 'error'); return; }
+        const data = buildPoints3dExportData(state.session);
+        downloadJSON(data, 'points3d.json');
+        setStatus('3D points exported', 'success');
+    });
+
+    document.getElementById('menuExportCalib').addEventListener('click', function () {
+        closeMenus();
+        if (!state.session) { setStatus('No session to export', 'error'); return; }
+        const toml = exportCalibrationTOML(state.session.cameras);
+        downloadTOML(toml, 'calibration.toml');
+        setStatus('Calibration exported', 'success');
     });
 
     function closeMenus() {
@@ -1208,23 +1280,52 @@ function populateVideosTable() {
         tdSize.className = 'mono';
         tdSize.textContent = view.videoWidth + 'x' + view.videoHeight;
 
-        // Labels count: labeled frames for this camera
-        const tdLabels = document.createElement('td');
-        tdLabels.className = 'mono';
+        // Labeled frames count, group count, mean score for this camera
         let labelCount = 0;
+        let groupCount = 0;
+        let scoreSum = 0;
+        let scoreCount = 0;
         if (state.session) {
             for (const [frameIdx, fg] of state.session.frameGroups) {
                 const instances = fg.getInstances(view.name);
                 const unlinked = fg.getUnlinkedInstances(view.name);
                 if (instances.length > 0 || unlinked.length > 0) labelCount++;
+                // Count scores from instances
+                for (let j = 0; j < instances.length; j++) {
+                    if (instances[j].score > 0) {
+                        scoreSum += instances[j].score;
+                        scoreCount++;
+                    }
+                }
+            }
+            // Count instance groups that include this camera
+            for (const [frameIdx, trackMap] of state.session.instanceGroups) {
+                for (const groups of trackMap.values()) {
+                    for (const g of groups) {
+                        if (g.getInstance(view.name)) groupCount++;
+                    }
+                }
             }
         }
-        tdLabels.textContent = labelCount;
+
+        const tdLabeled = document.createElement('td');
+        tdLabeled.className = 'mono';
+        tdLabeled.textContent = labelCount;
+
+        const tdGroups = document.createElement('td');
+        tdGroups.className = 'mono';
+        tdGroups.textContent = groupCount;
+
+        const tdScore = document.createElement('td');
+        tdScore.className = 'mono';
+        tdScore.textContent = scoreCount > 0 ? (scoreSum / scoreCount).toFixed(2) : '-';
 
         tr.appendChild(tdName);
         tr.appendChild(tdFrames);
         tr.appendChild(tdSize);
-        tr.appendChild(tdLabels);
+        tr.appendChild(tdLabeled);
+        tr.appendChild(tdGroups);
+        tr.appendChild(tdScore);
         tbody.appendChild(tr);
     });
 }
@@ -1242,10 +1343,14 @@ function showVideoDetail(view) {
         ? decoder.videoTrack.codec
         : '-';
 
-    // Count labeled frames for this view
+    // Count labeled frames, instances, scores for this view
     let labeledFrames = 0;
     let totalInstances = 0;
     let unlinkedCount = 0;
+    let userCount = 0;
+    let predictedCount = 0;
+    let scoreSum = 0;
+    let scoreN = 0;
     if (state.session) {
         for (const [frameIdx, fg] of state.session.frameGroups) {
             const instances = fg.getInstances(view.name);
@@ -1253,8 +1358,14 @@ function showVideoDetail(view) {
             if (instances.length > 0 || unlinked.length > 0) labeledFrames++;
             totalInstances += instances.length;
             unlinkedCount += unlinked.length;
+            for (let j = 0; j < instances.length; j++) {
+                if (instances[j].type === 'user') userCount++;
+                else predictedCount++;
+                if (instances[j].score > 0) { scoreSum += instances[j].score; scoreN++; }
+            }
         }
     }
+    const meanScore = scoreN > 0 ? (scoreSum / scoreN).toFixed(3) : '-';
 
     const rows = [
         ['Name', view.name],
@@ -1263,8 +1374,9 @@ function showVideoDetail(view) {
         ['FPS', fps],
         ['Codec', codec],
         ['Labeled frames', labeledFrames],
-        ['Instances', totalInstances],
+        ['Instances', totalInstances + ' (user: ' + userCount + ', pred: ' + predictedCount + ')'],
         ['Unlinked', unlinkedCount],
+        ['Mean score', meanScore],
     ];
     rows.forEach(function (row) {
         const r = document.createElement('div');
@@ -1372,25 +1484,136 @@ function populateSkeletonTable() {
         const tdIdx = document.createElement('td');
         tdIdx.className = 'mono';
         tdIdx.textContent = i;
+
         const tdName = document.createElement('td');
         tdName.textContent = name;
+        tdName.style.cursor = 'pointer';
+        tdName.title = 'Click to rename';
+        tdName.addEventListener('dblclick', function () {
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = sk.nodes[i];
+            input.style.cssText = 'width:100%;padding:1px 3px;font-size:12px;background:var(--bg-tertiary);border:1px solid var(--accent);color:var(--text-primary);border-radius:2px;';
+            tdName.textContent = '';
+            tdName.appendChild(input);
+            input.focus();
+            input.select();
+            const finish = function () {
+                const newName = input.value.trim();
+                if (newName && newName !== sk.nodes[i]) {
+                    sk.nodes[i] = newName;
+                }
+                populateSkeletonTable();
+                drawAllOverlays(state.currentFrame);
+            };
+            input.addEventListener('blur', finish);
+            input.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Escape') { input.value = sk.nodes[i]; input.blur(); }
+            });
+        });
+
+        const tdDel = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '\u00d7';
+        delBtn.className = 'panel-btn';
+        delBtn.style.cssText = 'padding:0 5px;font-size:14px;line-height:1;min-width:0;color:var(--error);';
+        delBtn.title = 'Remove node (cascades to all instances)';
+        delBtn.addEventListener('click', function () {
+            if (!confirm('Remove node "' + sk.nodes[i] + '"? This will affect all instances.')) return;
+            sk.removeNode(i);
+            state.session.propagateNodeRemoved(i);
+            populateSkeletonTable();
+            drawAllOverlays(state.currentFrame);
+            updateInfoPanel();
+        });
+        tdDel.appendChild(delBtn);
+
         tr.appendChild(tdIdx);
         tr.appendChild(tdName);
+        tr.appendChild(tdDel);
         nodesTbody.appendChild(tr);
     });
 
     // Edges
     const edgesTbody = document.querySelector('#skeletonEdgesTable tbody');
     edgesTbody.textContent = '';
-    sk.edges.forEach(function (edge) {
+    sk.edges.forEach(function (edge, edgeIdx) {
         const tr = document.createElement('tr');
         const tdSrc = document.createElement('td');
         tdSrc.textContent = sk.nodes[edge[0]];
         const tdDst = document.createElement('td');
         tdDst.textContent = sk.nodes[edge[1]];
+
+        const tdDel = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.textContent = '\u00d7';
+        delBtn.className = 'panel-btn';
+        delBtn.style.cssText = 'padding:0 5px;font-size:14px;line-height:1;min-width:0;color:var(--error);';
+        delBtn.title = 'Remove edge';
+        delBtn.addEventListener('click', function () {
+            sk.removeEdge(edgeIdx);
+            populateSkeletonTable();
+            drawAllOverlays(state.currentFrame);
+        });
+        tdDel.appendChild(delBtn);
+
         tr.appendChild(tdSrc);
         tr.appendChild(tdDst);
+        tr.appendChild(tdDel);
         edgesTbody.appendChild(tr);
+    });
+
+    // Populate edge source/destination dropdowns
+    const srcSelect = document.getElementById('edgeSrcSelect');
+    const dstSelect = document.getElementById('edgeDstSelect');
+    srcSelect.textContent = '';
+    dstSelect.textContent = '';
+    sk.nodes.forEach(function (name, i) {
+        const opt1 = document.createElement('option');
+        opt1.value = i;
+        opt1.textContent = name;
+        srcSelect.appendChild(opt1);
+        const opt2 = document.createElement('option');
+        opt2.value = i;
+        opt2.textContent = name;
+        dstSelect.appendChild(opt2);
+    });
+}
+
+function setupSkeletonEditing() {
+    // Add Node button
+    document.getElementById('btnAddNode').addEventListener('click', function () {
+        if (!state.session) return;
+        const input = document.getElementById('newNodeName');
+        const name = input.value.trim();
+        if (!name) { input.focus(); return; }
+        state.session.skeleton.addNode(name);
+        state.session.propagateNodeAdded();
+        input.value = '';
+        populateSkeletonTable();
+        drawAllOverlays(state.currentFrame);
+        updateInfoPanel();
+    });
+    // Enter key in node name input
+    document.getElementById('newNodeName').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('btnAddNode').click();
+        }
+    });
+    // Add Edge button
+    document.getElementById('btnAddEdge').addEventListener('click', function () {
+        if (!state.session) return;
+        const src = parseInt(document.getElementById('edgeSrcSelect').value, 10);
+        const dst = parseInt(document.getElementById('edgeDstSelect').value, 10);
+        if (isNaN(src) || isNaN(dst)) return;
+        if (!state.session.skeleton.addEdge(src, dst)) {
+            setStatus('Cannot add edge: duplicate or same node', 'warning');
+            return;
+        }
+        populateSkeletonTable();
+        drawAllOverlays(state.currentFrame);
     });
 }
 
@@ -1852,6 +2075,7 @@ async function handleLoadVideos() {
                 overlayCtx: overlayCtx,
                 videoWidth: vw,
                 videoHeight: vh,
+                wrapper: gridView.wrapper,
             };
 
             state.views.push(view);

@@ -14,6 +14,71 @@ class Skeleton {
     }
 
     /**
+     * Add a new node to the skeleton.
+     * @param {string} name - Node name
+     * @returns {number} Index of the new node
+     */
+    addNode(name) {
+        this.nodes.push(name);
+        return this.nodes.length - 1;
+    }
+
+    /**
+     * Remove a node by index. Also removes edges referencing this node
+     * and adjusts edge indices for nodes that shift down.
+     * @param {number} nodeIdx
+     * @returns {string|null} The removed node name, or null if invalid
+     */
+    removeNode(nodeIdx) {
+        if (nodeIdx < 0 || nodeIdx >= this.nodes.length) return null;
+        const name = this.nodes.splice(nodeIdx, 1)[0];
+
+        // Remove edges that reference this node and adjust indices
+        this.edges = this.edges.filter(function (edge) {
+            return edge[0] !== nodeIdx && edge[1] !== nodeIdx;
+        }).map(function (edge) {
+            return [
+                edge[0] > nodeIdx ? edge[0] - 1 : edge[0],
+                edge[1] > nodeIdx ? edge[1] - 1 : edge[1],
+            ];
+        });
+
+        return name;
+    }
+
+    /**
+     * Add an edge between two nodes.
+     * @param {number} srcIdx - Source node index
+     * @param {number} dstIdx - Destination node index
+     * @returns {boolean} True if added, false if invalid or duplicate
+     */
+    addEdge(srcIdx, dstIdx) {
+        if (srcIdx < 0 || srcIdx >= this.nodes.length) return false;
+        if (dstIdx < 0 || dstIdx >= this.nodes.length) return false;
+        if (srcIdx === dstIdx) return false;
+        // Check for duplicate
+        for (let i = 0; i < this.edges.length; i++) {
+            if ((this.edges[i][0] === srcIdx && this.edges[i][1] === dstIdx) ||
+                (this.edges[i][0] === dstIdx && this.edges[i][1] === srcIdx)) {
+                return false;
+            }
+        }
+        this.edges.push([srcIdx, dstIdx]);
+        return true;
+    }
+
+    /**
+     * Remove an edge by index.
+     * @param {number} edgeIdx
+     * @returns {boolean} True if removed
+     */
+    removeEdge(edgeIdx) {
+        if (edgeIdx < 0 || edgeIdx >= this.edges.length) return false;
+        this.edges.splice(edgeIdx, 1);
+        return true;
+    }
+
+    /**
      * Create a default 6-node mouse skeleton.
      * Nodes: nose, head, neck, body, tail_base, tail_tip
      * Edges: nose-head, head-neck, neck-body, body-tail_base, tail_base-tail_tip
@@ -556,6 +621,123 @@ class Session {
         trackMap.get(trackIdx).push(group);
 
         return group;
+    }
+
+    /**
+     * Propagate a skeleton node addition to all instances.
+     * Adds a null point at the end of every Instance.points array.
+     */
+    propagateNodeAdded() {
+        // Update all instances in FrameGroups
+        for (const fg of this.frameGroups.values()) {
+            for (const instances of fg.instances.values()) {
+                for (const inst of instances) {
+                    inst.points.push(null);
+                    if (inst._originalPoints) inst._originalPoints.push(null);
+                }
+            }
+            for (const unlinkedList of fg.unlinkedInstances.values()) {
+                for (const ul of unlinkedList) {
+                    ul.instance.points.push(null);
+                    if (ul.instance._originalPoints) ul.instance._originalPoints.push(null);
+                }
+            }
+        }
+    }
+
+    /**
+     * Propagate a skeleton node removal to all instances.
+     * Splices out the point at nodeIdx from every Instance.points array.
+     * @param {number} nodeIdx - The index of the removed node
+     */
+    propagateNodeRemoved(nodeIdx) {
+        for (const fg of this.frameGroups.values()) {
+            for (const instances of fg.instances.values()) {
+                for (const inst of instances) {
+                    if (inst.points.length > nodeIdx) {
+                        inst.points.splice(nodeIdx, 1);
+                    }
+                    if (inst._originalPoints && inst._originalPoints.length > nodeIdx) {
+                        inst._originalPoints.splice(nodeIdx, 1);
+                    }
+                }
+            }
+            for (const unlinkedList of fg.unlinkedInstances.values()) {
+                for (const ul of unlinkedList) {
+                    if (ul.instance.points.length > nodeIdx) {
+                        ul.instance.points.splice(nodeIdx, 1);
+                    }
+                    if (ul.instance._originalPoints && ul.instance._originalPoints.length > nodeIdx) {
+                        ul.instance._originalPoints.splice(nodeIdx, 1);
+                    }
+                }
+            }
+        }
+        // Mark all instance groups as dirty (triangulation needs recomputing)
+        for (const trackMap of this.instanceGroups.values()) {
+            for (const groups of trackMap.values()) {
+                for (const group of groups) {
+                    group.markDirty();
+                    group.points3d = null;
+                }
+            }
+        }
+    }
+
+    /**
+     * Remove an InstanceGroup from a given frame.
+     * Also removes its linked instances from the FrameGroup.
+     *
+     * @param {number} frameIdx
+     * @param {InstanceGroup} group - The group to remove
+     * @returns {boolean} True if the group was found and removed
+     */
+    removeInstanceGroup(frameIdx, group) {
+        // Remove from instanceGroups map
+        const trackMap = this.instanceGroups.get(frameIdx);
+        let removed = false;
+        if (trackMap) {
+            for (const [trackIdx, groups] of trackMap) {
+                const idx = groups.indexOf(group);
+                if (idx >= 0) {
+                    groups.splice(idx, 1);
+                    removed = true;
+                    // Clean up empty track entries
+                    if (groups.length === 0) {
+                        trackMap.delete(trackIdx);
+                    }
+                    break;
+                }
+            }
+            // Clean up empty frame entries
+            if (trackMap.size === 0) {
+                this.instanceGroups.delete(frameIdx);
+            }
+        }
+
+        // Remove associated instances from the FrameGroup
+        const fg = this.frameGroups.get(frameIdx);
+        if (fg) {
+            for (const [camName, instance] of group.instances) {
+                const camInstances = fg.instances.get(camName);
+                if (camInstances) {
+                    const instIdx = camInstances.indexOf(instance);
+                    if (instIdx >= 0) {
+                        camInstances.splice(instIdx, 1);
+                    }
+                    // Clean up empty camera entries
+                    if (camInstances.length === 0) {
+                        fg.instances.delete(camName);
+                    }
+                }
+            }
+            // Clean up empty FrameGroups
+            if (fg.instances.size === 0 && fg.unlinkedInstances.size === 0) {
+                this.frameGroups.delete(frameIdx);
+            }
+        }
+
+        return removed;
     }
 
     /**
