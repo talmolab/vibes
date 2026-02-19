@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pose Subspace Analysis</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .panel {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .panel h2 { margin-top: 0; font-size: 1.2rem; color: #fff; }
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        video { display: none; }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .capture-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        select, input[type="checkbox"] {
+            font-size: 16px;
+        }
+        select {
+            background: #2a2a3e;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        label { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+        input[type="checkbox"] { width: 16px; height: 16px; accent-color: #667eea; }
+        .status {
+            text-align: center;
+            padding: 15px;
+            color: #888;
+            font-size: 13px;
+        }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .gallery-item {
+            position: relative;
+            aspect-ratio: 4/3;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        .gallery-item:hover { border-color: #667eea; }
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .gallery-item .remove {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 20px;
+        }
+        .plot-container {
+            position: relative;
+            width: 100%;
+            height: 500px;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #plotCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .tooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            max-width: 200px;
+        }
+        .tooltip img {
+            width: 150px;
+            height: auto;
+            border-radius: 4px;
+            margin-bottom: 5px;
+        }
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 1200px) {
+            .container { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Pose Subspace Analysis</h1>
+    <p class="description">Interactive construction of keypoint subspaces using PCA.</p>
+
+    <div class="container">
+        <div class="panel">
+            <h2>Webcam & Data Collection</h2>
+            <div class="video-container">
+                <video id="video" playsinline></video>
+                <canvas id="canvas"></canvas>
+                <div id="status" class="status">Click "Start Camera" to begin</div>
+            </div>
+
+            <div class="controls">
+                <button id="startBtn">Start Camera</button>
+                <button id="stopBtn" disabled>Stop Camera</button>
+                <button id="captureBtn" class="capture-btn" disabled>Capture Frame</button>
+            </div>
+
+            <div class="controls">
+                <label>Keypoints:
+                    <select id="keypointSelect">
+                        <option value="pose">Pose</option>
+                        <option value="left_hand">Left Hand</option>
+                        <option value="right_hand">Right Hand</option>
+                        <option value="both_hands">Both Hands</option>
+                    </select>
+                </label>
+                <label>Model:
+                    <select id="modelSelect">
+                        <option value="lite">Lite</option>
+                        <option value="full" selected>Full</option>
+                        <option value="heavy">Heavy</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="controls">
+                <label>Features:
+                    <select id="featureSelect">
+                        <option value="distances">Pairwise Distances</option>
+                        <option value="angles">Pairwise Angles</option>
+                        <option value="normalized">Normalized Keypoints</option>
+                    </select>
+                </label>
+            </div>
+
+            <h3 style="font-size: 1rem; margin-top: 20px;">Collected Frames (<span id="frameCount">0</span>)</h3>
+            <div id="gallery" class="gallery"></div>
+        </div>
+
+        <div class="panel">
+            <h2>PCA Subspace</h2>
+            <div class="plot-container">
+                <canvas id="plotCanvas"></canvas>
+                <div id="tooltip" class="tooltip"></div>
+            </div>
+            <div class="status" id="pcaStatus">Collect at least 3 frames to compute PCA</div>
+
+            <h3 style="font-size: 1rem; margin-top: 20px;">Closest Training Frame</h3>
+            <div class="video-container" style="margin-top: 10px;">
+                <canvas id="closestCanvas"></canvas>
+            </div>
+            <div class="status" id="closestStatus">Live pose will show closest match</div>
+        </div>
+    </div>
+
+    <footer>
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/talmolab/vibes">Source</a>
+    </footer>
+
+    <script type="module">
+        import { PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const plotCanvas = document.getElementById('plotCanvas');
+        const plotCtx = plotCanvas.getContext('2d');
+        const closestCanvas = document.getElementById('closestCanvas');
+        const closestCtx = closestCanvas.getContext('2d');
+        const status = document.getElementById('status');
+        const pcaStatus = document.getElementById('pcaStatus');
+        const closestStatus = document.getElementById('closestStatus');
+        const tooltip = document.getElementById('tooltip');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const gallery = document.getElementById('gallery');
+        const frameCount = document.getElementById('frameCount');
+        const keypointSelect = document.getElementById('keypointSelect');
+        const modelSelect = document.getElementById('modelSelect');
+        const featureSelect = document.getElementById('featureSelect');
+
+        let poseLandmarker = null;
+        let handLandmarker = null;
+        let stream = null;
+        let animationId = null;
+        let capturedFrames = [];
+        let pcaModel = null;
+        let currentLandmarks = null;
+        let frameColors = []; // Store colors for each frame
+        let cachedProjections = null; // Cache PCA projections to avoid recomputation
+
+        // Generate distinct color for a frame index
+        function generateFrameColor(index) {
+            const hue = (index * 137.508) % 360; // Golden angle for good separation
+            return `hsl(${hue}, 70%, 60%)`;
+        }
+
+        // Initialize MediaPipe
+        async function initLandmarkers() {
+            status.textContent = 'Loading models...';
+            try {
+                const vision = await FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                );
+
+                const modelType = modelSelect.value;
+                poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${modelType}/float16/1/pose_landmarker_${modelType}.task`,
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numPoses: 1
+                });
+
+                handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    numHands: 2
+                });
+
+                status.textContent = 'Models loaded. Click "Start Camera" to begin.';
+            } catch (err) {
+                status.textContent = 'Failed to load models: ' + err.message;
+            }
+        }
+
+        async function startCamera() {
+            if (!poseLandmarker) {
+                await initLandmarkers();
+            }
+            try {
+                status.textContent = 'Requesting camera access...';
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = stream;
+                await video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                status.style.display = 'none';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                captureBtn.disabled = false;
+                detectPose();
+            } catch (err) {
+                status.textContent = 'Camera error: ' + err.message;
+            }
+        }
+
+        function stopCamera() {
+            if (animationId) cancelAnimationFrame(animationId);
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            status.style.display = 'block';
+            status.textContent = 'Camera stopped.';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            captureBtn.disabled = true;
+        }
+
+        function getLandmarks(poseResults, handResults) {
+            const mode = keypointSelect.value;
+
+            if (mode === 'pose' && poseResults.landmarks?.[0]) {
+                return poseResults.landmarks[0];
+            } else if (mode === 'left_hand' && handResults.landmarks?.[0]) {
+                return handResults.landmarks[0];
+            } else if (mode === 'right_hand' && handResults.landmarks?.[1]) {
+                return handResults.landmarks[1];
+            } else if (mode === 'both_hands' && handResults.landmarks) {
+                return [...(handResults.landmarks[0] || []), ...(handResults.landmarks[1] || [])];
+            }
+            return null;
+        }
+
+        function detectPose() {
+            if (!stream) return;
+            const now = performance.now();
+
+            ctx.drawImage(video, 0, 0);
+
+            const poseResults = poseLandmarker.detectForVideo(video, now);
+            const handResults = handLandmarker.detectForVideo(video, now);
+
+            currentLandmarks = getLandmarks(poseResults, handResults);
+
+            if (currentLandmarks) {
+                drawLandmarks(currentLandmarks);
+            }
+
+            // Project current pose onto PCA if available
+            if (pcaModel && currentLandmarks) {
+                const features = computeFeatures(currentLandmarks);
+                const projected = projectToPCA(features, pcaModel);
+                drawPCAPlot(projected);
+
+                // Find and display closest training frame
+                const closestIdx = findClosestFrame(projected);
+                if (closestIdx !== -1) {
+                    displayClosestFrame(closestIdx);
+                }
+            } else if (capturedFrames.length > 0) {
+                drawPCAPlot(null);
+            }
+
+            animationId = requestAnimationFrame(detectPose);
+        }
+
+        function drawLandmarks(landmarks) {
+            ctx.strokeStyle = '#667eea';
+            ctx.fillStyle = '#ff6b9d';
+            ctx.lineWidth = 2;
+
+            // Draw connections based on mode
+            const mode = keypointSelect.value;
+            if (mode === 'pose') {
+                const POSE_CONNECTIONS = [
+                    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+                    [11, 23], [12, 24], [23, 24],
+                    [23, 25], [25, 27], [24, 26], [26, 28]
+                ];
+                for (const [i, j] of POSE_CONNECTIONS) {
+                    if (landmarks[i] && landmarks[j]) {
+                        ctx.beginPath();
+                        ctx.moveTo(landmarks[i].x * canvas.width, landmarks[i].y * canvas.height);
+                        ctx.lineTo(landmarks[j].x * canvas.width, landmarks[j].y * canvas.height);
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // Draw points
+            for (const point of landmarks) {
+                ctx.beginPath();
+                ctx.arc(point.x * canvas.width, point.y * canvas.height, 4, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        function captureFrame() {
+            if (!currentLandmarks) return;
+
+            const imageData = canvas.toDataURL('image/jpeg', 0.7);
+            const landmarks = JSON.parse(JSON.stringify(currentLandmarks));
+            const color = generateFrameColor(capturedFrames.length);
+
+            capturedFrames.push({ imageData, landmarks, color });
+            frameColors.push(color);
+            frameCount.textContent = capturedFrames.length;
+            updateGallery();
+            computePCA();
+        }
+
+        function updateGallery() {
+            gallery.innerHTML = '';
+            capturedFrames.forEach((frame, idx) => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                item.style.borderColor = frame.color; // Color-code the border
+
+                const img = document.createElement('img');
+                img.src = frame.imageData;
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove';
+                removeBtn.textContent = '×';
+                removeBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    capturedFrames.splice(idx, 1);
+                    frameColors.splice(idx, 1);
+                    // Regenerate colors for remaining frames to maintain consistency
+                    capturedFrames.forEach((f, i) => {
+                        f.color = generateFrameColor(i);
+                        frameColors[i] = f.color;
+                    });
+                    frameCount.textContent = capturedFrames.length;
+                    updateGallery();
+                    computePCA();
+                };
+
+                item.appendChild(img);
+                item.appendChild(removeBtn);
+                gallery.appendChild(item);
+            });
+        }
+
+        function computeFeatures(landmarks) {
+            const mode = featureSelect.value;
+            const points = landmarks.map(p => [p.x, p.y, p.z || 0]);
+
+            if (mode === 'distances') {
+                const distances = [];
+                for (let i = 0; i < points.length; i++) {
+                    for (let j = i + 1; j < points.length; j++) {
+                        const dx = points[i][0] - points[j][0];
+                        const dy = points[i][1] - points[j][1];
+                        const dz = points[i][2] - points[j][2];
+                        distances.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+                    }
+                }
+                return distances;
+            } else if (mode === 'angles') {
+                const angles = [];
+                for (let i = 0; i < points.length; i++) {
+                    for (let j = i + 1; j < points.length; j++) {
+                        const dx = points[j][0] - points[i][0];
+                        const dy = points[j][1] - points[i][1];
+                        angles.push(Math.atan2(dy, dx));
+                    }
+                }
+                return angles;
+            } else { // normalized
+                // Find bounding box
+                const xs = points.map(p => p[0]);
+                const ys = points.map(p => p[1]);
+                const zs = points.map(p => p[2]);
+                const minX = Math.min(...xs);
+                const maxX = Math.max(...xs);
+                const minY = Math.min(...ys);
+                const maxY = Math.max(...ys);
+                const minZ = Math.min(...zs);
+                const maxZ = Math.max(...zs);
+
+                // Compute midpoint (anchor)
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+                const midZ = (minZ + maxZ) / 2;
+
+                // Center around midpoint and normalize by bbox size
+                const sizeX = maxX - minX || 1;
+                const sizeY = maxY - minY || 1;
+                const sizeZ = maxZ - minZ || 1;
+                const size = Math.max(sizeX, sizeY, sizeZ);
+
+                return points.flatMap(p => [
+                    (p[0] - midX) / size,
+                    (p[1] - midY) / size,
+                    (p[2] - midZ) / size
+                ]);
+            }
+        }
+
+        function computePCA() {
+            if (capturedFrames.length < 3) {
+                pcaStatus.textContent = `Collect at least ${3 - capturedFrames.length} more frame(s) to compute PCA`;
+                pcaModel = null;
+                return;
+            }
+
+            const features = capturedFrames.map(f => computeFeatures(f.landmarks));
+            const n = features.length;
+            const d = features[0].length;
+
+            // Center the data
+            const mean = new Array(d).fill(0);
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < d; j++) {
+                    mean[j] += features[i][j];
+                }
+            }
+            for (let j = 0; j < d; j++) {
+                mean[j] /= n;
+            }
+
+            const centered = features.map(f => f.map((v, j) => v - mean[j]));
+
+            // Compute covariance matrix (simplified: use SVD approximation)
+            // For efficiency, compute top 2 components using power iteration
+            const { components, eigenvalues } = powerIteration(centered, 2);
+
+            // Compute total variance for explained variance ratio
+            const totalVariance = centered.reduce((sum, row) =>
+                sum + row.reduce((s, v) => s + v * v, 0), 0) / n;
+
+            const explainedVariance = eigenvalues.map(ev => 100 * ev / totalVariance);
+
+            pcaModel = { mean, components, explainedVariance };
+
+            // Cache projections to avoid recomputation
+            cachedProjections = capturedFrames.map(f => {
+                const features = computeFeatures(f.landmarks);
+                return projectToPCA(features, pcaModel);
+            });
+
+            pcaStatus.textContent = `PCA computed with ${capturedFrames.length} frames`;
+            drawPCAPlot(null);
+        }
+
+        function powerIteration(data, numComponents) {
+            const n = data.length;
+            const d = data[0].length;
+            const components = [];
+            const eigenvalues = [];
+
+            for (let c = 0; c < numComponents; c++) {
+                let v = new Array(d).fill(0).map(() => Math.random() - 0.5);
+                let eigenvalue = 0;
+
+                for (let iter = 0; iter < 20; iter++) {
+                    // Orthogonalize against previous components
+                    for (const comp of components) {
+                        const dot = v.reduce((sum, val, i) => sum + val * comp[i], 0);
+                        v = v.map((val, i) => val - dot * comp[i]);
+                    }
+
+                    // Multiply by data matrix
+                    const Av = new Array(d).fill(0);
+                    for (let i = 0; i < n; i++) {
+                        const dot = data[i].reduce((sum, val, j) => sum + val * v[j], 0);
+                        for (let j = 0; j < d; j++) {
+                            Av[j] += data[i][j] * dot;
+                        }
+                    }
+
+                    // Normalize
+                    const norm = Math.sqrt(Av.reduce((sum, val) => sum + val * val, 0));
+                    v = Av.map(val => val / (norm || 1));
+                    eigenvalue = norm / n;  // Approximate eigenvalue
+                }
+
+                components.push(v);
+                eigenvalues.push(eigenvalue);
+            }
+
+            return { components, eigenvalues };
+        }
+
+        function projectToPCA(features, model) {
+            const centered = features.map((v, j) => v - model.mean[j]);
+            return model.components.map(comp =>
+                centered.reduce((sum, val, i) => sum + val * comp[i], 0)
+            );
+        }
+
+        function drawPCAPlot(livePoint) {
+            const width = plotCanvas.width = plotCanvas.offsetWidth;
+            const height = plotCanvas.height = plotCanvas.offsetHeight;
+            plotCtx.clearRect(0, 0, width, height);
+
+            if (!pcaModel || capturedFrames.length < 3 || !cachedProjections) return;
+
+            // Use cached projections instead of recomputing
+            const projected = cachedProjections;
+
+            // Find bounds
+            const xValues = projected.map(p => p[0]);
+            const yValues = projected.map(p => p[1]);
+            const xMin = Math.min(...xValues);
+            const xMax = Math.max(...xValues);
+            const yMin = Math.min(...yValues);
+            const yMax = Math.max(...yValues);
+            const xRange = xMax - xMin || 1;
+            const yRange = yMax - yMin || 1;
+            const margin = 50;
+
+            const scaleX = (x) => margin + ((x - xMin) / xRange) * (width - 2 * margin);
+            const scaleY = (y) => height - margin - ((y - yMin) / yRange) * (height - 2 * margin);
+
+            // Draw axes
+            plotCtx.strokeStyle = '#444';
+            plotCtx.lineWidth = 1;
+            plotCtx.beginPath();
+            plotCtx.moveTo(margin, height - margin);
+            plotCtx.lineTo(width - margin, height - margin);
+            plotCtx.moveTo(margin, margin);
+            plotCtx.lineTo(margin, height - margin);
+            plotCtx.stroke();
+
+            // Draw axis labels with variance explained
+            plotCtx.fillStyle = '#aaa';
+            plotCtx.font = '12px system-ui';
+            plotCtx.textAlign = 'center';
+            plotCtx.fillText(
+                `PC1 (${pcaModel.explainedVariance[0].toFixed(1)}%)`,
+                width / 2,
+                height - 10
+            );
+            plotCtx.save();
+            plotCtx.translate(15, height / 2);
+            plotCtx.rotate(-Math.PI / 2);
+            plotCtx.fillText(
+                `PC2 (${pcaModel.explainedVariance[1].toFixed(1)}%)`,
+                0,
+                0
+            );
+            plotCtx.restore();
+
+            // Draw training points with color coding
+            projected.forEach((p, idx) => {
+                plotCtx.fillStyle = capturedFrames[idx].color;
+                plotCtx.beginPath();
+                plotCtx.arc(scaleX(p[0]), scaleY(p[1]), 6, 0, 2 * Math.PI);
+                plotCtx.fill();
+            });
+
+            // Draw live point
+            if (livePoint) {
+                plotCtx.fillStyle = '#ff6b9d';
+                plotCtx.beginPath();
+                plotCtx.arc(scaleX(livePoint[0]), scaleY(livePoint[1]), 8, 0, 2 * Math.PI);
+                plotCtx.fill();
+            }
+        }
+
+        function findClosestFrame(liveProjected) {
+            if (!pcaModel || capturedFrames.length === 0 || !cachedProjections) return -1;
+
+            // Use cached projections instead of recomputing
+            const projected = cachedProjections;
+
+            // Find closest by Euclidean distance
+            let minDist = Infinity;
+            let minIdx = -1;
+            for (let i = 0; i < projected.length; i++) {
+                const dist = Math.sqrt(
+                    (projected[i][0] - liveProjected[0]) ** 2 +
+                    (projected[i][1] - liveProjected[1]) ** 2
+                );
+                if (dist < minDist) {
+                    minDist = dist;
+                    minIdx = i;
+                }
+            }
+
+            return minIdx;
+        }
+
+        function displayClosestFrame(idx) {
+            const frame = capturedFrames[idx];
+
+            // Create a temporary image to get dimensions
+            const img = new Image();
+            img.onload = () => {
+                closestCanvas.width = img.width;
+                closestCanvas.height = img.height;
+                closestCtx.drawImage(img, 0, 0);
+
+                // Draw landmarks on top
+                drawLandmarksOnCanvas(closestCtx, frame.landmarks, img.width, img.height);
+                closestStatus.textContent = `Frame ${idx + 1} (closest match)`;
+            };
+            img.src = frame.imageData;
+        }
+
+        function drawLandmarksOnCanvas(context, landmarks, width, height) {
+            context.strokeStyle = '#667eea';
+            context.fillStyle = '#ff6b9d';
+            context.lineWidth = 2;
+
+            // Draw connections based on mode
+            const mode = keypointSelect.value;
+            if (mode === 'pose') {
+                const POSE_CONNECTIONS = [
+                    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+                    [11, 23], [12, 24], [23, 24],
+                    [23, 25], [25, 27], [24, 26], [26, 28]
+                ];
+                for (const [i, j] of POSE_CONNECTIONS) {
+                    if (landmarks[i] && landmarks[j]) {
+                        context.beginPath();
+                        context.moveTo(landmarks[i].x * width, landmarks[i].y * height);
+                        context.lineTo(landmarks[j].x * width, landmarks[j].y * height);
+                        context.stroke();
+                    }
+                }
+            }
+
+            // Draw points
+            for (const point of landmarks) {
+                context.beginPath();
+                context.arc(point.x * width, point.y * height, 4, 0, 2 * Math.PI);
+                context.fill();
+            }
+        }
+
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        captureBtn.addEventListener('click', captureFrame);
+
+        featureSelect.addEventListener('change', () => {
+            if (capturedFrames.length >= 3) computePCA();
+        });
+
+        modelSelect.addEventListener('change', async () => {
+            const wasRunning = stream !== null;
+            if (wasRunning) stopCamera();
+            poseLandmarker = null;
+            handLandmarker = null;
+            if (wasRunning) await startCamera();
+            else await initLandmarkers();
+        });
+
+        // Set up plot hover handlers once (not in draw loop to prevent memory leak)
+        plotCanvas.addEventListener('mousemove', (e) => {
+            if (!pcaModel || !cachedProjections || capturedFrames.length < 3) {
+                tooltip.style.display = 'none';
+                return;
+            }
+
+            const rect = plotCanvas.getBoundingClientRect();
+            const width = plotCanvas.width;
+            const height = plotCanvas.height;
+            const scaleRatioX = width / rect.width;
+            const scaleRatioY = height / rect.height;
+            const mx = (e.clientX - rect.left) * scaleRatioX;
+            const my = (e.clientY - rect.top) * scaleRatioY;
+
+            // Calculate scaling functions based on current data bounds
+            const xValues = cachedProjections.map(p => p[0]);
+            const yValues = cachedProjections.map(p => p[1]);
+            const xMin = Math.min(...xValues);
+            const xMax = Math.max(...xValues);
+            const yMin = Math.min(...yValues);
+            const yMax = Math.max(...yValues);
+            const xRange = xMax - xMin || 1;
+            const yRange = yMax - yMin || 1;
+            const margin = 50;
+
+            const scaleX = (x) => margin + ((x - xMin) / xRange) * (width - 2 * margin);
+            const scaleY = (y) => height - margin - ((y - yMin) / yRange) * (height - 2 * margin);
+
+            // Check if hovering over any point
+            for (let i = 0; i < cachedProjections.length; i++) {
+                const x = scaleX(cachedProjections[i][0]);
+                const y = scaleY(cachedProjections[i][1]);
+                const dist = Math.sqrt((mx - x) ** 2 + (my - y) ** 2);
+
+                if (dist < 15) {
+                    tooltip.replaceChildren();
+                    const img = document.createElement('img');
+                    img.src = capturedFrames[i].imageData;
+                    const div = document.createElement('div');
+                    div.textContent = `Frame ${i + 1}`;
+                    tooltip.appendChild(img);
+                    tooltip.appendChild(div);
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = (e.pageX + 15) + 'px';
+                    tooltip.style.top = (e.pageY + 15) + 'px';
+                    return;
+                }
+            }
+            tooltip.style.display = 'none';
+        });
+
+        plotCanvas.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
+
+        initLandmarkers();
+    </script>
+</body>
+</html>
