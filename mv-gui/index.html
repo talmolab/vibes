@@ -11,6 +11,8 @@
     <!-- Three.js for 3D viewport (v0.147 is the last version with examples/js/) -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- h5wasm for in-browser HDF5 writing -->
+    <script src="https://cdn.jsdelivr.net/npm/h5wasm@latest/dist/iife/h5wasm.js"></script>
 </head>
 
 <body>
@@ -26,13 +28,21 @@
             <div class="menu-item" data-menu="file">
                 File
                 <div class="menu-dropdown" id="menuFile">
+                    <div class="menu-dropdown-item" id="menuNewProject">New Project</div>
+                    <div class="menu-dropdown-item" id="menuSaveProject">Save Project</div>
+                    <div class="menu-dropdown-item" id="menuLoadProject">Load Project...</div>
+                    <div class="menu-separator"></div>
                     <div class="menu-dropdown-item" id="menuLoadVideos">Load Videos...</div>
                     <div class="menu-dropdown-item" id="menuLoadCalibration">Load Calibration...</div>
                     <div class="menu-dropdown-item" id="menuLoadSession">Load Session...</div>
+                    <div class="menu-dropdown-item" id="menuLoadDemo">Load Demo Session</div>
                     <div class="menu-separator"></div>
                     <div class="menu-dropdown-item" id="menuExportLabels">Export Labels (JSON)</div>
-                    <div class="menu-dropdown-item" id="menuExportSlp">Export SLP Data</div>
-                    <div class="menu-dropdown-item" id="menuExportPoints3d">Export 3D Points</div>
+                    <div class="menu-dropdown-item" id="menuExportSlp">Export SLP (JSON)</div>
+                    <div class="menu-dropdown-item" id="menuExportSlpH5">Export SLP (H5)</div>
+                    <div class="menu-dropdown-item" id="menuExportPoints3d">Export 3D Points (JSON)</div>
+                    <div class="menu-dropdown-item" id="menuExportPoints3dH5">Export 3D Points (H5)</div>
+                    <div class="menu-dropdown-item" id="menuExportReprojH5">Export Reprojections (H5)</div>
                     <div class="menu-dropdown-item" id="menuExportCalib">Export Calibration (TOML)</div>
                 </div>
             </div>
@@ -42,7 +52,7 @@
                     <div class="menu-dropdown-item" id="menuAddInstance">Add Instance <span
                             class="shortcut-hint">N</span></div>
                     <div class="menu-dropdown-item" id="menuDeleteInstance">Delete Instance <span
-                            class="shortcut-hint">Del</span></div>
+                            class="shortcut-hint">Del / Shift+Del</span></div>
                     <div class="menu-separator"></div>
                     <div class="menu-dropdown-item" id="menuTriangulate">Triangulate <span
                             class="shortcut-hint">T</span></div>
@@ -360,7 +370,7 @@
                             <div><kbd>Tab</kbd> Cycle instances</div>
                             <div><kbd>Escape</kbd> Clear selection</div>
                             <div><kbd>N</kbd> New instance</div>
-                            <div><kbd>Del</kbd> Delete instance</div>
+                            <div><kbd>Del</kbd> Delete instance (Shift: all views)</div>
                             <div><kbd>T</kbd> Triangulate</div>
                             <div><kbd>3</kbd> Toggle 3D view</div>
                             <div><kbd>I</kbd> Toggle info panel</div>
@@ -484,46 +494,165 @@
         // ============================================
 
         async function init() {
-            showLoading('Loading videos...');
-
             try {
-                // 1. Initialize video decoders for all 4 views
-                await initVideos();
+                // Setup UI components (no data needed)
+                setupEmptyVideoController();
+                setupUI();
+                setupPanelTabs();
+                setupSkeletonEditing();
+                setupInteraction();
+                setupTimeline();
+                setupMenus();
 
-                // 2. Generate demo data (synthetic skeleton + calibration)
+                showWelcomeOverlay();
+
+                hideLoading();
+                setStatus('Ready - load videos and calibration to begin', 'success');
+
+            } catch (err) {
+                console.error('Initialization failed:', err);
+                showLoading('Error: ' + err.message);
+                setStatus('Error', 'error');
+            }
+        }
+
+        /**
+         * Create a minimal video controller for empty state (no views loaded yet).
+         */
+        function setupEmptyVideoController() {
+            videoController = new VideoController(state, {
+                updateSeekbar: updateSeekbar,
+                drawOverlays: drawAllOverlays,
+                onPlaybackStateChange: onPlaybackStateChange,
+                log: window.logMessage,
+            });
+        }
+
+        /**
+         * Show a welcome overlay in the video grid when no videos are loaded.
+         */
+        function showWelcomeOverlay() {
+            const gridEl = document.getElementById('videoGrid');
+            if (!gridEl) return;
+
+            // Remove hardcoded cells if present and no views
+            if (state.views.length === 0) {
+                gridEl.innerHTML = '';
+            }
+
+            let overlay = document.getElementById('welcomeOverlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'welcomeOverlay';
+                overlay.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text-muted);font-size:14px;text-align:center;padding:40px;grid-column:1/-1;grid-row:1/-1;';
+                overlay.innerHTML = '<div style="font-size:24px;margin-bottom:12px;opacity:0.5;">Multi-View Pose Proofreader</div>'
+                    + '<div style="margin-bottom:20px;">Load videos and calibration to begin</div>'
+                    + '<div style="font-size:12px;line-height:2;opacity:0.7;">'
+                    + 'File &rarr; Load Videos... &nbsp;(add video files)<br>'
+                    + 'File &rarr; Load Calibration... &nbsp;(add camera calibration)<br>'
+                    + 'File &rarr; Load Demo Session &nbsp;(try with synthetic data)'
+                    + '</div>';
+                gridEl.appendChild(overlay);
+            }
+            overlay.style.display = 'flex';
+        }
+
+        /**
+         * Hide the welcome overlay (called when views are created).
+         */
+        function hideWelcomeOverlay() {
+            const overlay = document.getElementById('welcomeOverlay');
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        /**
+         * Load the demo session (synthetic data for testing).
+         * Available as File → Load Demo Session.
+         */
+        async function loadDemoSession() {
+            showLoading('Loading demo videos...');
+            try {
+                // Rebuild the video grid cells (welcome overlay may have cleared them)
+                const gridEl = document.getElementById('videoGrid');
+                gridEl.innerHTML = '';
+                const gridViews = buildVideoGrid(gridEl, VIEW_NAMES);
+
+                // Load videos into the rebuilt cells
+                const basePath = 'sample_session/';
+                for (let i = 0; i < VIEW_NAMES.length; i++) {
+                    const name = VIEW_NAMES[i];
+                    const url = basePath + name + '.mp4';
+                    showLoading('Loading ' + name + '.mp4...');
+
+                    const gv = gridViews[i];
+                    const canvas = gv.canvas;
+                    const overlayCanvas = gv.overlayCanvas;
+                    const ctx = canvas.getContext('2d');
+                    const overlayCtx = overlayCanvas.getContext('2d');
+
+                    const decoder = new OnDemandVideoDecoder({ cacheSize: 60, lookahead: 10 });
+                    await decoder.init(url);
+
+                    const vw = decoder.videoTrack.video.width;
+                    const vh = decoder.videoTrack.video.height;
+                    canvas.width = vw;
+                    canvas.height = vh;
+                    overlayCanvas.width = vw;
+                    overlayCanvas.height = vh;
+
+                    const view = {
+                        name: name,
+                        decoder: decoder,
+                        canvas: canvas,
+                        ctx: ctx,
+                        overlayCanvas: overlayCanvas,
+                        overlayCtx: overlayCtx,
+                        videoWidth: vw,
+                        videoHeight: vh,
+                        wrapper: gv.wrapper,
+                    };
+
+                    state.views.push(view);
+                    state.videoFiles.push({
+                        file: null,
+                        name: name,
+                        decoder: decoder,
+                        videoWidth: vw,
+                        videoHeight: vh,
+                        frameCount: decoder.samples.length,
+                        assignedCamera: name,
+                    });
+
+                    if (i === 0) {
+                        state.totalFrames = decoder.samples.length;
+                        state.fps = decoder.videoTrack.duration > 0
+                            ? decoder.samples.length / (decoder.videoTrack.duration / decoder.videoTrack.timescale)
+                            : 30;
+                    }
+                }
+
                 showLoading('Generating demo data...');
                 const numFrames = Math.min(state.totalFrames, 100);
                 const demoResult = createDemoSession(numFrames);
                 state.session = demoResult.session;
                 state.keypoints3d = demoResult.keypoints3d;
 
-                // 3. Pre-compute triangulation for linked instance groups (if any)
                 showLoading('Computing triangulation...');
                 precomputeTriangulation();
 
-                // Note: Demo data now starts with unlinked instances.
-                // Users must assign them across views before triangulation.
-
-                // 4. Setup all UI components
-                setupUI();
-                setupPanelTabs();
-                setupSkeletonEditing();
-                setupInteraction();
-                setupTimeline();
+                hideWelcomeOverlay();
+                rebuildVideoController();
                 setup3DViewport();
-                setupMenus();
                 updateInfoPanel();
 
-                // 5. Seek to first frame
                 await videoController.seekToFrame(0);
 
                 hideLoading();
-                setStatus('Ready', 'success');
-
+                setStatus('Demo session loaded', 'success');
             } catch (err) {
-                console.error('Initialization failed:', err);
-                showLoading('Error: ' + err.message);
-                setStatus('Error', 'error');
+                console.error('Demo load failed:', err);
+                hideLoading();
+                setStatus('Demo error: ' + err.message, 'error');
             }
         }
 
@@ -911,7 +1040,7 @@
                     // Update 3D viewport
                     if (viewport3d) {
                         const groups = getInstanceGroupsForFrame(frameIdx);
-                        viewport3d.update(groups, state.session);
+                        viewport3d.setFrame(groups);
                     }
 
                     // Refresh info panel
@@ -1072,6 +1201,21 @@
                 if (viewport3d) viewport3d.fitToScene();
             });
 
+            document.getElementById('menuNewProject').addEventListener('click', function () {
+                closeMenus();
+                newProject();
+            });
+
+            document.getElementById('menuSaveProject').addEventListener('click', function () {
+                closeMenus();
+                saveProject();
+            });
+
+            document.getElementById('menuLoadProject').addEventListener('click', function () {
+                closeMenus();
+                handleLoadProject();
+            });
+
             document.getElementById('menuLoadVideos').addEventListener('click', function () {
                 closeMenus();
                 handleLoadVideos();
@@ -1087,6 +1231,11 @@
                 handleLoadSession();
             });
 
+            document.getElementById('menuLoadDemo').addEventListener('click', function () {
+                closeMenus();
+                loadDemoSession();
+            });
+
             document.getElementById('menuExportLabels').addEventListener('click', function () {
                 closeMenus();
                 exportLabels();
@@ -1100,12 +1249,30 @@
                 setStatus('SLP data exported (JSON format)', 'success');
             });
 
+            document.getElementById('menuExportSlpH5').addEventListener('click', function () {
+                closeMenus();
+                if (!state.session) { setStatus('No session to export', 'error'); return; }
+                exportSlpH5();
+            });
+
             document.getElementById('menuExportPoints3d').addEventListener('click', function () {
                 closeMenus();
                 if (!state.session) { setStatus('No session to export', 'error'); return; }
                 const data = buildPoints3dExportData(state.session);
                 downloadJSON(data, 'points3d.json');
                 setStatus('3D points exported', 'success');
+            });
+
+            document.getElementById('menuExportPoints3dH5').addEventListener('click', function () {
+                closeMenus();
+                if (!state.session) { setStatus('No session to export', 'error'); return; }
+                exportPoints3dH5();
+            });
+
+            document.getElementById('menuExportReprojH5').addEventListener('click', function () {
+                closeMenus();
+                if (!state.session) { setStatus('No session to export', 'error'); return; }
+                exportReprojH5();
             });
 
             document.getElementById('menuExportCalib').addEventListener('click', function () {
@@ -1130,17 +1297,18 @@
 
         function setupUI() {
             // Transport controls
-            document.getElementById('btnFirst').addEventListener('click', function () { videoController.seekToFrame(0); });
-            document.getElementById('btnPrev').addEventListener('click', function () { videoController.seekToFrame(state.currentFrame - 1); });
-            document.getElementById('btnPlay').addEventListener('click', function () { videoController.togglePlayback(); });
-            document.getElementById('btnNext').addEventListener('click', function () { videoController.seekToFrame(state.currentFrame + 1); });
-            document.getElementById('btnLast').addEventListener('click', function () { videoController.seekToFrame(state.totalFrames - 1); });
+            document.getElementById('btnFirst').addEventListener('click', function () { if (videoController) videoController.seekToFrame(0); });
+            document.getElementById('btnPrev').addEventListener('click', function () { if (videoController) videoController.seekToFrame(state.currentFrame - 1); });
+            document.getElementById('btnPlay').addEventListener('click', function () { if (videoController) videoController.togglePlayback(); });
+            document.getElementById('btnNext').addEventListener('click', function () { if (videoController) videoController.seekToFrame(state.currentFrame + 1); });
+            document.getElementById('btnLast').addEventListener('click', function () { if (videoController) videoController.seekToFrame(state.totalFrames - 1); });
 
             // Seekbar
-            videoController.setupSeekbar(document.getElementById('seekbar'), updateSeekbarVisual);
-
-            // Keyboard
-            videoController.setupKeyboardHandlers();
+            if (videoController) {
+                videoController.setupSeekbar(document.getElementById('seekbar'), updateSeekbarVisual);
+                // Keyboard
+                videoController.setupKeyboardHandlers();
+            }
 
             // Additional keyboard shortcuts
             document.addEventListener('keydown', function (e) {
@@ -1297,7 +1465,17 @@
             if (state.views.length === 0) return;
             if (state.viewMode === 'grid') {
                 state.viewMode = 'single';
-                state.singleViewIndex = 0;
+                // Start at the last-interacted view
+                var startIdx = 0;
+                if (interactionManager && interactionManager.lastInteractedView) {
+                    for (var i = 0; i < state.views.length; i++) {
+                        if (state.views[i].name === interactionManager.lastInteractedView) {
+                            startIdx = i;
+                            break;
+                        }
+                    }
+                }
+                state.singleViewIndex = startIdx;
             } else {
                 // Cycle to next camera
                 state.singleViewIndex = (state.singleViewIndex + 1) % state.views.length;
@@ -1329,6 +1507,7 @@
                 // Show all cells, restore grid layout
                 var cols = Math.ceil(Math.sqrt(state.views.length));
                 gridEl.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+                gridEl.style.gridTemplateRows = '';
                 state.views.forEach(function (v) {
                     var cell = v.canvas.closest('.video-cell');
                     if (cell) cell.style.display = '';
@@ -1339,6 +1518,7 @@
             } else {
                 // Single-view mode: show only the active view
                 gridEl.style.gridTemplateColumns = '1fr';
+                gridEl.style.gridTemplateRows = '1fr';
                 state.views.forEach(function (v, i) {
                     var cell = v.canvas.closest('.video-cell');
                     if (cell) cell.style.display = (i === state.singleViewIndex) ? '' : 'none';
@@ -1768,7 +1948,13 @@
         // ============================================
 
         function updateInfoPanel() {
-            if (!state.session) return;
+            if (!state.session) {
+                document.getElementById('infoCameras').textContent = '-';
+                document.getElementById('infoSkeleton').textContent = '-';
+                document.getElementById('infoTracks').textContent = '-';
+                document.getElementById('infoFrames').textContent = '-';
+                return;
+            }
 
             document.getElementById('infoCameras').textContent = state.session.cameras.map(function (c) { return c.name; }).join(', ');
             document.getElementById('infoSkeleton').textContent = state.session.skeleton.name +
@@ -2223,6 +2409,362 @@
         }
 
         // ============================================
+        // Project Management (New / Save / Load)
+        // ============================================
+
+        function newProject() {
+            if (state.session || state.views.length > 0) {
+                if (!confirm('Unsaved changes will be lost. Start a new project?')) return;
+            }
+
+            // Detach interaction handlers from old canvases
+            if (interactionManager) {
+                interactionManager.detach();
+                interactionManager = null;
+            }
+
+            // Stop playback
+            if (videoController && state.isPlaying) {
+                videoController.pause();
+            }
+            videoController = null;
+
+            // Clear session and annotation data
+            state.session = null;
+            state.currentFrame = 0;
+            state.totalFrames = 0;
+            state.fps = 30;
+            state.keypoints3d = null;
+            state.triangulationResults = new Map();
+            state.viewMode = 'grid';
+            state.singleViewIndex = 0;
+
+            // Clear views and video files
+            state.views = [];
+            state.videoFiles = [];
+
+            // Clear 3D viewport (remove skeletons and camera pyramids)
+            if (viewport3d) {
+                viewport3d.setFrame([]);
+                viewport3d.cameras = [];
+                viewport3d.addCameraPyramids();
+            }
+
+            // Clear the video grid and show welcome overlay
+            const gridEl = document.getElementById('videoGrid');
+            if (gridEl) gridEl.innerHTML = '';
+            showWelcomeOverlay();
+
+            // Reset frame counter display
+            const curFrameEl = document.getElementById('currentFrame');
+            if (curFrameEl) curFrameEl.textContent = '0';
+            const totalFramesEl = document.getElementById('totalFrames');
+            if (totalFramesEl) totalFramesEl.textContent = '0';
+            const fpsEl = document.getElementById('fpsDisplay');
+            if (fpsEl) fpsEl.textContent = '30.0 fps';
+
+            // Reset seekbar
+            const seekbar = document.getElementById('seekbar');
+            if (seekbar) { seekbar.value = 0; seekbar.max = 0; }
+
+            // Update panels
+            updateInfoPanel();
+            if (timeline) {
+                timeline.setData(null);
+            }
+
+            setStatus('New project started', 'success');
+        }
+
+        function saveProject() {
+            if (!state.session) {
+                setStatus('No session to save', 'error');
+                return;
+            }
+
+            const projectData = {
+                version: 2,
+                skeleton: {
+                    name: state.session.skeleton.name,
+                    nodes: state.session.skeleton.nodes,
+                    edges: state.session.skeleton.edges,
+                },
+                cameras: state.session.cameras.map(function (c) {
+                    return { name: c.name, matrix: c.matrix, dist: c.dist, rvec: c.rvec, tvec: c.tvec, size: c.size };
+                }),
+                tracks: state.session.tracks,
+                videoManifest: (state.videoFiles || []).map(function (vf) {
+                    return { filename: vf.name, assignedCamera: vf.assignedCamera || null };
+                }),
+                frames: {},
+            };
+
+            // Serialize each frame
+            for (const [frameIdx, fg] of state.session.frameGroups) {
+                const frameData = {
+                    instanceGroups: [],
+                    unlinkedInstances: [],
+                };
+
+                // Serialize instance groups
+                const trackMap = state.session.instanceGroups.get(frameIdx);
+                if (trackMap) {
+                    for (const [trackIdx, groups] of trackMap) {
+                        for (const group of groups) {
+                            const groupData = {
+                                id: group.id,
+                                trackIdx: group.trackIdx,
+                                instances: {},
+                                points3d: group.points3d || null,
+                            };
+                            for (const [camName, inst] of group.instances) {
+                                groupData.instances[camName] = {
+                                    points: inst.points,
+                                    trackIdx: inst.trackIdx,
+                                    type: inst.type,
+                                    score: inst.score,
+                                    modified: inst.modified,
+                                };
+                            }
+                            frameData.instanceGroups.push(groupData);
+                        }
+                    }
+                }
+
+                // Serialize unlinked instances
+                for (const [camName, unlinkedList] of fg.unlinkedInstances) {
+                    for (const unlinked of unlinkedList) {
+                        frameData.unlinkedInstances.push({
+                            cameraName: camName,
+                            points: unlinked.instance.points,
+                            type: unlinked.instance.type || 'user',
+                            score: unlinked.instance.score || 1.0,
+                            modified: unlinked.instance.modified || false,
+                        });
+                    }
+                }
+
+                projectData.frames[frameIdx] = frameData;
+            }
+
+            // Download
+            const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'project.mvgui.json';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            setStatus('Project saved', 'success');
+        }
+
+        async function handleLoadProject() {
+            try {
+                setStatus('Picking project file...', 'warning');
+                const files = await pickFiles({ accept: '.json' });
+                if (files.length === 0) {
+                    setStatus('No file selected', 'warning');
+                    return;
+                }
+
+                const text = await files[0].text();
+                const data = JSON.parse(text);
+
+                if (data.version === 2) {
+                    loadProjectV2(data);
+                } else {
+                    // Fall through to legacy session loading
+                    loadLegacySession(data);
+                }
+            } catch (err) {
+                console.error('Failed to load project:', err);
+                setStatus('Load error: ' + err.message, 'error');
+            }
+        }
+
+        function loadProjectV2(data) {
+            // Parse cameras
+            let cameras = [];
+            if (data.cameras) {
+                cameras = parseCalibrationJSON(JSON.stringify({ cameras: data.cameras }));
+            }
+
+            // Parse skeleton
+            let skeleton;
+            if (data.skeleton) {
+                skeleton = new Skeleton(
+                    data.skeleton.name || 'skeleton',
+                    data.skeleton.nodes || [],
+                    data.skeleton.edges || []
+                );
+            } else {
+                skeleton = createDemoSkeleton();
+            }
+
+            const tracks = data.tracks || ['track_0'];
+            const session = new Session(cameras, skeleton, tracks);
+
+            // Reconstruct frames
+            if (data.frames) {
+                for (const frameIdxStr in data.frames) {
+                    const frameIdx = parseInt(frameIdxStr);
+                    const frameData = data.frames[frameIdxStr];
+                    const fg = new FrameGroup(frameIdx);
+
+                    // Reconstruct instance groups
+                    if (frameData.instanceGroups) {
+                        if (!session.instanceGroups.has(frameIdx)) {
+                            session.instanceGroups.set(frameIdx, new Map());
+                        }
+                        const trackMap = session.instanceGroups.get(frameIdx);
+
+                        for (const groupData of frameData.instanceGroups) {
+                            const group = new InstanceGroup(groupData.id || Date.now(), groupData.trackIdx);
+                            if (groupData.points3d) {
+                                group.points3d = groupData.points3d;
+                            }
+
+                            for (const camName in groupData.instances) {
+                                const instData = groupData.instances[camName];
+                                const inst = new Instance(
+                                    instData.points,
+                                    instData.trackIdx || groupData.trackIdx,
+                                    instData.type || 'user',
+                                    instData.score || 1.0
+                                );
+                                inst.modified = instData.modified || false;
+                                group.addInstance(camName, inst);
+                                fg.addInstance(camName, inst);
+                            }
+
+                            if (!trackMap.has(group.trackIdx)) {
+                                trackMap.set(group.trackIdx, []);
+                            }
+                            trackMap.get(group.trackIdx).push(group);
+                        }
+                    }
+
+                    // Reconstruct unlinked instances
+                    if (frameData.unlinkedInstances) {
+                        for (const ulData of frameData.unlinkedInstances) {
+                            const inst = new Instance(
+                                ulData.points,
+                                0,
+                                ulData.type || 'user',
+                                ulData.score || 1.0
+                            );
+                            inst.modified = ulData.modified || false;
+                            const unlinked = new UnlinkedInstance(inst, ulData.cameraName);
+                            fg.addUnlinkedInstance(ulData.cameraName, unlinked);
+                        }
+                    }
+
+                    session.addFrameGroup(fg);
+                }
+            }
+
+            state.session = session;
+            state.triangulationResults = new Map();
+            updateInfoPanel();
+            setStatus('Project loaded (v2, ' + cameras.length + ' cameras, ' + session.numFrames + ' frames)', 'success');
+
+            // Rebuild 3D viewport
+            if (viewport3d) {
+                viewport3d.cameras = cameras;
+                viewport3d.addCameraPyramids();
+                viewport3d.fitToScene();
+                const groups = getInstanceGroupsForFrame(state.currentFrame);
+                viewport3d.setFrame(groups);
+            }
+
+            drawAllOverlays(state.currentFrame);
+        }
+
+        function loadLegacySession(data) {
+            // Parse cameras
+            let cameras = [];
+            if (data.cameras) {
+                cameras = parseCalibrationJSON(JSON.stringify({ cameras: data.cameras }));
+            }
+
+            // Parse skeleton
+            let skeleton;
+            if (data.skeleton) {
+                skeleton = new Skeleton(
+                    data.skeleton.name || 'skeleton',
+                    data.skeleton.nodes || [],
+                    data.skeleton.edges || []
+                );
+            } else {
+                skeleton = createDemoSkeleton();
+            }
+
+            const tracks = data.tracks || ['track_0'];
+            const session = new Session(cameras, skeleton, tracks);
+
+            // Parse frames
+            if (data.frames) {
+                for (const frameIdxStr in data.frames) {
+                    const frameIdx = parseInt(frameIdxStr);
+                    const frameData = data.frames[frameIdxStr];
+                    const fg = new FrameGroup(frameIdx);
+
+                    for (const camName in frameData) {
+                        const instances = frameData[camName];
+                        for (let i = 0; i < instances.length; i++) {
+                            const instData = instances[i];
+                            const inst = new Instance(
+                                instData.points,
+                                instData.trackIdx || 0,
+                                instData.type || 'predicted',
+                                instData.score || 1.0
+                            );
+                            inst.modified = instData.modified || false;
+                            fg.addInstance(camName, inst);
+                        }
+                    }
+
+                    session.addFrameGroup(fg);
+                }
+            }
+
+            // Reconstruct InstanceGroups by grouping instances with the same trackIdx
+            for (const [frameIdx, fg] of session.frameGroups) {
+                const trackInstances = new Map();  // trackIdx -> [{camName, instance}]
+                for (const [camName, instances] of fg.instances) {
+                    for (const inst of instances) {
+                        const tIdx = inst.trackIdx || 0;
+                        if (!trackInstances.has(tIdx)) trackInstances.set(tIdx, []);
+                        trackInstances.get(tIdx).push({ camName, instance: inst });
+                    }
+                }
+                if (!session.instanceGroups.has(frameIdx)) session.instanceGroups.set(frameIdx, new Map());
+                const trackMap = session.instanceGroups.get(frameIdx);
+                for (const [trackIdx, entries] of trackInstances) {
+                    const group = new InstanceGroup(Date.now() + trackIdx, trackIdx);
+                    for (const e of entries) group.addInstance(e.camName, e.instance);
+                    if (!trackMap.has(trackIdx)) trackMap.set(trackIdx, []);
+                    trackMap.get(trackIdx).push(group);
+                }
+            }
+
+            state.session = session;
+            state.triangulationResults = new Map();
+            updateInfoPanel();
+            setStatus('Session loaded (' + cameras.length + ' cameras, ' + session.numFrames + ' frames)', 'success');
+
+            // Rebuild 3D viewport
+            if (viewport3d) {
+                viewport3d.cameras = cameras;
+                viewport3d.addCameraPyramids();
+                viewport3d.fitToScene();
+            }
+
+            drawAllOverlays(state.currentFrame);
+        }
+
+        // ============================================
         // Loading / Status
         // ============================================
 
@@ -2269,6 +2811,8 @@
                     viewport3d.cameras = cameras;
                     viewport3d.addCameraPyramids();
                     viewport3d.fitToScene();
+                } else {
+                    setup3DViewport();
                 }
 
                 updateInfoPanel();
@@ -2357,6 +2901,7 @@
                 }
 
                 if (newViewsCreated) {
+                    hideWelcomeOverlay();
                     rebuildVideoController();
                 }
 
@@ -2562,6 +3107,26 @@
                     }
                 }
 
+                // Reconstruct InstanceGroups by grouping instances with the same trackIdx
+                for (const [frameIdx2, fg2] of session.frameGroups) {
+                    const trackInstances = new Map();
+                    for (const [camName, instances] of fg2.instances) {
+                        for (const inst of instances) {
+                            const tIdx = inst.trackIdx || 0;
+                            if (!trackInstances.has(tIdx)) trackInstances.set(tIdx, []);
+                            trackInstances.get(tIdx).push({ camName, instance: inst });
+                        }
+                    }
+                    if (!session.instanceGroups.has(frameIdx2)) session.instanceGroups.set(frameIdx2, new Map());
+                    const trackMap2 = session.instanceGroups.get(frameIdx2);
+                    for (const [trackIdx, entries] of trackInstances) {
+                        const group = new InstanceGroup(Date.now() + trackIdx, trackIdx);
+                        for (const e of entries) group.addInstance(e.camName, e.instance);
+                        if (!trackMap2.has(trackIdx)) trackMap2.set(trackIdx, []);
+                        trackMap2.get(trackIdx).push(group);
+                    }
+                }
+
                 state.session = session;
                 updateInfoPanel();
                 setStatus('Session loaded (' + cameras.length + ' cameras, ' + session.numFrames + ' frames)', 'success');
@@ -2592,6 +3157,55 @@
                     cell.classList.remove('camera-highlighted');
                 }, 2000);
             }
+        }
+
+        // ============================================
+        // H5 Export wrappers
+        // ============================================
+
+        async function exportSlpH5() {
+            try {
+                setStatus('Building SLP H5...', 'warning');
+                const blob = await buildSlpH5(state.session, state.views);
+                downloadBlob(blob, 'labels.slp');
+                setStatus('SLP H5 exported', 'success');
+            } catch (err) {
+                console.error('SLP H5 export failed:', err);
+                setStatus('SLP H5 error: ' + err.message, 'error');
+            }
+        }
+
+        async function exportPoints3dH5() {
+            try {
+                setStatus('Building points3d H5...', 'warning');
+                const blob = await buildPoints3dH5(state.session);
+                downloadBlob(blob, 'points3d.h5');
+                setStatus('Points3d H5 exported', 'success');
+            } catch (err) {
+                console.error('Points3d H5 export failed:', err);
+                setStatus('Points3d H5 error: ' + err.message, 'error');
+            }
+        }
+
+        async function exportReprojH5() {
+            try {
+                setStatus('Building reprojections H5...', 'warning');
+                const blob = await buildReprojH5(state.session);
+                downloadBlob(blob, 'reprojections.h5');
+                setStatus('Reprojections H5 exported', 'success');
+            } catch (err) {
+                console.error('Reprojections H5 export failed:', err);
+                setStatus('Reprojections H5 error: ' + err.message, 'error');
+            }
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
         }
 
         // ============================================

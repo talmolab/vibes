@@ -95,6 +95,9 @@ class InteractionManager {
         /** @type {UnlinkedInstance[]} Currently selected unlinked instances for assignment */
         this.assignmentSelection = [];
 
+        /** @type {UnlinkedInstance|null} Currently selected unlinked instance (for editing/deletion) */
+        this.selectedUnlinked = null;
+
         // ------------------------------------------------------------------
         // Hit-test configuration
         // ------------------------------------------------------------------
@@ -105,6 +108,9 @@ class InteractionManager {
         // ------------------------------------------------------------------
         // Internal bookkeeping for attach/detach
         // ------------------------------------------------------------------
+
+        /** @type {string|null} Last view where user interacted (for per-camera delete) */
+        this.lastInteractedView = null;
 
         /** @type {Map<string, Object>} viewName -> { handlers } */
         this._boundHandlers = new Map();
@@ -363,10 +369,11 @@ class InteractionManager {
     }
 
     /**
-     * Clear the current selection entirely.
+     * Clear the current selection entirely (linked and unlinked).
      */
     clearSelection() {
         this.select(null, -1);
+        this.selectedUnlinked = null;
     }
 
     // ======================================================================
@@ -387,6 +394,8 @@ class InteractionManager {
     onMouseDown(e, viewName) {
         const state = this._getState();
         if (!state) return;
+
+        this.lastInteractedView = viewName;
 
         const [vx, vy] = this.canvasToVideo(e.clientX, e.clientY, viewName);
         const frameIdx = state.currentFrame;
@@ -419,14 +428,16 @@ class InteractionManager {
             if (ulHit) {
                 this.addToAssignmentSelection(ulHit.unlinked);
                 this._requestRedraw();
+                e._consumedByInteraction = true;
                 return;
             }
         }
 
-        // --- Single left click ---
+        // --- Single left click: try linked instances first ---
         const hit = this.findNearestNode(vx, vy, viewName, frameIdx);
         if (hit) {
             // Select the instance group and node
+            this.selectedUnlinked = null;
             this.select(hit.instanceGroup, hit.nodeIdx);
 
             // Alt/Option key: whole-instance drag mode
@@ -440,6 +451,7 @@ class InteractionManager {
                     nodeIdx: hit.nodeIdx,
                     startPos: [vx, vy],
                     currentPos: [vx, vy],
+                    unlinked: null,
                     originalPoints: instance && instance.points
                         ? instance.points.map(function (p) { return p ? [p[0], p[1]] : null; })
                         : null,
@@ -454,24 +466,55 @@ class InteractionManager {
                     nodeIdx: hit.nodeIdx,
                     startPos: [vx, vy],
                     currentPos: [vx, vy],
+                    unlinked: null,
                     originalPoints: null,
                 };
             }
 
-            // Mark event as consumed so zoom handler doesn't also activate
             e._consumedByInteraction = true;
         } else {
-            // No linked instance hit — try unlinked instances.
-            // Auto-enter assignment mode on first click of an unlinked instance.
+            // No linked instance hit — try unlinked instances
             const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
             if (ulHit) {
-                if (!this.assignmentMode) {
-                    this.setAssignmentMode(true);
+                // Select the unlinked instance (for editing/deletion)
+                this.select(null, -1);
+                this.selectedUnlinked = ulHit.unlinked;
+
+                // Start dragging the unlinked node
+                if (e.altKey) {
+                    // Whole-instance drag on unlinked
+                    const pts = ulHit.unlinked.instance.points;
+                    this.isDragging = true;
+                    this.dragInfo = {
+                        mode: 'instance',
+                        viewName: viewName,
+                        instanceGroupIdx: -1,
+                        nodeIdx: ulHit.nodeIdx,
+                        startPos: [vx, vy],
+                        currentPos: [vx, vy],
+                        unlinked: ulHit.unlinked,
+                        originalPoints: pts
+                            ? pts.map(function (p) { return p ? [p[0], p[1]] : null; })
+                            : null,
+                    };
+                } else {
+                    // Single-node drag on unlinked
+                    this.isDragging = true;
+                    this.dragInfo = {
+                        mode: 'node',
+                        viewName: viewName,
+                        instanceGroupIdx: -1,
+                        nodeIdx: ulHit.nodeIdx,
+                        startPos: [vx, vy],
+                        currentPos: [vx, vy],
+                        unlinked: ulHit.unlinked,
+                        originalPoints: null,
+                    };
                 }
-                this.addToAssignmentSelection(ulHit.unlinked);
+
                 e._consumedByInteraction = true;
             } else {
-                // Clicked on empty space - let the event bubble for zoom/pan
+                // Clicked on empty space
                 this.clearSelection();
             }
         }
@@ -501,13 +544,20 @@ class InteractionManager {
             // Update the drag position
             this.dragInfo.currentPos = [vx, vy];
 
-            // Directly update the Instance point data for live preview
-            const groups = this._getInstanceGroups(state.currentFrame);
-            if (groups && groups.length > this.dragInfo.instanceGroupIdx) {
-                const group = groups[this.dragInfo.instanceGroupIdx];
-                const instance = group.getInstance(viewName);
+            // Determine the instance being dragged (linked or unlinked)
+            let instance = null;
+            if (this.dragInfo.unlinked) {
+                instance = this.dragInfo.unlinked.instance;
+            } else {
+                const groups = this._getInstanceGroups(state.currentFrame);
+                if (groups && groups.length > this.dragInfo.instanceGroupIdx) {
+                    const group = groups[this.dragInfo.instanceGroupIdx];
+                    instance = group.getInstance(viewName);
+                }
+            }
 
-                if (this.dragInfo.mode === 'instance' && this.dragInfo.originalPoints && instance && instance.points) {
+            if (instance && instance.points) {
+                if (this.dragInfo.mode === 'instance' && this.dragInfo.originalPoints) {
                     // Whole-instance drag: translate all points by delta
                     const dx = vx - this.dragInfo.startPos[0];
                     const dy = vy - this.dragInfo.startPos[1];
@@ -519,7 +569,7 @@ class InteractionManager {
                             ];
                         }
                     }
-                } else if (instance && instance.points && instance.points.length > this.dragInfo.nodeIdx) {
+                } else if (instance.points.length > this.dragInfo.nodeIdx) {
                     // Single-node drag
                     instance.points[this.dragInfo.nodeIdx] = [vx, vy];
                 }
@@ -554,7 +604,7 @@ class InteractionManager {
         // Update cursor style on the overlay canvas
         const view = this._findView(state, viewName);
         if (view && view.overlayCanvas) {
-            if (this.hoveredNode && e.altKey) {
+            if ((this.hoveredNode || hoverUnlinked) && e.altKey) {
                 view.overlayCanvas.style.cursor = 'move';
             } else {
                 view.overlayCanvas.style.cursor = (this.hoveredNode || hoverUnlinked) ? 'pointer' : 'default';
@@ -595,13 +645,21 @@ class InteractionManager {
         const didMove = Math.sqrt(dx * dx + dy * dy) > 0.5;
 
         if (didMove) {
-            // Ensure the final position is written to the data
-            const groups = this._getInstanceGroups(state.currentFrame);
-            if (groups && groups.length > info.instanceGroupIdx) {
-                const group = groups[info.instanceGroupIdx];
-                const instance = group.getInstance(info.viewName);
+            // Determine the instance being dragged (linked or unlinked)
+            let instance = null;
+            let group = null;
+            if (info.unlinked) {
+                instance = info.unlinked.instance;
+            } else {
+                const groups = this._getInstanceGroups(state.currentFrame);
+                if (groups && groups.length > info.instanceGroupIdx) {
+                    group = groups[info.instanceGroupIdx];
+                    instance = group.getInstance(info.viewName);
+                }
+            }
 
-                if (info.mode === 'instance' && info.originalPoints && instance && instance.points) {
+            if (instance && instance.points) {
+                if (info.mode === 'instance' && info.originalPoints) {
                     // Whole-instance drag: finalize all translated points
                     const fdx = info.currentPos[0] - info.startPos[0];
                     const fdy = info.currentPos[1] - info.startPos[1];
@@ -614,14 +672,16 @@ class InteractionManager {
                         }
                     }
                     instance.type = 'user';
-                } else if (instance && instance.points && instance.points.length > info.nodeIdx) {
+                } else if (instance.points.length > info.nodeIdx) {
                     // Single-node drag: finalize the single point
                     instance.points[info.nodeIdx] = [info.currentPos[0], info.currentPos[1]];
                     instance.type = 'user';
                 }
 
-                // Notify the application
-                if (this.callbacks.onNodeMoved) {
+                instance.modified = true;
+
+                // Notify the application (only for linked instances)
+                if (group && this.callbacks.onNodeMoved) {
                     this.callbacks.onNodeMoved(
                         info.viewName,
                         group,
@@ -671,7 +731,7 @@ class InteractionManager {
      */
     onKeyDown(e) {
         // Do not intercept when the user is typing in an input
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) {
             return;
         }
 
@@ -689,7 +749,7 @@ class InteractionManager {
             case 'Backspace': {
                 if (this.selectedInstanceGroup) {
                     e.preventDefault();
-                    this._deleteSelected();
+                    this._deleteSelected(e.shiftKey);
                 }
                 break;
             }
@@ -728,6 +788,17 @@ class InteractionManager {
                 if (this.assignmentMode && this.assignmentSelection.length >= 1) {
                     e.preventDefault();
                     this._createGroupFromAssignment();
+                }
+                break;
+            }
+
+            case 'c':
+            case 'C': {
+                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    if (this.assignmentMode && this.assignmentSelection.length >= 1) {
+                        e.preventDefault();
+                        this._createGroupFromAssignment();
+                    }
                 }
                 break;
             }
@@ -995,26 +1066,75 @@ class InteractionManager {
     }
 
     /**
-     * Delete the currently selected instance group from the session data model.
-     * Removes it from Session.instanceGroups and the associated FrameGroup,
-     * then notifies the application via the onInstanceDeleted callback.
+     * Delete the currently selected instance group.
      *
+     * If deleteAll is true (Shift+Del) or no lastInteractedView is set,
+     * removes the entire group from all cameras.
+     * Otherwise, removes only the instance for the last-clicked camera.
+     * If that was the last camera in the group, removes the whole group.
+     *
+     * @param {boolean} [deleteAll=false] - If true, delete from all cameras
      * @private
      */
-    _deleteSelected() {
-        if (!this.selectedInstanceGroup) return;
-
-        const group = this.selectedInstanceGroup;
+    _deleteSelected(deleteAll) {
         const state = this._getState();
         if (!state || !state.session) return;
 
         const frameIdx = state.currentFrame;
+        const viewName = this.lastInteractedView;
+
+        // Handle unlinked instance deletion
+        if (this.selectedUnlinked) {
+            const ul = this.selectedUnlinked;
+            this.clearSelection();
+
+            const fg = state.session.getFrameGroup(frameIdx);
+            if (fg) {
+                fg.removeUnlinkedById(ul.id);
+            }
+
+            if (this.callbacks.onInstanceDeleted) {
+                this.callbacks.onInstanceDeleted(frameIdx, null);
+            }
+
+            this._requestRedraw();
+            return;
+        }
+
+        // Handle linked instance group deletion
+        if (!this.selectedInstanceGroup) return;
+
+        const group = this.selectedInstanceGroup;
 
         // Clear selection before modifying data
         this.clearSelection();
 
-        // Remove the instance group from the session data model
-        state.session.removeInstanceGroup(frameIdx, group);
+        if (deleteAll || !viewName) {
+            // Full group removal (existing behavior)
+            state.session.removeInstanceGroup(frameIdx, group);
+        } else {
+            // Per-camera removal: remove only this view's instance
+            const instance = group.getInstance(viewName);
+            if (instance) {
+                group.instances.delete(viewName);
+
+                // Remove from FrameGroup too
+                const fg = state.session.getFrameGroup(frameIdx);
+                if (fg) {
+                    const camInstances = fg.instances.get(viewName);
+                    if (camInstances) {
+                        const idx = camInstances.indexOf(instance);
+                        if (idx >= 0) camInstances.splice(idx, 1);
+                        if (camInstances.length === 0) fg.instances.delete(viewName);
+                    }
+                }
+            }
+
+            // If group is now empty, remove the whole group
+            if (group.instances.size === 0) {
+                state.session.removeInstanceGroup(frameIdx, group);
+            }
+        }
 
         // Notify the application (e.g. to update 3D viewport, info panel, timeline)
         if (this.callbacks.onInstanceDeleted) {
@@ -1058,57 +1178,41 @@ class InteractionManager {
         const state = this._getState();
         if (!state || !state.session) return;
 
-        // Create a new empty InstanceGroup with null points for all nodes
         const skeleton = state.session.skeleton;
         const numNodes = skeleton ? skeleton.nodes.length : 0;
-        const emptyPoints = new Array(numNodes).fill(null);
 
-        // Determine the next track index
-        const groups = this._getInstanceGroups(state.currentFrame) || [];
-        const usedTracks = new Set(groups.map(g => g.trackIdx));
-        let newTrackIdx = 0;
-        while (usedTracks.has(newTrackIdx)) {
-            newTrackIdx++;
+        // Target camera = last clicked view, fallback to first view
+        let targetCamera = this.lastInteractedView;
+        if (!targetCamera && state.views && state.views.length > 0) {
+            targetCamera = state.views[0].name;
         }
+        if (!targetCamera) return;
 
-        // Create a new InstanceGroup (the application can override this
-        // behavior by watching onSelectionChanged after the group is added)
-        const newGroup = new InstanceGroup(Date.now(), newTrackIdx);
-
-        // Add empty instances for all cameras
-        if (state.session.cameras) {
-            for (const cam of state.session.cameras) {
-                const instance = new Instance(
-                    emptyPoints.map(() => null), // fresh null array per view
-                    newTrackIdx,
-                    'user',
-                    1.0
-                );
-                newGroup.addInstance(cam.name, instance);
+        // Get video dimensions
+        let vw = 640, vh = 480;
+        if (state.views) {
+            for (const v of state.views) {
+                if (v.name === targetCamera) {
+                    vw = v.videoWidth || vw;
+                    vh = v.videoHeight || vh;
+                    break;
+                }
             }
         }
 
-        // Store it in the session's instanceGroups map
-        const frameIdx = state.currentFrame;
-        if (!state.session.instanceGroups.has(frameIdx)) {
-            state.session.instanceGroups.set(frameIdx, new Map());
-        }
-        const trackMap = state.session.instanceGroups.get(frameIdx);
-        if (!trackMap.has(newTrackIdx)) {
-            trackMap.set(newTrackIdx, []);
-        }
-        trackMap.get(newTrackIdx).push(newGroup);
-
-        // Also add to FrameGroup
-        const frameGroup = state.session.getFrameGroup(frameIdx);
-        if (frameGroup) {
-            for (const [camName, instance] of newGroup.instances) {
-                frameGroup.addInstance(camName, instance);
-            }
+        // Default positions spread around center
+        const cx = vw / 2, cy = vh / 2;
+        const spacing = Math.min(vw, vh) * 0.04;
+        const points = new Array(numNodes);
+        for (let n = 0; n < numNodes; n++) {
+            const offset = n - (numNodes - 1) / 2;
+            points[n] = [cx + offset * spacing * 0.3, cy + offset * spacing];
         }
 
-        // Select the new group
-        this.select(newGroup, -1);
+        const instance = new Instance(points, 0, 'user', 1.0);
+        instance.modified = true;
+
+        state.session.addUnlinkedInstance(state.currentFrame, targetCamera, instance);
         this._requestRedraw();
     }
 }

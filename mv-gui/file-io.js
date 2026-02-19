@@ -683,3 +683,332 @@ function downloadTOML(tomlContent, filename) {
     a.click();
     URL.revokeObjectURL(url);
 }
+
+// ============================================
+// h5wasm initialization
+// ============================================
+
+/** @type {Promise|null} */
+let _h5wasmReady = null;
+
+/**
+ * Initialize h5wasm (loads WASM binary once).
+ * @returns {Promise<Object>} The h5wasm module
+ */
+async function initH5wasm() {
+    if (!_h5wasmReady) {
+        _h5wasmReady = h5wasm.ready;
+    }
+    await _h5wasmReady;
+    return h5wasm;
+}
+
+/**
+ * Read file bytes from the h5wasm virtual filesystem and return as Blob.
+ * @param {string} filename
+ * @returns {Blob}
+ */
+function h5FileToBlob(filename) {
+    var bytes = h5wasm.FS.readFile(filename);
+    return new Blob([bytes], { type: 'application/x-hdf5' });
+}
+
+// ============================================
+// SLP HDF5 export (in-browser)
+// ============================================
+
+/**
+ * Build a SLEAP .slp HDF5 file as a Blob.
+ * Ports json_to_slp.py logic to JavaScript using h5wasm.
+ *
+ * @param {Session} session
+ * @param {Object[]} views - View objects with name, videoWidth, videoHeight
+ * @returns {Promise<Blob>} The .slp file as a Blob
+ */
+async function buildSlpH5(session, views) {
+    const mod = await initH5wasm();
+    const fname = 'export_labels.slp';
+
+    // Build the JSON intermediate data (reuse existing function)
+    const data = buildSlpExportData(session, views);
+
+    // Create an in-memory HDF5 file
+    const f = new mod.File(fname, 'w');
+
+    try {
+        // /metadata group with attributes
+        const metaGroup = f.create_group('metadata');
+        metaGroup.create_attribute('format_id', data.format_id || 1.4, null, '<d');
+        metaGroup.create_attribute('json', JSON.stringify(data.metadata));
+
+        // JSON string datasets
+        f.create_dataset({name: 'videos_json', data: [JSON.stringify(data.videos || [])]});
+        f.create_dataset({name: 'tracks_json', data: [JSON.stringify(data.tracks || [])]});
+        f.create_dataset({name: 'suggestions_json', data: [JSON.stringify(data.suggestions || [])]});
+        f.create_dataset({name: 'sessions_json', data: [JSON.stringify(data.sessions || [])]});
+
+        // /frames - split into separate datasets per field
+        var frames = data.frames || [];
+        if (frames.length > 0) {
+            var framesGroup = f.create_group('frames');
+            var fFrameId = new Float64Array(frames.length);
+            var fVideo = new Float64Array(frames.length);
+            var fFrameIdx = new Float64Array(frames.length);
+            var fInstStart = new Float64Array(frames.length);
+            var fInstEnd = new Float64Array(frames.length);
+            for (var i = 0; i < frames.length; i++) {
+                fFrameId[i] = frames[i].frame_id;
+                fVideo[i] = frames[i].video;
+                fFrameIdx[i] = frames[i].frame_idx;
+                fInstStart[i] = frames[i].instance_id_start;
+                fInstEnd[i] = frames[i].instance_id_end;
+            }
+            framesGroup.create_dataset({name: 'frame_id', data: fFrameId});
+            framesGroup.create_dataset({name: 'video', data: fVideo});
+            framesGroup.create_dataset({name: 'frame_idx', data: fFrameIdx});
+            framesGroup.create_dataset({name: 'instance_id_start', data: fInstStart});
+            framesGroup.create_dataset({name: 'instance_id_end', data: fInstEnd});
+        }
+
+        // /instances - split into separate datasets per field
+        var instances = data.instances || [];
+        if (instances.length > 0) {
+            var instGroup = f.create_group('instances');
+            var iId = new Float64Array(instances.length);
+            var iType = new Float64Array(instances.length);
+            var iFrameId = new Float64Array(instances.length);
+            var iSkeleton = new Float64Array(instances.length);
+            var iTrack = new Float64Array(instances.length);
+            var iFromPred = new Float64Array(instances.length);
+            var iScore = new Float64Array(instances.length);
+            var iPtStart = new Float64Array(instances.length);
+            var iPtEnd = new Float64Array(instances.length);
+            var iTrackScore = new Float64Array(instances.length);
+            for (var j = 0; j < instances.length; j++) {
+                var inst = instances[j];
+                iId[j] = inst.instance_id;
+                iType[j] = inst.instance_type;
+                iFrameId[j] = inst.frame_id;
+                iSkeleton[j] = inst.skeleton;
+                iTrack[j] = inst.track;
+                iFromPred[j] = inst.from_predicted;
+                iScore[j] = inst.score;
+                iPtStart[j] = inst.point_id_start;
+                iPtEnd[j] = inst.point_id_end;
+                iTrackScore[j] = inst.tracking_score;
+            }
+            instGroup.create_dataset({name: 'instance_id', data: iId});
+            instGroup.create_dataset({name: 'instance_type', data: iType});
+            instGroup.create_dataset({name: 'frame_id', data: iFrameId});
+            instGroup.create_dataset({name: 'skeleton', data: iSkeleton});
+            instGroup.create_dataset({name: 'track', data: iTrack});
+            instGroup.create_dataset({name: 'from_predicted', data: iFromPred});
+            instGroup.create_dataset({name: 'score', data: iScore});
+            instGroup.create_dataset({name: 'point_id_start', data: iPtStart});
+            instGroup.create_dataset({name: 'point_id_end', data: iPtEnd});
+            instGroup.create_dataset({name: 'tracking_score', data: iTrackScore});
+        }
+
+        // /points
+        var points = data.points || [];
+        if (points.length > 0) {
+            var ptGroup = f.create_group('points');
+            var ptX = new Float64Array(points.length);
+            var ptY = new Float64Array(points.length);
+            var ptVisible = new Uint8Array(points.length);
+            var ptComplete = new Uint8Array(points.length);
+            for (var pi = 0; pi < points.length; pi++) {
+                ptX[pi] = isNaN(points[pi].x) ? NaN : points[pi].x;
+                ptY[pi] = isNaN(points[pi].y) ? NaN : points[pi].y;
+                ptVisible[pi] = points[pi].visible ? 1 : 0;
+                ptComplete[pi] = points[pi].complete ? 1 : 0;
+            }
+            ptGroup.create_dataset({name: 'x', data: ptX});
+            ptGroup.create_dataset({name: 'y', data: ptY});
+            ptGroup.create_dataset({name: 'visible', data: ptVisible});
+            ptGroup.create_dataset({name: 'complete', data: ptComplete});
+        }
+
+        // /pred_points
+        var predPoints = data.pred_points || [];
+        if (predPoints.length > 0) {
+            var ppGroup = f.create_group('pred_points');
+            var ppX = new Float64Array(predPoints.length);
+            var ppY = new Float64Array(predPoints.length);
+            var ppVisible = new Uint8Array(predPoints.length);
+            var ppComplete = new Uint8Array(predPoints.length);
+            var ppScore = new Float64Array(predPoints.length);
+            for (var ppi = 0; ppi < predPoints.length; ppi++) {
+                ppX[ppi] = isNaN(predPoints[ppi].x) ? NaN : predPoints[ppi].x;
+                ppY[ppi] = isNaN(predPoints[ppi].y) ? NaN : predPoints[ppi].y;
+                ppVisible[ppi] = predPoints[ppi].visible ? 1 : 0;
+                ppComplete[ppi] = predPoints[ppi].complete ? 1 : 0;
+                ppScore[ppi] = predPoints[ppi].score || 0;
+            }
+            ppGroup.create_dataset({name: 'x', data: ppX});
+            ppGroup.create_dataset({name: 'y', data: ppY});
+            ppGroup.create_dataset({name: 'visible', data: ppVisible});
+            ppGroup.create_dataset({name: 'complete', data: ppComplete});
+            ppGroup.create_dataset({name: 'score', data: ppScore});
+        }
+
+        f.close();
+        return h5FileToBlob(fname);
+    } catch (err) {
+        f.close();
+        throw err;
+    }
+}
+
+// ============================================
+// Points3d HDF5 export (in-browser)
+// ============================================
+
+/**
+ * Build a points3d.h5 HDF5 file as a Blob.
+ * Ports json_to_h5.py logic to JavaScript using h5wasm.
+ *
+ * @param {Session} session
+ * @returns {Promise<Blob>} The .h5 file as a Blob
+ */
+async function buildPoints3dH5(session) {
+    const mod = await initH5wasm();
+    const fname = 'export_points3d.h5';
+
+    // Build JSON intermediate
+    const data = buildPoints3dExportData(session);
+
+    const frameIndices = data.frame_indices;
+    const trackNames = data.track_names;
+    const nodeNames = data.node_names;
+    const pts3dRaw = data.points_3d;
+    const reprojRaw = data.reprojection_errors;
+
+    const nFrames = frameIndices.length;
+    const nTracks = trackNames.length;
+    const nNodes = nodeNames.length;
+
+    // Build 4D flat array: (n_frames, n_tracks, n_nodes, 3)
+    const pts3d = new Float64Array(nFrames * nTracks * nNodes * 3);
+    pts3d.fill(NaN);
+    for (var fi = 0; fi < nFrames; fi++) {
+        if (!pts3dRaw[fi]) continue;
+        for (var ti = 0; ti < nTracks; ti++) {
+            if (!pts3dRaw[fi][ti]) continue;
+            for (var ni = 0; ni < nNodes; ni++) {
+                var pt = pts3dRaw[fi][ti][ni];
+                if (pt && pt.length === 3) {
+                    var base = ((fi * nTracks + ti) * nNodes + ni) * 3;
+                    pts3d[base] = pt[0];
+                    pts3d[base + 1] = pt[1];
+                    pts3d[base + 2] = pt[2];
+                }
+            }
+        }
+    }
+
+    // Build 3D flat array: (n_frames, n_tracks, n_nodes)
+    const reprojErr = new Float64Array(nFrames * nTracks * nNodes);
+    reprojErr.fill(NaN);
+    for (var fi2 = 0; fi2 < nFrames; fi2++) {
+        if (!reprojRaw[fi2]) continue;
+        for (var ti2 = 0; ti2 < nTracks; ti2++) {
+            if (!reprojRaw[fi2][ti2]) continue;
+            for (var ni2 = 0; ni2 < nNodes; ni2++) {
+                var val = reprojRaw[fi2][ti2][ni2];
+                if (val != null && !isNaN(val)) {
+                    reprojErr[(fi2 * nTracks + ti2) * nNodes + ni2] = val;
+                }
+            }
+        }
+    }
+
+    const f = new mod.File(fname, 'w');
+    try {
+        f.create_dataset({name: 'points_3d', data: pts3d, shape: [nFrames, nTracks, nNodes, 3]});
+        f.create_dataset({name: 'frame_indices', data: new Float64Array(frameIndices)});
+        f.create_dataset({name: 'reprojection_error', data: reprojErr, shape: [nFrames, nTracks, nNodes]});
+        f.create_dataset({name: 'track_names', data: trackNames});
+        f.create_dataset({name: 'node_names', data: nodeNames});
+
+        f.close();
+        return h5FileToBlob(fname);
+    } catch (err) {
+        f.close();
+        throw err;
+    }
+}
+
+// ============================================
+// Reprojections HDF5 export (in-browser)
+// ============================================
+
+/**
+ * Build a reprojections.h5 HDF5 file as a Blob.
+ * Contains 2D reprojected points per camera.
+ * Shape: (n_frames, n_tracks, n_cameras, n_nodes, 2)
+ *
+ * @param {Session} session
+ * @returns {Promise<Blob>} The .h5 file as a Blob
+ */
+async function buildReprojH5(session) {
+    const mod = await initH5wasm();
+    const fname = 'export_reprojections.h5';
+
+    const cameras = session.cameras;
+    const nodeNames = session.skeleton.nodes;
+    const trackNames = session.tracks;
+    const nCameras = cameras.length;
+    const nNodes = nodeNames.length;
+    const nTracks = trackNames.length;
+    const cameraNames = cameras.map(function (c) { return c.name; });
+
+    // Collect frames sorted
+    const sortedFrameIndices = Array.from(session.instanceGroups.keys()).sort(function (a, b) { return a - b; });
+    const nFrames = sortedFrameIndices.length;
+
+    // Build 5D flat array: (n_frames, n_tracks, n_cameras, n_nodes, 2)
+    const reproj = new Float64Array(nFrames * nTracks * nCameras * nNodes * 2);
+    reproj.fill(NaN);
+
+    for (var fi = 0; fi < nFrames; fi++) {
+        var frameIdx = sortedFrameIndices[fi];
+        var trackMap = session.instanceGroups.get(frameIdx);
+        if (!trackMap) continue;
+
+        for (var [trackIdx, groups] of trackMap) {
+            if (trackIdx >= nTracks) continue;
+            for (var group of groups) {
+                if (!group.reprojections) continue;
+                for (var ci = 0; ci < nCameras; ci++) {
+                    var camName = cameraNames[ci];
+                    var reprojPts = group.reprojections[camName];
+                    if (!reprojPts) continue;
+                    for (var ni = 0; ni < Math.min(nNodes, reprojPts.length); ni++) {
+                        var rpt = reprojPts[ni];
+                        if (rpt) {
+                            var rbase = (((fi * nTracks + trackIdx) * nCameras + ci) * nNodes + ni) * 2;
+                            reproj[rbase] = rpt[0];
+                            reproj[rbase + 1] = rpt[1];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    const f = new mod.File(fname, 'w');
+    try {
+        f.create_dataset({name: 'reprojections', data: reproj, shape: [nFrames, nTracks, nCameras, nNodes, 2]});
+        f.create_dataset({name: 'frame_indices', data: new Float64Array(sortedFrameIndices)});
+        f.create_dataset({name: 'track_names', data: trackNames});
+        f.create_dataset({name: 'node_names', data: nodeNames.slice()});
+        f.create_dataset({name: 'camera_names', data: cameraNames});
+
+        f.close();
+        return h5FileToBlob(fname);
+    } catch (err) {
+        f.close();
+        throw err;
+    }
+}
