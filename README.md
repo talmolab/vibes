@@ -23,6 +23,7 @@ Self-contained HTML tools and applets for the web.
 - [PyPI Name Checker](pypi-name-checker/) - Check Python package name availability with suggestions
 - [CORS Check](cors-check/) - Test URL CORS status and get the right fetch code
 - [SLEAP Config Picker](sleap-config-picker/) - Interactive sleap-nn training config generator with SLP file analysis
+- [Multi-view GUI](mv-gui/) - multiview 3d annotation GUI
 
 ## About
 
