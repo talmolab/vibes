@@ -1,0 +1,15 @@
+{
+  "frames": {
+    "0": "frame_000000.ply"
+  },
+  "training_config": {
+    "cameras": [
+      "back",
+      "mid",
+      "side",
+      "top"
+    ],
+    "iterations": 3000,
+    "num_points": 10000
+  }
+}
