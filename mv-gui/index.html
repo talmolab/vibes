@@ -901,6 +901,7 @@
             const dragInfo = interactionManager ? interactionManager.dragInfo : null;
             const assignmentMode = interactionManager ? interactionManager.assignmentMode : false;
             const assignmentSelectedIds = interactionManager ? interactionManager.getAssignmentSelectedIds() : [];
+            const selectedUnlinked = interactionManager ? interactionManager.selectedUnlinked : null;
 
             // Update assignment toolbar state
             const tbAssign = document.getElementById('tbAssign');
@@ -944,6 +945,7 @@
                     unlinkedInstances: viewUnlinked,
                     assignmentSelectedIds: assignmentSelectedIds,
                     assignmentMode: assignmentMode,
+                    selectedUnlinkedId: selectedUnlinked ? selectedUnlinked.id : null,
                 });
             }
 
@@ -1029,8 +1031,8 @@
                 },
 
                 onInstanceDeleted: function (frameIdx, group) {
-                    const trackName = state.session.tracks[group.trackIdx] || 'Track ' + group.trackIdx;
-                    setStatus('Deleted instance: ' + trackName, 'success');
+                    var trackName = group ? (state.session.tracks[group.trackIdx] || 'Track ' + group.trackIdx) : 'unlinked instance';
+                    setStatus('Deleted ' + trackName, 'success');
 
                     // Update timeline modification state
                     if (timeline) {

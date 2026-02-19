@@ -909,6 +909,7 @@ function drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, options) {
     const baseLineWidth = options.lineWidth != null ? options.lineWidth : 2;
     const assignmentSelectedIds = options.assignmentSelectedIds || [];
     const assignmentColor = options.assignmentColor || '#fbbf24';
+    const selectedUnlinkedId = options.selectedUnlinkedId || null;
 
     const vw = options.videoWidth;
     const vh = options.videoHeight;
@@ -929,8 +930,10 @@ function drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, options) {
         const points = instance.points;
         if (!points || points.length === 0) continue;
 
-        const isSelected = assignmentSelectedIds.indexOf(ul.id) >= 0;
-        const color = isSelected ? assignmentColor : getTrackColor(instance.trackIdx != null ? instance.trackIdx : u);
+        const isAssignSelected = assignmentSelectedIds.indexOf(ul.id) >= 0;
+        const isEditSelected = selectedUnlinkedId != null && ul.id === selectedUnlinkedId;
+        const isSelected = isAssignSelected || isEditSelected;
+        const color = isAssignSelected ? assignmentColor : isEditSelected ? '#60a5fa' : getTrackColor(instance.trackIdx != null ? instance.trackIdx : u);
         const alpha = isSelected ? 0.95 : 0.5;
 
         // Pre-compute canvas positions
@@ -997,10 +1000,10 @@ function drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, options) {
             ctx.fillText('?', anchorCp.x - nodeSize * 2, anchorCp.y - nodeSize * 2);
         }
 
-        // Assignment selection ring
+        // Selection ring (assignment = yellow, edit = blue)
         if (isSelected) {
             ctx.globalAlpha = 0.8;
-            ctx.strokeStyle = assignmentColor;
+            ctx.strokeStyle = isAssignSelected ? assignmentColor : '#60a5fa';
             ctx.lineWidth = 2 * scale;
             for (let i = 0; i < canvasPoints.length; i++) {
                 const cp = canvasPoints[i];
@@ -1105,6 +1108,7 @@ function drawFrameOverlays(ctx, viewName, frameGroup, instanceGroups, session, o
         drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, Object.assign({}, renderOpts, {
             assignmentSelectedIds: options.assignmentSelectedIds || [],
             assignmentColor: '#fbbf24',
+            selectedUnlinkedId: options.selectedUnlinkedId || null,
         }));
     }
 

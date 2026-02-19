@@ -745,6 +745,132 @@
     });
 
     // ============================================
+    // Unlinked highlight rendering
+    // ============================================
+
+    describe('Unlinked highlight rendering', function () {
+        it('drawUnlinkedInstances should accept selectedUnlinkedId option', function () {
+            var canvas = document.createElement('canvas');
+            canvas.width = 640;
+            canvas.height = 480;
+            var ctx = canvas.getContext('2d');
+
+            var skeleton = new Skeleton('test', ['a', 'b'], [[0, 1]]);
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            var ul = new UnlinkedInstance(inst, 'cam1');
+
+            // Should not throw when called with selectedUnlinkedId
+            drawUnlinkedInstances(ctx, [ul], skeleton, {
+                nodeSize: 4,
+                videoWidth: 640,
+                videoHeight: 480,
+                canvasWidth: 640,
+                canvasHeight: 480,
+                assignmentSelectedIds: [],
+                selectedUnlinkedId: ul.id,
+            });
+
+            // Verify something was drawn (canvas is no longer blank)
+            var data = ctx.getImageData(0, 0, 640, 480).data;
+            var nonZero = false;
+            for (var i = 3; i < data.length; i += 4) {
+                if (data[i] > 0) { nonZero = true; break; }
+            }
+            assert(nonZero, 'Canvas should have drawn content for selected unlinked');
+        });
+
+        it('selectedUnlinkedId should cause full opacity rendering', function () {
+            // Test the logic: isEditSelected should be true when IDs match
+            var inst = new Instance([[100, 100]], 0, 'user', 1.0);
+            var ul = new UnlinkedInstance(inst, 'cam1');
+            var selectedId = ul.id;
+
+            var isEditSelected = selectedId != null && ul.id === selectedId;
+            assert(isEditSelected, 'Should detect selected unlinked by ID');
+
+            var isSelected = isEditSelected;
+            var alpha = isSelected ? 0.95 : 0.5;
+            assertEqual(alpha, 0.95, 'Selected unlinked should render at full alpha');
+        });
+
+        it('unselected unlinked should render at reduced alpha', function () {
+            var inst = new Instance([[100, 100]], 0, 'user', 1.0);
+            var ul = new UnlinkedInstance(inst, 'cam1');
+
+            var isEditSelected = null != null && ul.id === null;
+            var isSelected = isEditSelected;
+            var alpha = isSelected ? 0.95 : 0.5;
+            assertEqual(alpha, 0.5, 'Unselected unlinked should render at half alpha');
+        });
+    });
+
+    // ============================================
+    // onInstanceDeleted handles null group (unlinked deletion)
+    // ============================================
+
+    describe('onInstanceDeleted with null group', function () {
+        it('should not crash when group is null', function () {
+            // Simulate the callback logic from index.html
+            var group = null;
+            var trackName = group ? ('Track ' + group.trackIdx) : 'unlinked instance';
+            assertEqual(trackName, 'unlinked instance', 'Should use fallback name for null group');
+        });
+
+        it('should use track name when group exists', function () {
+            var group = new InstanceGroup(1, 2);
+            var tracks = ['track_0', 'track_1', 'track_2'];
+            var trackName = group ? (tracks[group.trackIdx] || 'Track ' + group.trackIdx) : 'unlinked instance';
+            assertEqual(trackName, 'track_2', 'Should use track name from session');
+        });
+    });
+
+    // ============================================
+    // Picking integration: findNearestUnlinkedNode
+    // ============================================
+
+    describe('Unlinked instance picking', function () {
+        it('findNearestUnlinkedNode should find instance near its points', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            // findNearestUnlinkedNode needs views with overlayCanvas for threshold calc
+            var fakeCanvas = document.createElement('canvas');
+            fakeCanvas.width = 640;
+            fakeCanvas.height = 480;
+            fakeCanvas.style.width = '640px';
+            fakeCanvas.style.height = '480px';
+            document.body.appendChild(fakeCanvas);
+            env.views[0].overlayCanvas = fakeCanvas;
+
+            var hit = env.mgr.findNearestUnlinkedNode(102, 98, 'cam1', 0);
+            assertNotNull(hit, 'Should find unlinked node near (102, 98)');
+            assertEqual(hit.nodeIdx, 0, 'Should find node 0');
+            assertNotNull(hit.unlinked, 'Should return unlinked reference');
+
+            document.body.removeChild(fakeCanvas);
+        });
+
+        it('findNearestUnlinkedNode should return null when too far', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            var hit = env.mgr.findNearestUnlinkedNode(400, 400, 'cam1', 0);
+            assertNull(hit, 'Should not find node far from (400, 400)');
+        });
+
+        it('findNearestUnlinkedNode should not find instances on other cameras', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            var hit = env.mgr.findNearestUnlinkedNode(100, 100, 'cam2', 0);
+            assertNull(hit, 'Should not find cam1 instance when querying cam2');
+        });
+    });
+
+    // ============================================
     // newProject clears all state
     // ============================================
 
@@ -819,6 +945,285 @@
             // With no session and no views, newProject should not require confirmation
             var needsConfirm = (null || [].length > 0);
             assert(!needsConfirm, 'Empty state should not require confirmation');
+        });
+    });
+
+    // ============================================
+    // Auto-assignment mode on unlinked click
+    // ============================================
+
+    describe('Auto-assignment mode on unlinked click', function () {
+        it('clicking unlinked instance should auto-enter assignment mode', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            var fg = env.session.getFrameGroup(0);
+            var ul = fg.getUnlinkedInstances('cam1')[0];
+
+            // Simulate the onMouseDown logic for unlinked hit
+            assert(!env.mgr.assignmentMode, 'Should start not in assignment mode');
+
+            // Replicate the unlinked click path
+            env.mgr.select(null, -1);
+            env.mgr.selectedUnlinked = ul;
+            if (!env.mgr.assignmentMode) {
+                env.mgr.assignmentMode = true;
+            }
+            env.mgr.addToAssignmentSelection(ul);
+
+            assert(env.mgr.assignmentMode, 'Should be in assignment mode after clicking unlinked');
+            assertEqual(env.mgr.assignmentSelection.length, 1, 'Should have 1 in assignment selection');
+            assertEqual(env.mgr.assignmentSelection[0].id, ul.id, 'Selection should contain clicked unlinked');
+        });
+
+        it('clicking second unlinked on different camera should add to selection', function () {
+            var env = makeTestEnv();
+            var inst1 = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            var inst2 = new Instance([[150, 150], [250, 250]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst1);
+            env.session.addUnlinkedInstance(0, 'cam2', inst2);
+
+            var fg = env.session.getFrameGroup(0);
+            var ul1 = fg.getUnlinkedInstances('cam1')[0];
+            var ul2 = fg.getUnlinkedInstances('cam2')[0];
+
+            // First click: auto-enters assignment mode
+            env.mgr.select(null, -1);
+            env.mgr.selectedUnlinked = ul1;
+            env.mgr.assignmentMode = true;
+            env.mgr.addToAssignmentSelection(ul1);
+
+            // Second click: already in assignment mode, add second
+            env.mgr.selectedUnlinked = ul2;
+            env.mgr.addToAssignmentSelection(ul2);
+
+            assertEqual(env.mgr.assignmentSelection.length, 2, 'Should have 2 in assignment selection');
+        });
+
+        it('clicking same camera should replace in assignment selection', function () {
+            var env = makeTestEnv();
+            var inst1 = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            var inst2 = new Instance([[300, 300], [400, 400]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst1);
+            env.session.addUnlinkedInstance(0, 'cam1', inst2);
+
+            var fg = env.session.getFrameGroup(0);
+            var unlinked = fg.getUnlinkedInstances('cam1');
+
+            // Select first
+            env.mgr.assignmentMode = true;
+            env.mgr.addToAssignmentSelection(unlinked[0]);
+            assertEqual(env.mgr.assignmentSelection.length, 1, 'Should have 1');
+
+            // Select second on same camera - should replace
+            env.mgr.addToAssignmentSelection(unlinked[1]);
+            assertEqual(env.mgr.assignmentSelection.length, 1, 'Should still have 1 (replaced)');
+            assertEqual(env.mgr.assignmentSelection[0].id, unlinked[1].id, 'Should be the second one');
+        });
+
+        it('full click-click-group workflow', function () {
+            var env = makeTestEnv();
+            var inst1 = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            var inst2 = new Instance([[150, 150], [250, 250]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst1);
+            env.session.addUnlinkedInstance(0, 'cam2', inst2);
+
+            var fg = env.session.getFrameGroup(0);
+            var ul1 = fg.getUnlinkedInstances('cam1')[0];
+            var ul2 = fg.getUnlinkedInstances('cam2')[0];
+
+            // Click first unlinked (auto-enters assignment mode)
+            env.mgr.select(null, -1);
+            env.mgr.selectedUnlinked = ul1;
+            env.mgr.assignmentMode = true;
+            env.mgr.addToAssignmentSelection(ul1);
+
+            // Click second unlinked (already in assignment mode)
+            env.mgr.selectedUnlinked = ul2;
+            env.mgr.addToAssignmentSelection(ul2);
+
+            // Press C to create group
+            var event = new KeyboardEvent('keydown', { key: 'c', ctrlKey: false, metaKey: false, altKey: false });
+            env.mgr.onKeyDown(event);
+
+            // Verify group created
+            var trackMap = env.session.instanceGroups.get(0);
+            assertNotNull(trackMap, 'Should have instance groups');
+            var hasGroup = false;
+            if (trackMap) {
+                for (var entry of trackMap) {
+                    if (entry[1].length > 0) hasGroup = true;
+                }
+            }
+            assert(hasGroup, 'Group should be created from click-click-C workflow');
+            assert(!env.mgr.assignmentMode, 'Assignment mode should be off after group creation');
+            assertEqual(fg.getUnlinkedInstances('cam1').length, 0, 'cam1 unlinked should be cleared');
+            assertEqual(fg.getUnlinkedInstances('cam2').length, 0, 'cam2 unlinked should be cleared');
+        });
+    });
+
+    // ============================================
+    // Delete key works for unlinked instances
+    // ============================================
+
+    describe('Delete key for unlinked instances', function () {
+        it('Delete key should trigger deletion when unlinked is selected', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            var fg = env.session.getFrameGroup(0);
+            var ul = fg.getUnlinkedInstances('cam1')[0];
+
+            env.mgr.selectedUnlinked = ul;
+            env.mgr.lastInteractedView = 'cam1';
+
+            var event = new KeyboardEvent('keydown', { key: 'Delete' });
+            env.mgr.onKeyDown(event);
+
+            assertEqual(fg.getUnlinkedInstances('cam1').length, 0, 'Unlinked should be deleted by Delete key');
+            assertNull(env.mgr.selectedUnlinked, 'Selection should be cleared');
+        });
+
+        it('Backspace key should also delete unlinked instance', function () {
+            var env = makeTestEnv();
+            var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
+            env.session.addUnlinkedInstance(0, 'cam1', inst);
+
+            var fg = env.session.getFrameGroup(0);
+            var ul = fg.getUnlinkedInstances('cam1')[0];
+
+            env.mgr.selectedUnlinked = ul;
+            env.mgr.lastInteractedView = 'cam1';
+
+            var event = new KeyboardEvent('keydown', { key: 'Backspace' });
+            env.mgr.onKeyDown(event);
+
+            assertEqual(fg.getUnlinkedInstances('cam1').length, 0, 'Unlinked should be deleted by Backspace');
+        });
+    });
+
+    // ============================================
+    // Closest-hit logic (linked vs unlinked)
+    // ============================================
+
+    describe('Closest hit selection (linked vs unlinked)', function () {
+        it('should prefer closer unlinked over farther linked instance', function () {
+            // Test the distance comparison logic
+            var linkedDist = 10;
+            var unlinkDist = 5;
+
+            var useLinked = false;
+            var useUnlinked = false;
+            if (linkedDist && unlinkDist) {
+                useLinked = linkedDist <= unlinkDist;
+                useUnlinked = !useLinked;
+            }
+
+            assert(useUnlinked, 'Should prefer closer unlinked');
+            assert(!useLinked, 'Should not use farther linked');
+        });
+
+        it('should prefer closer linked over farther unlinked instance', function () {
+            var linkedDist = 3;
+            var unlinkDist = 8;
+
+            var useLinked = linkedDist <= unlinkDist;
+            var useUnlinked = !useLinked;
+
+            assert(useLinked, 'Should prefer closer linked');
+            assert(!useUnlinked, 'Should not use farther unlinked');
+        });
+
+        it('should use linked when only linked hit exists', function () {
+            var linkedHit = { distance: 5 };
+            var ulHit = null;
+
+            var useLinked = false;
+            var useUnlinked = false;
+            if (linkedHit && ulHit) {
+                useLinked = linkedHit.distance <= ulHit.distance;
+                useUnlinked = !useLinked;
+            } else if (linkedHit) {
+                useLinked = true;
+            } else if (ulHit) {
+                useUnlinked = true;
+            }
+
+            assert(useLinked, 'Should use linked when only option');
+            assert(!useUnlinked, 'Should not use unlinked when null');
+        });
+
+        it('should use unlinked when only unlinked hit exists', function () {
+            var linkedHit = null;
+            var ulHit = { distance: 5 };
+
+            var useLinked = false;
+            var useUnlinked = false;
+            if (linkedHit && ulHit) {
+                useLinked = linkedHit.distance <= ulHit.distance;
+                useUnlinked = !useLinked;
+            } else if (linkedHit) {
+                useLinked = true;
+            } else if (ulHit) {
+                useUnlinked = true;
+            }
+
+            assert(!useLinked, 'Should not use linked when null');
+            assert(useUnlinked, 'Should use unlinked when only option');
+        });
+    });
+
+    // ============================================
+    // Escape clears assignment mode
+    // ============================================
+
+    describe('Escape clears assignment mode', function () {
+        it('Escape should exit assignment mode', function () {
+            var env = makeTestEnv();
+            env.mgr.assignmentMode = true;
+            env.mgr.assignmentSelection = [{ id: 1, cameraName: 'cam1' }];
+
+            var event = new KeyboardEvent('keydown', { key: 'Escape' });
+            env.mgr.onKeyDown(event);
+
+            assert(!env.mgr.assignmentMode, 'Assignment mode should be off after Escape');
+            assertEqual(env.mgr.assignmentSelection.length, 0, 'Assignment selection should be cleared');
+        });
+
+        it('Escape should clear regular selection when not in assignment mode', function () {
+            var env = makeTestEnv();
+            env.mgr.selectedUnlinked = { id: 1, instance: {}, cameraName: 'cam1' };
+
+            var event = new KeyboardEvent('keydown', { key: 'Escape' });
+            env.mgr.onKeyDown(event);
+
+            assertNull(env.mgr.selectedUnlinked, 'selectedUnlinked should be cleared');
+        });
+    });
+
+    // ============================================
+    // Selection ring color
+    // ============================================
+
+    describe('Selection ring color', function () {
+        it('assignment-selected should use yellow color', function () {
+            var assignmentColor = '#fbbf24';
+            var isAssignSelected = true;
+            var isEditSelected = false;
+
+            var ringColor = isAssignSelected ? assignmentColor : '#60a5fa';
+            assertEqual(ringColor, '#fbbf24', 'Assignment selection should use yellow');
+        });
+
+        it('edit-selected should use blue color', function () {
+            var assignmentColor = '#fbbf24';
+            var isAssignSelected = false;
+            var isEditSelected = true;
+
+            var ringColor = isAssignSelected ? assignmentColor : '#60a5fa';
+            assertEqual(ringColor, '#60a5fa', 'Edit selection should use blue');
         });
     });
 

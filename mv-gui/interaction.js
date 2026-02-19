@@ -426,6 +426,8 @@ class InteractionManager {
         if (this.assignmentMode) {
             const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
             if (ulHit) {
+                this.select(null, -1);
+                this.selectedUnlinked = ulHit.unlinked;
                 this.addToAssignmentSelection(ulHit.unlinked);
                 this._requestRedraw();
                 e._consumedByInteraction = true;
@@ -433,22 +435,39 @@ class InteractionManager {
             }
         }
 
-        // --- Single left click: try linked instances first ---
-        const hit = this.findNearestNode(vx, vy, viewName, frameIdx);
-        if (hit) {
-            // Select the instance group and node
+        // --- Single left click: find closest hit (linked or unlinked) ---
+        const linkedHit = this.findNearestNode(vx, vy, viewName, frameIdx);
+        const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
+
+        // Determine which hit is closer
+        let useLinked = false;
+        let useUnlinked = false;
+        if (linkedHit && ulHit) {
+            useLinked = linkedHit.distance <= ulHit.distance;
+            useUnlinked = !useLinked;
+        } else if (linkedHit) {
+            useLinked = true;
+        } else if (ulHit) {
+            useUnlinked = true;
+        }
+
+        if (useLinked) {
+            // Select the linked instance group and node
             this.selectedUnlinked = null;
-            this.select(hit.instanceGroup, hit.nodeIdx);
+            if (this.assignmentMode) {
+                this.setAssignmentMode(false);
+            }
+            this.select(linkedHit.instanceGroup, linkedHit.nodeIdx);
 
             // Alt/Option key: whole-instance drag mode
             if (e.altKey) {
-                const instance = hit.instanceGroup.getInstance(viewName);
+                const instance = linkedHit.instanceGroup.getInstance(viewName);
                 this.isDragging = true;
                 this.dragInfo = {
                     mode: 'instance',
                     viewName: viewName,
-                    instanceGroupIdx: hit.instanceGroupIdx,
-                    nodeIdx: hit.nodeIdx,
+                    instanceGroupIdx: linkedHit.instanceGroupIdx,
+                    nodeIdx: linkedHit.nodeIdx,
                     startPos: [vx, vy],
                     currentPos: [vx, vy],
                     unlinked: null,
@@ -462,8 +481,8 @@ class InteractionManager {
                 this.dragInfo = {
                     mode: 'node',
                     viewName: viewName,
-                    instanceGroupIdx: hit.instanceGroupIdx,
-                    nodeIdx: hit.nodeIdx,
+                    instanceGroupIdx: linkedHit.instanceGroupIdx,
+                    nodeIdx: linkedHit.nodeIdx,
                     startPos: [vx, vy],
                     currentPos: [vx, vy],
                     unlinked: null,
@@ -472,50 +491,55 @@ class InteractionManager {
             }
 
             e._consumedByInteraction = true;
-        } else {
-            // No linked instance hit — try unlinked instances
-            const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
-            if (ulHit) {
-                // Select the unlinked instance (for editing/deletion)
-                this.select(null, -1);
-                this.selectedUnlinked = ulHit.unlinked;
+        } else if (useUnlinked) {
+            // Select the unlinked instance (for editing/deletion)
+            this.select(null, -1);
+            this.selectedUnlinked = ulHit.unlinked;
 
-                // Start dragging the unlinked node
-                if (e.altKey) {
-                    // Whole-instance drag on unlinked
-                    const pts = ulHit.unlinked.instance.points;
-                    this.isDragging = true;
-                    this.dragInfo = {
-                        mode: 'instance',
-                        viewName: viewName,
-                        instanceGroupIdx: -1,
-                        nodeIdx: ulHit.nodeIdx,
-                        startPos: [vx, vy],
-                        currentPos: [vx, vy],
-                        unlinked: ulHit.unlinked,
-                        originalPoints: pts
-                            ? pts.map(function (p) { return p ? [p[0], p[1]] : null; })
-                            : null,
-                    };
-                } else {
-                    // Single-node drag on unlinked
-                    this.isDragging = true;
-                    this.dragInfo = {
-                        mode: 'node',
-                        viewName: viewName,
-                        instanceGroupIdx: -1,
-                        nodeIdx: ulHit.nodeIdx,
-                        startPos: [vx, vy],
-                        currentPos: [vx, vy],
-                        unlinked: ulHit.unlinked,
-                        originalPoints: null,
-                    };
-                }
+            // Auto-enter assignment mode and add to selection for grouping
+            if (!this.assignmentMode) {
+                this.assignmentMode = true;
+            }
+            this.addToAssignmentSelection(ulHit.unlinked);
 
-                e._consumedByInteraction = true;
+            // Start dragging the unlinked node
+            if (e.altKey) {
+                // Whole-instance drag on unlinked
+                const pts = ulHit.unlinked.instance.points;
+                this.isDragging = true;
+                this.dragInfo = {
+                    mode: 'instance',
+                    viewName: viewName,
+                    instanceGroupIdx: -1,
+                    nodeIdx: ulHit.nodeIdx,
+                    startPos: [vx, vy],
+                    currentPos: [vx, vy],
+                    unlinked: ulHit.unlinked,
+                    originalPoints: pts
+                        ? pts.map(function (p) { return p ? [p[0], p[1]] : null; })
+                        : null,
+                };
             } else {
-                // Clicked on empty space
-                this.clearSelection();
+                // Single-node drag on unlinked
+                this.isDragging = true;
+                this.dragInfo = {
+                    mode: 'node',
+                    viewName: viewName,
+                    instanceGroupIdx: -1,
+                    nodeIdx: ulHit.nodeIdx,
+                    startPos: [vx, vy],
+                    currentPos: [vx, vy],
+                    unlinked: ulHit.unlinked,
+                    originalPoints: null,
+                };
+            }
+
+            e._consumedByInteraction = true;
+        } else {
+            // Clicked on empty space
+            this.clearSelection();
+            if (this.assignmentMode) {
+                this.setAssignmentMode(false);
             }
         }
 
@@ -747,7 +771,7 @@ class InteractionManager {
 
             case 'Delete':
             case 'Backspace': {
-                if (this.selectedInstanceGroup) {
+                if (this.selectedInstanceGroup || this.selectedUnlinked) {
                     e.preventDefault();
                     this._deleteSelected(e.shiftKey);
                 }
