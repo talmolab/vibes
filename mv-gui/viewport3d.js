@@ -92,9 +92,6 @@ class Viewport3D {
         /** @type {ResizeObserver|null} */
         this._resizeObserver = null;
 
-        /** @type {GaussianSplatViewer|null} Gaussian splat overlay viewer */
-        this.splatViewer = null;
-
         this._init();
     }
 
@@ -664,10 +661,6 @@ class Viewport3D {
         this.threeCamera.updateProjectionMatrix();
         this.renderer.setSize(width, height);
 
-        // Resize splat viewer if present
-        if (this.splatViewer) {
-            this.splatViewer.resize(width, height);
-        }
     }
 
     /**
@@ -785,12 +778,6 @@ class Viewport3D {
             this.scene = null;
         }
 
-        // Dispose splat viewer
-        if (this.splatViewer) {
-            this.splatViewer.dispose();
-            this.splatViewer = null;
-        }
-
         // Dispose renderer and remove canvas
         if (this.renderer) {
             this.renderer.dispose();
@@ -801,58 +788,6 @@ class Viewport3D {
         }
 
         this.threeCamera = null;
-    }
-
-    // ============================================
-    // Gaussian Splat Methods
-    // ============================================
-
-    /**
-     * Initialize the Gaussian Splat viewer overlay.
-     * Creates a GaussianSplatViewer and makes the Three.js background transparent.
-     * @returns {GaussianSplatViewer} The splat viewer instance
-     */
-    initSplatViewer() {
-        if (this.splatViewer) return this.splatViewer;
-
-        this.splatViewer = new GaussianSplatViewer(
-            this.container,
-            this.threeCamera,
-            this.controls
-        );
-
-        // Make Three.js background transparent so splats show through
-        if (this.scene) {
-            this.scene.background = null;
-            this.renderer.setClearColor(0x000000, 0);
-        }
-
-        return this.splatViewer;
-    }
-
-    /**
-     * Load a splat file into the viewport.
-     * @param {File|string} fileOrUrl - File object or URL
-     * @param {Function} [onProgress] - Progress callback
-     * @returns {Promise<Object>} The loaded splat
-     */
-    async loadSplat(fileOrUrl, onProgress) {
-        this.initSplatViewer();
-        return await this.splatViewer.loadSplat(fileOrUrl, onProgress);
-    }
-
-    /**
-     * Remove the splat overlay and restore the opaque Three.js background.
-     */
-    removeSplat() {
-        if (this.splatViewer) {
-            this.splatViewer.dispose();
-            this.splatViewer = null;
-        }
-        // Restore opaque background
-        if (this.scene) {
-            this.scene.background = new THREE.Color(0x1a1a1a);
-        }
     }
 
     // ============================================
@@ -870,11 +805,6 @@ class Viewport3D {
 
         if (this.controls) {
             this.controls.update();
-        }
-
-        // Render gaussian splat overlay (behind Three.js)
-        if (this.splatViewer) {
-            this.splatViewer.render();
         }
 
         if (this.renderer && this.scene && this.threeCamera) {

@@ -34,8 +34,6 @@
                     <div class="menu-dropdown-item" id="menuExportSlp">Export SLP Data</div>
                     <div class="menu-dropdown-item" id="menuExportPoints3d">Export 3D Points</div>
                     <div class="menu-dropdown-item" id="menuExportCalib">Export Calibration (TOML)</div>
-                    <div class="menu-separator"></div>
-                    <div class="menu-dropdown-item" id="menuLoadSplat">Load Gaussian Splat...</div>
                 </div>
             </div>
             <div class="menu-item" data-menu="edit">
@@ -61,9 +59,6 @@
                     <div class="menu-separator"></div>
                     <div class="menu-dropdown-item" id="menuResetView">Reset 3D View</div>
                     <div class="menu-dropdown-item" id="menuFitScene">Fit 3D to Scene</div>
-                    <div class="menu-separator"></div>
-                    <div class="menu-dropdown-item" id="menuToggleSplat">Toggle Gaussian Splat <span
-                            class="shortcut-hint">S</span></div>
                 </div>
             </div>
         </div>
@@ -150,29 +145,6 @@
             <!-- 3D Viewport (center-right) -->
             <div class="viewport3d-container" id="viewport3dContainer">
                 <div id="viewport3dCanvas" style="width:100%;height:100%;"></div>
-                <!-- Splat controls overlay -->
-                <div id="splatControls"
-                    style="display:none;position:absolute;bottom:6px;left:6px;z-index:20;background:rgba(0,0,0,0.75);border-radius:4px;padding:6px 10px;font-size:11px;color:#e0e0e0;pointer-events:auto;">
-                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-                        <span id="splatInfoLabel" style="color:#667eea;font-weight:600;">No splat</span>
-                        <button id="btnSplatToggle"
-                            style="padding:1px 6px;font-size:10px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:2px;cursor:pointer;">Hide</button>
-                        <button id="btnSplatRemove"
-                            style="padding:1px 6px;font-size:10px;background:#5a2020;border:1px solid #f56565;color:#f56565;border-radius:2px;cursor:pointer;">Remove</button>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <label style="color:#aaa;">Opacity</label>
-                        <input type="range" id="splatOpacitySlider" min="0" max="100" value="80" step="5"
-                            style="width:80px;height:14px;">
-                        <span id="splatOpacityValue" style="min-width:28px;">80%</span>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:6px;margin-top:3px;">
-                        <label style="color:#aaa;">Scale</label>
-                        <input type="range" id="splatScaleSlider" min="10" max="500" value="100" step="5"
-                            style="width:80px;height:14px;">
-                        <span id="splatScaleValue" style="min-width:28px;">1.0x</span>
-                    </div>
-                </div>
             </div>
 
             <!-- Info Panel (right sidebar) -->
@@ -383,53 +355,6 @@
                     </div>
 
                     <div class="info-section">
-                        <h3>Gaussian Splat</h3>
-                        <div id="splatAlignSection" style="font-size:11px;color:var(--text-secondary);">
-                            <div class="panel-button-row" style="margin-bottom:6px">
-                                <button class="panel-btn" id="btnLoadSplat" title="Load .ply or .splat file">Load
-                                    Splat</button>
-                                <button class="panel-btn" id="btnRemoveSplat" title="Remove splat"
-                                    disabled>Remove</button>
-                            </div>
-                            <div id="splatAlignControls" style="display:none;">
-                                <div style="margin-bottom:4px;color:#667eea;font-weight:600;" id="splatSessionInfo">-
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
-                                    <label style="width:26px;">X</label>
-                                    <input type="range" id="splatOffsetX" min="-500" max="500" value="0" step="5"
-                                        style="flex:1;height:12px;">
-                                    <span id="splatOffsetXVal" style="min-width:30px;text-align:right;">0</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
-                                    <label style="width:26px;">Y</label>
-                                    <input type="range" id="splatOffsetY" min="-500" max="500" value="0" step="5"
-                                        style="flex:1;height:12px;">
-                                    <span id="splatOffsetYVal" style="min-width:30px;text-align:right;">0</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
-                                    <label style="width:26px;">Z</label>
-                                    <input type="range" id="splatOffsetZ" min="-500" max="500" value="0" step="5"
-                                        style="flex:1;height:12px;">
-                                    <span id="splatOffsetZVal" style="min-width:30px;text-align:right;">0</span>
-                                </div>
-                                <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">
-                                    <label style="width:26px;">Rot</label>
-                                    <input type="range" id="splatRotZ" min="-180" max="180" value="0" step="5"
-                                        style="flex:1;height:12px;">
-                                    <span id="splatRotZVal" style="min-width:30px;text-align:right;">0°</span>
-                                </div>
-                                <div class="panel-button-row" style="margin-top:4px;">
-                                    <button class="panel-btn" id="btnSplatResetAlign"
-                                        title="Reset alignment to defaults">Reset</button>
-                                    <button class="panel-btn" id="btnSplatApplyAlign"
-                                        title="Apply alignment transform">Apply</button>
-                                </div>
-                            </div>
-                            <div id="splatNoData" style="color:var(--text-muted);">No splat loaded</div>
-                        </div>
-                    </div>
-
-                    <div class="info-section">
                         <h3>Shortcuts</h3>
                         <div style="font-size:11px;color:var(--text-muted);line-height:1.8;">
                             <div><kbd>Tab</kbd> Cycle instances</div>
@@ -441,7 +366,6 @@
                             <div><kbd>I</kbd> Toggle info panel</div>
                             <div><kbd>V</kbd> Cycle single-view mode</div>
                             <div><kbd>G</kbd> Return to grid view</div>
-                            <div><kbd>S</kbd> Toggle Gaussian Splat</div>
                             <div><kbd>A</kbd> Toggle assignment mode</div>
                             <div><kbd>Enter</kbd> Create group (assign)</div>
                             <div><kbd>Alt+Drag</kbd> Move whole instance</div>
@@ -513,7 +437,6 @@
     <script src="demo-data.js"></script>
     <script src="overlays.js"></script>
     <script src="interaction.js"></script>
-    <script src="gsplat-viewer.js"></script>
     <script src="viewport3d.js"></script>
     <script src="timeline.js"></script>
     <script src="file-io.js"></script>
@@ -536,7 +459,6 @@
             session: null,      // Session object from pose-data.js
             keypoints3d: null,  // Raw 3D keypoints from demo-data.js
             triangulationResults: new Map(), // frameIdx -> [{ group, points3d, reprojections, errors, meanError }]
-            splatData: null,    // { type: 'static'|'animated', file?, manifest?, currentFile? }
         };
 
         let videoController = null;
@@ -590,7 +512,6 @@
                 setupTimeline();
                 setup3DViewport();
                 setupMenus();
-                setupSplatControls();
                 updateInfoPanel();
 
                 // 5. Seek to first frame
@@ -1195,16 +1116,6 @@
                 setStatus('Calibration exported', 'success');
             });
 
-            document.getElementById('menuLoadSplat').addEventListener('click', function () {
-                closeMenus();
-                handleLoadSplat();
-            });
-
-            document.getElementById('menuToggleSplat').addEventListener('click', function () {
-                closeMenus();
-                toggleSplatVisibility();
-            });
-
             function closeMenus() {
                 document.querySelectorAll('.menu-dropdown').forEach(function (d) {
                     d.style.display = 'none';
@@ -1282,13 +1193,6 @@
                             setGridMode();
                         }
                         break;
-                    case 's':
-                    case 'S':
-                        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-                            e.preventDefault();
-                            toggleSplatVisibility();
-                        }
-                        break;
                 }
             });
 
@@ -1349,9 +1253,6 @@
 
             // Update 3D viewport on frame change
             update3DViewport(frameIdx);
-
-            // Update per-frame splat if using animated splats
-            updateFrameSplat(frameIdx);
         }
 
         function updateSeekbarVisual(frameIdx) {
@@ -2600,262 +2501,6 @@
                 document.getElementById('totalFrames').textContent = state.totalFrames;
                 document.getElementById('fpsDisplay').textContent = state.fps.toFixed(1) + ' fps';
             }
-        }
-
-        // ============================================
-        // Gaussian Splat Loading
-        // ============================================
-
-        async function handleLoadSplat() {
-            try {
-                var files = await pickFiles({ accept: '.ply,.splat,.splatv,.json' });
-                if (files.length === 0) return;
-
-                var file = files[0];
-
-                if (!viewport3d) {
-                    setStatus('3D viewport not initialized', 'error');
-                    return;
-                }
-
-                // Check if it's a manifest.json for per-frame splats
-                if (file.name.endsWith('.json')) {
-                    var text = await file.text();
-                    var manifest = JSON.parse(text);
-                    if (manifest.frames) {
-                        state.splatData = { type: 'animated', manifest: manifest, files: new Map(), currentFile: null };
-                        setStatus('Loaded splat manifest (' + Object.keys(manifest.frames).length + ' frames)', 'success');
-                        // Load the first available frame
-                        var firstFrame = Object.keys(manifest.frames)[0];
-                        if (firstFrame) {
-                            var splatUrl = manifest.frames[firstFrame];
-                            await viewport3d.loadSplat(splatUrl, function (p) {
-                                setStatus('Loading splat: ' + Math.round(p * 100) + '%', 'warning');
-                            });
-                            state.splatData.currentFile = splatUrl;
-                            updateSplatUI();
-                            setStatus('Gaussian splat loaded (animated, ' + Object.keys(manifest.frames).length + ' frames)', 'success');
-                        }
-                    }
-                    return;
-                }
-
-                // Single splat file
-                setStatus('Loading Gaussian splat...', 'warning');
-                state.splatData = { type: 'static', file: file };
-
-                await viewport3d.loadSplat(file, function (p) {
-                    setStatus('Loading splat: ' + Math.round(p * 100) + '%', 'warning');
-                });
-
-                updateSplatUI();
-                setStatus('Gaussian splat loaded: ' + file.name, 'success');
-            } catch (err) {
-                console.error('Failed to load splat:', err);
-                setStatus('Splat error: ' + err.message, 'error');
-            }
-        }
-
-        function updateFrameSplat(frameIdx) {
-            if (!state.splatData || state.splatData.type !== 'animated') return;
-            if (!viewport3d || !viewport3d.splatViewer) return;
-
-            var manifest = state.splatData.manifest;
-            if (!manifest || !manifest.frames) return;
-
-            // Find nearest available splat frame
-            var available = Object.keys(manifest.frames).map(Number).sort(function (a, b) { return a - b; });
-            if (available.length === 0) return;
-
-            var nearest = available[0];
-            var minDist = Math.abs(frameIdx - nearest);
-            for (var i = 1; i < available.length; i++) {
-                var dist = Math.abs(frameIdx - available[i]);
-                if (dist < minDist) {
-                    minDist = dist;
-                    nearest = available[i];
-                }
-            }
-
-            var splatFile = manifest.frames[String(nearest)];
-            if (splatFile && splatFile !== state.splatData.currentFile) {
-                state.splatData.currentFile = splatFile;
-                viewport3d.loadSplat(splatFile).catch(function (err) {
-                    console.warn('Failed to load frame splat:', err);
-                });
-            }
-        }
-
-        function toggleSplatVisibility() {
-            if (!viewport3d || !viewport3d.splatViewer) {
-                setStatus('No splat loaded', 'warning');
-                return;
-            }
-            var visible = viewport3d.splatViewer.toggleVisible();
-            updateSplatUI();
-            setStatus('Gaussian splat ' + (visible ? 'shown' : 'hidden'), 'success');
-        }
-
-        /**
-         * Update all splat-related UI elements to reflect current state.
-         */
-        function updateSplatUI() {
-            var controls = document.getElementById('splatControls');
-            var alignSection = document.getElementById('splatAlignControls');
-            var noData = document.getElementById('splatNoData');
-            var infoLabel = document.getElementById('splatInfoLabel');
-            var sessionInfo = document.getElementById('splatSessionInfo');
-            var btnRemoveSplat = document.getElementById('btnRemoveSplat');
-            var btnSplatToggle = document.getElementById('btnSplatToggle');
-
-            var hasSplat = viewport3d && viewport3d.splatViewer && viewport3d.splatViewer.currentSplat;
-
-            if (hasSplat) {
-                // Show 3D viewport overlay controls
-                if (controls) controls.style.display = '';
-                if (infoLabel) infoLabel.textContent = viewport3d.splatViewer.splatInfo || 'Loaded';
-                if (btnSplatToggle) btnSplatToggle.textContent = viewport3d.splatViewer.visible ? 'Hide' : 'Show';
-
-                // Show session tab alignment controls
-                if (alignSection) alignSection.style.display = '';
-                if (noData) noData.style.display = 'none';
-                if (sessionInfo) sessionInfo.textContent = viewport3d.splatViewer.splatInfo || 'Loaded';
-                if (btnRemoveSplat) btnRemoveSplat.disabled = false;
-            } else {
-                // Hide controls
-                if (controls) controls.style.display = 'none';
-                if (alignSection) alignSection.style.display = 'none';
-                if (noData) noData.style.display = '';
-                if (btnRemoveSplat) btnRemoveSplat.disabled = true;
-            }
-        }
-
-        /**
-         * Wire up all splat UI controls (called once from setupMenus or init).
-         */
-        function setupSplatControls() {
-            // 3D viewport overlay: opacity slider
-            var opacitySlider = document.getElementById('splatOpacitySlider');
-            var opacityValue = document.getElementById('splatOpacityValue');
-            if (opacitySlider) {
-                opacitySlider.addEventListener('input', function () {
-                    var val = parseInt(opacitySlider.value, 10);
-                    if (opacityValue) opacityValue.textContent = val + '%';
-                    if (viewport3d && viewport3d.splatViewer) {
-                        viewport3d.splatViewer.setOpacity(val / 100);
-                    }
-                });
-            }
-
-            // 3D viewport overlay: scale slider
-            var scaleSlider = document.getElementById('splatScaleSlider');
-            var scaleValue = document.getElementById('splatScaleValue');
-            if (scaleSlider) {
-                scaleSlider.addEventListener('input', function () {
-                    var val = parseInt(scaleSlider.value, 10);
-                    var s = val / 100;
-                    if (scaleValue) scaleValue.textContent = s.toFixed(1) + 'x';
-                    if (viewport3d && viewport3d.splatViewer && viewport3d.splatViewer.currentSplat) {
-                        viewport3d.splatViewer.applyTransform({ scale: [s, s, s] });
-                    }
-                });
-            }
-
-            // 3D viewport overlay: toggle button
-            var btnToggle = document.getElementById('btnSplatToggle');
-            if (btnToggle) {
-                btnToggle.addEventListener('click', function () {
-                    toggleSplatVisibility();
-                });
-            }
-
-            // 3D viewport overlay: remove button
-            var btnRemoveOverlay = document.getElementById('btnSplatRemove');
-            if (btnRemoveOverlay) {
-                btnRemoveOverlay.addEventListener('click', function () {
-                    removeSplatData();
-                });
-            }
-
-            // Session tab: load splat button
-            var btnLoadSplat = document.getElementById('btnLoadSplat');
-            if (btnLoadSplat) {
-                btnLoadSplat.addEventListener('click', function () {
-                    handleLoadSplat();
-                });
-            }
-
-            // Session tab: remove splat button
-            var btnRemoveSplat = document.getElementById('btnRemoveSplat');
-            if (btnRemoveSplat) {
-                btnRemoveSplat.addEventListener('click', function () {
-                    removeSplatData();
-                });
-            }
-
-            // Session tab: alignment sliders (X, Y, Z, Rot)
-            var sliders = [
-                { id: 'splatOffsetX', valId: 'splatOffsetXVal', suffix: '' },
-                { id: 'splatOffsetY', valId: 'splatOffsetYVal', suffix: '' },
-                { id: 'splatOffsetZ', valId: 'splatOffsetZVal', suffix: '' },
-                { id: 'splatRotZ', valId: 'splatRotZVal', suffix: '\u00B0' },
-            ];
-            sliders.forEach(function (s) {
-                var slider = document.getElementById(s.id);
-                var valEl = document.getElementById(s.valId);
-                if (slider && valEl) {
-                    slider.addEventListener('input', function () {
-                        valEl.textContent = slider.value + s.suffix;
-                    });
-                }
-            });
-
-            // Session tab: apply alignment
-            var btnApply = document.getElementById('btnSplatApplyAlign');
-            if (btnApply) {
-                btnApply.addEventListener('click', function () {
-                    if (!viewport3d || !viewport3d.splatViewer) return;
-                    var ox = parseFloat(document.getElementById('splatOffsetX').value) || 0;
-                    var oy = parseFloat(document.getElementById('splatOffsetY').value) || 0;
-                    var oz = parseFloat(document.getElementById('splatOffsetZ').value) || 0;
-                    var rz = (parseFloat(document.getElementById('splatRotZ').value) || 0) * Math.PI / 180;
-                    viewport3d.splatViewer.applyTransform({
-                        position: [ox, oy, oz],
-                        rotation: [0, 0, rz],
-                    });
-                    setStatus('Splat alignment applied', 'success');
-                });
-            }
-
-            // Session tab: reset alignment
-            var btnReset = document.getElementById('btnSplatResetAlign');
-            if (btnReset) {
-                btnReset.addEventListener('click', function () {
-                    document.getElementById('splatOffsetX').value = 0;
-                    document.getElementById('splatOffsetXVal').textContent = '0';
-                    document.getElementById('splatOffsetY').value = 0;
-                    document.getElementById('splatOffsetYVal').textContent = '0';
-                    document.getElementById('splatOffsetZ').value = 0;
-                    document.getElementById('splatOffsetZVal').textContent = '0';
-                    document.getElementById('splatRotZ').value = 0;
-                    document.getElementById('splatRotZVal').textContent = '0\u00B0';
-                    document.getElementById('splatScaleSlider').value = 100;
-                    document.getElementById('splatScaleValue').textContent = '1.0x';
-                    setStatus('Splat alignment reset', 'success');
-                });
-            }
-        }
-
-        /**
-         * Remove the loaded splat and clean up state.
-         */
-        function removeSplatData() {
-            if (viewport3d) {
-                viewport3d.removeSplat();
-            }
-            state.splatData = null;
-            updateSplatUI();
-            setStatus('Gaussian splat removed', 'success');
         }
 
         async function handleLoadSession() {
