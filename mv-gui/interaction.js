@@ -74,11 +74,13 @@ class InteractionManager {
         /**
          * Details of the active drag, or null.
          * @type {{
+         *   mode: 'node'|'instance',
          *   viewName: string,
          *   instanceGroupIdx: number,
          *   nodeIdx: number,
          *   startPos: number[],
-         *   currentPos: number[]
+         *   currentPos: number[],
+         *   originalPoints: (number[]|null)[]|null
          * }|null}
          */
         this.dragInfo = null;
@@ -427,15 +429,34 @@ class InteractionManager {
             // Select the instance group and node
             this.select(hit.instanceGroup, hit.nodeIdx);
 
-            // Start drag
-            this.isDragging = true;
-            this.dragInfo = {
-                viewName: viewName,
-                instanceGroupIdx: hit.instanceGroupIdx,
-                nodeIdx: hit.nodeIdx,
-                startPos: [vx, vy],
-                currentPos: [vx, vy],
-            };
+            // Alt/Option key: whole-instance drag mode
+            if (e.altKey) {
+                const instance = hit.instanceGroup.getInstance(viewName);
+                this.isDragging = true;
+                this.dragInfo = {
+                    mode: 'instance',
+                    viewName: viewName,
+                    instanceGroupIdx: hit.instanceGroupIdx,
+                    nodeIdx: hit.nodeIdx,
+                    startPos: [vx, vy],
+                    currentPos: [vx, vy],
+                    originalPoints: instance && instance.points
+                        ? instance.points.map(function (p) { return p ? [p[0], p[1]] : null; })
+                        : null,
+                };
+            } else {
+                // Start single-node drag
+                this.isDragging = true;
+                this.dragInfo = {
+                    mode: 'node',
+                    viewName: viewName,
+                    instanceGroupIdx: hit.instanceGroupIdx,
+                    nodeIdx: hit.nodeIdx,
+                    startPos: [vx, vy],
+                    currentPos: [vx, vy],
+                    originalPoints: null,
+                };
+            }
 
             // Mark event as consumed so zoom handler doesn't also activate
             e._consumedByInteraction = true;
@@ -485,7 +506,21 @@ class InteractionManager {
             if (groups && groups.length > this.dragInfo.instanceGroupIdx) {
                 const group = groups[this.dragInfo.instanceGroupIdx];
                 const instance = group.getInstance(viewName);
-                if (instance && instance.points && instance.points.length > this.dragInfo.nodeIdx) {
+
+                if (this.dragInfo.mode === 'instance' && this.dragInfo.originalPoints && instance && instance.points) {
+                    // Whole-instance drag: translate all points by delta
+                    const dx = vx - this.dragInfo.startPos[0];
+                    const dy = vy - this.dragInfo.startPos[1];
+                    for (var pi = 0; pi < instance.points.length; pi++) {
+                        if (this.dragInfo.originalPoints[pi]) {
+                            instance.points[pi] = [
+                                this.dragInfo.originalPoints[pi][0] + dx,
+                                this.dragInfo.originalPoints[pi][1] + dy
+                            ];
+                        }
+                    }
+                } else if (instance && instance.points && instance.points.length > this.dragInfo.nodeIdx) {
+                    // Single-node drag
                     instance.points[this.dragInfo.nodeIdx] = [vx, vy];
                 }
             }
@@ -519,7 +554,11 @@ class InteractionManager {
         // Update cursor style on the overlay canvas
         const view = this._findView(state, viewName);
         if (view && view.overlayCanvas) {
-            view.overlayCanvas.style.cursor = (this.hoveredNode || hoverUnlinked) ? 'pointer' : 'default';
+            if (this.hoveredNode && e.altKey) {
+                view.overlayCanvas.style.cursor = 'move';
+            } else {
+                view.overlayCanvas.style.cursor = (this.hoveredNode || hoverUnlinked) ? 'pointer' : 'default';
+            }
         }
 
         // Redraw if hover state changed (for highlight rendering)
@@ -561,10 +600,23 @@ class InteractionManager {
             if (groups && groups.length > info.instanceGroupIdx) {
                 const group = groups[info.instanceGroupIdx];
                 const instance = group.getInstance(info.viewName);
-                if (instance && instance.points && instance.points.length > info.nodeIdx) {
-                    instance.points[info.nodeIdx] = [info.currentPos[0], info.currentPos[1]];
 
-                    // Mark instance as user-edited
+                if (info.mode === 'instance' && info.originalPoints && instance && instance.points) {
+                    // Whole-instance drag: finalize all translated points
+                    const fdx = info.currentPos[0] - info.startPos[0];
+                    const fdy = info.currentPos[1] - info.startPos[1];
+                    for (var fi = 0; fi < instance.points.length; fi++) {
+                        if (info.originalPoints[fi]) {
+                            instance.points[fi] = [
+                                info.originalPoints[fi][0] + fdx,
+                                info.originalPoints[fi][1] + fdy
+                            ];
+                        }
+                    }
+                    instance.type = 'user';
+                } else if (instance && instance.points && instance.points.length > info.nodeIdx) {
+                    // Single-node drag: finalize the single point
+                    instance.points[info.nodeIdx] = [info.currentPos[0], info.currentPos[1]];
                     instance.type = 'user';
                 }
 
