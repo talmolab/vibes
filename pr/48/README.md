@@ -23,6 +23,7 @@ Self-contained HTML tools and applets for the web.
 - [PyPI Name Checker](pypi-name-checker/) <a href="pypi-name-checker/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Check Python package name availability with suggestions</span>
 - [CORS Check](cors-check/) <a href="cors-check/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Test URL CORS status and get the right fetch code</span>
 - [SLEAP Config Picker](sleap-config-picker/)<br><span class="vibe-desc">Interactive sleap-nn training config generator with SLP file analysis</span>
+- [Multi-view GUI](mv-gui/)<br><span class="vibe-desc">multiview 3d annotation GUI</span>
 
 ## About
 
