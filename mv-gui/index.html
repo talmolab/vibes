@@ -919,7 +919,16 @@
             state.triangulationResults.set(frameIdx, frameResults);
 
             console.log('[triangulate] viewport3d exists:', !!viewport3d,
-                '| frameResults:', frameResults.length);
+                '| frameResults:', frameResults.length,
+                '| views:', state.views.map(v => v.name));
+
+            // Log what each group has after triangulation
+            for (const fr of frameResults) {
+                console.log('[triangulate] Group result:',
+                    '| cameras in group:', fr.group.cameraNames,
+                    '| has reprojections:', Object.keys(fr.group.reprojections || {}),
+                    '| points3d valid:', (fr.points3d || []).filter(p => p != null).length);
+            }
 
             // Update displays
             drawAllOverlays(frameIdx);
@@ -1006,6 +1015,15 @@
                     for (const [camName, instances] of frameGroup.instances) {
                         overlayFrameGroup.instances[camName] = instances;
                     }
+                }
+
+                // Debug: log what we're about to draw for this view
+                const fgInstCount = overlayFrameGroup ? (overlayFrameGroup.instances[view.name] || []).length : 0;
+                const groupReproj = instanceGroups.filter(g => g.reprojections && g.reprojections[view.name]);
+                if (fgInstCount > 0 || groupReproj.length > 0) {
+                    console.log('[overlay]', view.name, '| instances:', fgInstCount,
+                        '| groups with reproj:', groupReproj.length,
+                        '| fg keys:', overlayFrameGroup ? Object.keys(overlayFrameGroup.instances) : []);
                 }
 
                 // Get unlinked instances for this view
@@ -3069,6 +3087,7 @@
                     }
 
                     // Match videos to cameras using manifest, then auto-assign
+                    var cameraNames = cameras.map(function (c) { return c.name; });
                     for (var mi = 0; mi < videoManifest.length; mi++) {
                         var entry = videoManifest[mi];
                         if (!entry.filename || !entry.assignedCamera) continue;
@@ -3080,10 +3099,31 @@
                             }
                         }
                     }
+
+                    // Resolve stale manifest camera names that don't match current calibration
+                    // (e.g., manifest has assignedCamera="CamA" but camera is named "A")
+                    for (var ri = 0; ri < state.videoFiles.length; ri++) {
+                        var rvf = state.videoFiles[ri];
+                        if (rvf.assignedCamera && cameraNames.indexOf(rvf.assignedCamera) < 0) {
+                            var rvfLower = rvf.assignedCamera.toLowerCase();
+                            for (var rci = 0; rci < cameraNames.length; rci++) {
+                                var rcamLower = cameraNames[rci].toLowerCase();
+                                var rUsed = state.videoFiles.some(function (other) {
+                                    return other !== rvf && other.assignedCamera === cameraNames[rci];
+                                });
+                                if (rUsed) continue;
+                                if (rvfLower === rcamLower || rvfLower.indexOf(rcamLower) >= 0 || rcamLower.indexOf(rvfLower) >= 0) {
+                                    console.log('[load-project] Resolved manifest camera "' + rvf.assignedCamera + '" -> "' + cameraNames[rci] + '"');
+                                    rvf.assignedCamera = cameraNames[rci];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     autoAssignVideosToCameras();
 
                     // For any still-unassigned video, try exact camera name match
-                    var cameraNames = cameras.map(function (c) { return c.name; });
                     for (var vi = 0; vi < state.videoFiles.length; vi++) {
                         var vf2 = state.videoFiles[vi];
                         if (!vf2.assignedCamera && cameraNames.indexOf(vf2.name) >= 0) {
@@ -3469,13 +3509,17 @@
                                 if (oldName !== vf2.assignedCamera) {
                                     console.log('[calibration] Renaming view "' + oldName + '" -> "' + vf2.assignedCamera + '"');
                                     state.views[vIdx].name = vf2.assignedCamera;
-                                    // Update the label in the grid cell
+                                    // Update DOM element IDs and labels
                                     var cell = document.getElementById('cell-' + oldName);
                                     if (cell) {
                                         cell.id = 'cell-' + vf2.assignedCamera;
                                         var lbl = cell.querySelector('.view-label');
                                         if (lbl) lbl.textContent = vf2.assignedCamera;
                                     }
+                                    var canvasEl = document.getElementById('canvas-' + oldName);
+                                    if (canvasEl) canvasEl.id = 'canvas-' + vf2.assignedCamera;
+                                    var overlayEl = document.getElementById('overlay-' + oldName);
+                                    if (overlayEl) overlayEl.id = 'overlay-' + vf2.assignedCamera;
                                     // Rename camera keys in all session data (FrameGroups, InstanceGroups, etc.)
                                     if (state.session) {
                                         state.session.renameCameraInAllData(oldName, vf2.assignedCamera);
@@ -3485,6 +3529,14 @@
                             }
                         }
                     }
+                }
+
+                // Re-attach interaction handlers with updated view names
+                // (closures from attach() capture view names, so stale names would break
+                //  _addNewInstance, overlay lookups, etc.)
+                if (interactionManager) {
+                    interactionManager.detach();
+                    interactionManager.attach(state.views);
                 }
 
                 // Rebuild the 3D viewport with new cameras
@@ -3569,7 +3621,12 @@
                     state.session = new Session(cameras, skeleton, ['track_0']);
                 }
 
-                // For any unassigned video, add a camera to the session and assign it
+                // Auto-assign videos to existing calibration cameras first
+                if (state.session.cameras.length > 0) {
+                    autoAssignVideosToCameras();
+                }
+
+                // For any still-unassigned video, create a dummy camera and assign it
                 for (var vi = 0; vi < state.videoFiles.length; vi++) {
                     var vf = state.videoFiles[vi];
                     if (!vf.assignedCamera) {
@@ -3583,11 +3640,6 @@
                         }
                         vf.assignedCamera = vf.name;
                     }
-                }
-
-                // Auto-assign if we have calibration cameras
-                if (state.session.cameras.length > 0) {
-                    autoAssignVideosToCameras();
                 }
 
                 // Create views for assigned videos that don't have views yet
