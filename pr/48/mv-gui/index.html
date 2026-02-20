@@ -986,9 +986,16 @@
             const showLabels = document.getElementById('toggleLabels').checked;
             const nodeSize = parseInt(document.getElementById('nodeSizeSlider').value) || 4;
 
-            // Get interaction state
-            const selectedInstanceGroup = interactionManager ? interactionManager.selectedInstanceGroup : null;
+            // Get interaction state — only show selection highlight if the
+            // selected group belongs to the current frame
+            let selectedInstanceGroup = interactionManager ? interactionManager.selectedInstanceGroup : null;
             const selectedNodeIdx = interactionManager ? interactionManager.selectedNodeIdx : -1;
+            if (selectedInstanceGroup) {
+                const currentGroups = getInstanceGroupsForFrame(frameIdx);
+                if (currentGroups.indexOf(selectedInstanceGroup) < 0) {
+                    selectedInstanceGroup = null;
+                }
+            }
             const hoveredNode = interactionManager ? interactionManager.hoveredNode : null;
             const dragInfo = interactionManager ? interactionManager.dragInfo : null;
             const assignmentMode = interactionManager ? interactionManager.assignmentMode : false;
