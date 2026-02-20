@@ -208,6 +208,9 @@ class InteractionManager {
         let best = null;
         let bestDist = threshold;
 
+        // Base node size for label region estimation (in video pixels)
+        const baseNodeSize = 4;
+
         for (let g = 0; g < groups.length; g++) {
             const group = groups[g];
             const instance = group.getInstance(viewName);
@@ -230,6 +233,39 @@ class InteractionManager {
                         nodeIdx: n,
                         distance: dist,
                     };
+                }
+            }
+        }
+
+        // Secondary check: label regions (to the right of each node).
+        // Allows clicking on a node's label text to select/drag that node.
+        if (!best) {
+            for (let g = 0; g < groups.length; g++) {
+                const group = groups[g];
+                const instance = group.getInstance(viewName);
+                if (!instance || !instance.points) continue;
+
+                for (let n = 0; n < instance.points.length; n++) {
+                    const pt = instance.points[n];
+                    if (pt == null) continue;
+
+                    // Label is drawn to the right and slightly above the node
+                    const labelLeft = pt[0] + baseNodeSize;
+                    const labelRight = pt[0] + baseNodeSize + 80;
+                    const labelTop = pt[1] - 16;
+                    const labelBottom = pt[1] + 4;
+
+                    if (videoX >= labelLeft && videoX <= labelRight &&
+                        videoY >= labelTop && videoY <= labelBottom) {
+                        best = {
+                            instanceGroupIdx: g,
+                            instanceGroup: group,
+                            instanceIdx: g,
+                            nodeIdx: n,
+                            distance: 0,
+                        };
+                        return best;
+                    }
                 }
             }
         }
@@ -270,6 +306,9 @@ class InteractionManager {
         let best = null;
         let bestDist = threshold;
 
+        // Base node size for label region estimation (in video pixels)
+        const baseNodeSize = 4;
+
         for (let u = 0; u < unlinkedList.length; u++) {
             const ul = unlinkedList[u];
             const points = ul.instance.points;
@@ -290,6 +329,35 @@ class InteractionManager {
                         nodeIdx: n,
                         distance: dist,
                     };
+                }
+            }
+        }
+
+        // Secondary check: label regions (to the right of each node).
+        if (!best) {
+            for (let u = 0; u < unlinkedList.length; u++) {
+                const ul = unlinkedList[u];
+                const points = ul.instance.points;
+                if (!points) continue;
+
+                for (let n = 0; n < points.length; n++) {
+                    const pt = points[n];
+                    if (pt == null) continue;
+
+                    const labelLeft = pt[0] + baseNodeSize;
+                    const labelRight = pt[0] + baseNodeSize + 80;
+                    const labelTop = pt[1] - 16;
+                    const labelBottom = pt[1] + 4;
+
+                    if (videoX >= labelLeft && videoX <= labelRight &&
+                        videoY >= labelTop && videoY <= labelBottom) {
+                        best = {
+                            unlinked: ul,
+                            nodeIdx: n,
+                            distance: 0,
+                        };
+                        return best;
+                    }
                 }
             }
         }
@@ -426,8 +494,14 @@ class InteractionManager {
         var useLinked = false;
         var useUnlinked = false;
         if (linkedHit && ulHit) {
-            useLinked = linkedHit.distance <= ulHit.distance;
-            useUnlinked = !useLinked;
+            // In assignment mode, prefer unlinked targets so clicks always
+            // add to the assignment selection instead of exiting the mode.
+            if (this.assignmentMode) {
+                useUnlinked = true;
+            } else {
+                useLinked = linkedHit.distance <= ulHit.distance;
+                useUnlinked = !useLinked;
+            }
         } else if (linkedHit) {
             useLinked = true;
         } else if (ulHit) {
@@ -450,6 +524,13 @@ class InteractionManager {
             this.select(linkedHit.instanceGroup, linkedHit.nodeIdx);
             this._startDrag(viewName, linkedHit.instanceGroupIdx, linkedHit.nodeIdx,
                 vx, vy, null, e.altKey ? linkedHit.instanceGroup.getInstance(viewName) : null);
+            e.preventDefault();
+            e.stopPropagation();
+            e._consumedByInteraction = true;
+
+        // --- Unlinked node in assignment mode: add to selection ---
+        } else if (useUnlinked && this.assignmentMode) {
+            this.addToAssignmentSelection(ulHit.unlinked);
             e.preventDefault();
             e.stopPropagation();
             e._consumedByInteraction = true;

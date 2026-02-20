@@ -113,18 +113,21 @@ class Camera {
     }
 
     /**
-     * Compute 3x3 rotation matrix from rvec using the Rodrigues formula.
+     * Compute 3x3 rotation matrix from rvec.
      *
-     * Given rvec = [rx, ry, rz]:
-     *   theta = ||rvec||
-     *   if theta ~ 0: return I (identity)
-     *   k = rvec / theta  (unit rotation axis)
-     *   K = skew-symmetric matrix of k
-     *   R = I + sin(theta)*K + (1 - cos(theta))*K*K
+     * Handles two input formats:
+     *   - 3x3 rotation matrix (e.g. from anipose TOML): returned directly
+     *   - 3-element Rodrigues vector: converted via Rodrigues formula
      *
      * @returns {number[][]} 3x3 rotation matrix
      */
     get rotationMatrix() {
+        // If rvec is already a 3x3 rotation matrix, return it directly.
+        // This handles anipose TOML format which stores rotation as a matrix.
+        if (Array.isArray(this.rvec) && Array.isArray(this.rvec[0])) {
+            return this.rvec;
+        }
+
         const [rx, ry, rz] = this.rvec;
         const theta = Math.sqrt(rx * rx + ry * ry + rz * rz);
 
@@ -621,6 +624,57 @@ class Session {
         trackMap.get(trackIdx).push(group);
 
         return group;
+    }
+
+    /**
+     * Rename a camera key in all data structures (FrameGroups, UnlinkedInstances, InstanceGroups).
+     * Used when calibration is loaded and camera names change (e.g., "CamA" → "A").
+     *
+     * @param {string} oldName - The old camera name
+     * @param {string} newName - The new camera name
+     */
+    renameCameraInAllData(oldName, newName) {
+        if (oldName === newName) return;
+
+        // Rename in all FrameGroups
+        for (const fg of this.frameGroups.values()) {
+            // Rename in fg.instances (Map<string, Instance[]>)
+            if (fg.instances.has(oldName)) {
+                const insts = fg.instances.get(oldName);
+                fg.instances.delete(oldName);
+                if (fg.instances.has(newName)) {
+                    // Merge into existing
+                    for (const inst of insts) fg.instances.get(newName).push(inst);
+                } else {
+                    fg.instances.set(newName, insts);
+                }
+            }
+
+            // Rename in fg.unlinkedInstances (Map<string, UnlinkedInstance[]>)
+            if (fg.unlinkedInstances.has(oldName)) {
+                const uls = fg.unlinkedInstances.get(oldName);
+                fg.unlinkedInstances.delete(oldName);
+                for (const ul of uls) ul.cameraName = newName;
+                if (fg.unlinkedInstances.has(newName)) {
+                    for (const ul of uls) fg.unlinkedInstances.get(newName).push(ul);
+                } else {
+                    fg.unlinkedInstances.set(newName, uls);
+                }
+            }
+        }
+
+        // Rename in all InstanceGroups
+        for (const trackMap of this.instanceGroups.values()) {
+            for (const groups of trackMap.values()) {
+                for (const group of groups) {
+                    if (group.instances.has(oldName)) {
+                        const inst = group.instances.get(oldName);
+                        group.instances.delete(oldName);
+                        group.instances.set(newName, inst);
+                    }
+                }
+            }
+        }
     }
 
     /**

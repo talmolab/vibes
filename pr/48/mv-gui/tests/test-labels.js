@@ -818,9 +818,20 @@
             ];
             var session = new Session(cameras, skeleton, ['track_0']);
 
+            // Verify session stores skeleton correctly
+            assertNotNull(session.skeleton, 'session.skeleton should exist');
+            assertNotNull(session.skeleton.nodes, 'session.skeleton.nodes should exist');
+            assertEqual(session.skeleton.nodes.length, 2, 'skeleton should have 2 nodes');
+
             var fg = new FrameGroup(0);
             var inst = new Instance([[100, 100], [200, 200]], 0, 'user', 1.0);
             fg.addInstance('cam1', inst);
+
+            // Verify FrameGroup stores instance correctly
+            assertTrue(fg.instances instanceof Map, 'fg.instances should be a Map');
+            var storedInstances = fg.instances.get('cam1');
+            assertNotNull(storedInstances, 'fg.instances.get(cam1) should return array');
+            assertEqual(storedInstances.length, 1, 'should have 1 instance');
 
             var spy = spyOnTextCalls(c.ctx);
 
@@ -841,8 +852,11 @@
             var fillTexts = spy.calls.filter(function (c) { return c.method === 'fillText'; });
             var drawnNames = fillTexts.map(function (c) { return c.text; });
 
-            assertTrue(drawnNames.indexOf('nose') >= 0, 'drawFrameOverlays should propagate showLabels to drawSkeleton for "nose"');
-            assertTrue(drawnNames.indexOf('ear') >= 0, 'drawFrameOverlays should propagate showLabels to drawSkeleton for "ear"');
+            // Debug: show what was actually drawn
+            var allCalls = spy.calls.map(function (c) { return c.method + '(' + c.text + ')'; });
+            assertTrue(drawnNames.indexOf('nose') >= 0,
+                'drawFrameOverlays should render "nose" label. Got ' + drawnNames.length + ' fillText calls: [' + drawnNames.join(', ') + ']. All spy calls: [' + allCalls.join(', ') + ']');
+            assertTrue(drawnNames.indexOf('ear') >= 0, 'drawFrameOverlays should render "ear" label');
 
             c.cleanup();
         });

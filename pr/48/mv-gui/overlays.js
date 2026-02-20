@@ -1129,7 +1129,9 @@ function drawFrameOverlays(ctx, viewName, frameGroup, instanceGroups, session, o
 
     // 2. Draw detected skeletons
     if (showDetected && frameGroup && frameGroup.instances) {
-        const viewInstances = frameGroup.instances[viewName];
+        const viewInstances = frameGroup.instances instanceof Map
+            ? frameGroup.instances.get(viewName)
+            : frameGroup.instances[viewName];
         if (viewInstances) {
             for (let i = 0; i < viewInstances.length; i++) {
                 const inst = viewInstances[i];
@@ -1374,19 +1376,20 @@ function getFrameStats(frameGroup, instanceGroups, cameras) {
 
     // Count total instances across all cameras
     if (frameGroup && frameGroup.instances) {
+        const isMap = frameGroup.instances instanceof Map;
         if (cameras) {
             for (let c = 0; c < cameras.length; c++) {
                 const camName = cameras[c];
-                const insts = frameGroup.instances[camName];
+                const insts = isMap ? frameGroup.instances.get(camName) : frameGroup.instances[camName];
                 if (insts) {
                     stats.numInstances += insts.length;
                 }
             }
         } else {
-            // Iterate over all keys
-            const keys = Object.keys(frameGroup.instances);
-            for (let k = 0; k < keys.length; k++) {
-                const insts = frameGroup.instances[keys[k]];
+            // Iterate over all entries
+            const entries = isMap ? Array.from(frameGroup.instances.entries()) : Object.entries(frameGroup.instances);
+            for (let k = 0; k < entries.length; k++) {
+                const insts = entries[k][1];
                 if (insts) {
                     stats.numInstances += insts.length;
                 }
