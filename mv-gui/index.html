@@ -2945,6 +2945,26 @@
             var badge = document.getElementById('triangulationBadge');
             if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
 
+            // Clear linked groups and unlinked instances panels
+            var groupsTbody = document.querySelector('#instanceGroupsTable tbody');
+            if (groupsTbody) groupsTbody.innerHTML = '';
+            var groupsTable = document.getElementById('instanceGroupsTable');
+            if (groupsTable) groupsTable.style.display = 'none';
+            var groupsEmpty = document.getElementById('instanceGroupsEmpty');
+            if (groupsEmpty) groupsEmpty.style.display = '';
+            var ulTbody = document.querySelector('#unlinkedTable tbody');
+            if (ulTbody) ulTbody.innerHTML = '';
+            var ulTable = document.getElementById('unlinkedTable');
+            if (ulTable) ulTable.style.display = 'none';
+            var ulEmpty = document.getElementById('unlinkedEmpty');
+            if (ulEmpty) ulEmpty.style.display = '';
+
+            // Clear error display
+            var errorDisplay = document.getElementById('errorDisplay');
+            if (errorDisplay) { errorDisplay.textContent = '-'; errorDisplay.className = 'error-display'; }
+            var perCamErrors = document.getElementById('perCameraErrors');
+            if (perCamErrors) perCamErrors.innerHTML = '';
+
             // Clear skeleton editing tables and dropdowns
             var skelBody = document.querySelector('#skeletonNodesTable tbody');
             if (skelBody) skelBody.innerHTML = '';
