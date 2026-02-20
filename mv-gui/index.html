@@ -785,21 +785,57 @@
             const frameIdx = state.currentFrame;
             const cameras = state.session.cameras;
             const trackMap = state.session.instanceGroups.get(frameIdx);
-            if (!trackMap) return;
+            if (!trackMap) {
+                console.warn('[triangulate] No instanceGroups for frame', frameIdx);
+                setStatus('No instance groups on frame ' + frameIdx + ' - assign instances to groups first (A key)', 'warning');
+                updateTriangulationBadge('needs-triangulation', 'No groups');
+                return;
+            }
+
+            console.log('[triangulate] Frame', frameIdx, '| cameras:', cameras.map(c => c.name),
+                '| views:', state.views.map(v => v.name));
 
             const frameResults = [];
 
             for (const [trackIdx, groups] of trackMap) {
                 for (const group of groups) {
+                    // Resolve any camera name mismatches in this group
+                    // (e.g., instances keyed by video name "CamA" but camera named "A")
+                    const groupKeys = group.cameraNames;
+                    for (const gk of groupKeys) {
+                        if (!cameras.some(c => c.name === gk)) {
+                            // This key doesn't match any camera - try to resolve
+                            const gkLower = gk.toLowerCase();
+                            for (const cam of cameras) {
+                                const camLower = cam.name.toLowerCase();
+                                if (gkLower === camLower || gkLower.indexOf(camLower) >= 0 || camLower.indexOf(gkLower) >= 0) {
+                                    if (!group.getInstance(cam.name)) {
+                                        const inst = group.getInstance(gk);
+                                        group.instances.delete(gk);
+                                        group.instances.set(cam.name, inst);
+                                        console.log('[triangulate] Resolved instance key "' + gk + '" -> "' + cam.name + '"');
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Count how many views have at least one non-null point
                     let viewsWithLabels = 0;
+                    const camStatus = {};
                     for (const cam of cameras) {
                         const inst = group.getInstance(cam.name);
                         if (inst && inst.points) {
                             const hasAny = inst.points.some(p => p != null);
                             if (hasAny) viewsWithLabels++;
+                            camStatus[cam.name] = hasAny ? 'labeled' : 'empty';
+                        } else {
+                            camStatus[cam.name] = inst ? 'no-points' : 'missing';
                         }
                     }
+                    console.log('[triangulate] Track', trackIdx, '| views with labels:', viewsWithLabels,
+                        '| cam status:', camStatus);
 
                     if (viewsWithLabels < 2) {
                         // Not enough views for triangulation
@@ -808,6 +844,27 @@
                     }
 
                     const result = triangulateAndReproject(group, cameras);
+
+                    // Check for NaN in points3d
+                    const hasNaN = result.points3d.some(p => p && (isNaN(p[0]) || isNaN(p[1]) || isNaN(p[2])));
+                    const validPts = result.points3d.filter(p => p != null).length;
+                    console.log('[triangulate] points3d:', validPts, 'valid /', result.points3d.length,
+                        '| hasNaN:', hasNaN, '| meanError:', result.meanError,
+                        '| sample:', result.points3d.find(p => p != null));
+                    if (hasNaN) {
+                        console.error('[triangulate] WARNING: NaN in 3D points! Check calibration matrices.');
+                        for (const cam of cameras) {
+                            console.log('[triangulate] Camera', cam.name, 'P=', cam.projectionMatrix);
+                        }
+                    }
+
+                    // Log reprojections per camera
+                    for (const cam of cameras) {
+                        const reproj = result.reprojections[cam.name];
+                        const validReproj = reproj ? reproj.filter(p => p != null).length : 0;
+                        console.log('[triangulate] Reprojection', cam.name, ':', validReproj, 'pts',
+                            '| sample:', reproj ? reproj.find(p => p != null) : null);
+                    }
 
                     group.reprojections = result.reprojections;
                     group.points3d = result.points3d;
@@ -823,6 +880,7 @@
                     }
 
                     // Fill missing views with reprojected predictions
+                    let filledCount = 0;
                     for (const cam of cameras) {
                         if (!group.getInstance(cam.name) && result.reprojections[cam.name]) {
                             const reprojPts = result.reprojections[cam.name];
@@ -839,8 +897,12 @@
                             if (fg) {
                                 fg.addInstance(cam.name, filledInstance);
                             }
+                            filledCount++;
+                            console.log('[triangulate] Filled missing view:', cam.name,
+                                '| pts:', filledInstance.points.filter(p => p != null).length);
                         }
                     }
+                    console.log('[triangulate] Filled', filledCount, 'missing views');
 
                     group.markClean();
 
@@ -856,18 +918,31 @@
 
             state.triangulationResults.set(frameIdx, frameResults);
 
+            console.log('[triangulate] viewport3d exists:', !!viewport3d,
+                '| frameResults:', frameResults.length);
+
             // Update displays
             drawAllOverlays(frameIdx);
             update3DViewport(frameIdx);
 
+            // Re-fit the 3D camera so the new skeleton points are visible
+            if (viewport3d && frameResults.length > 0) {
+                viewport3d.fitToScene();
+            }
+
             if (frameResults.length > 0 && frameResults[0].meanError != null) {
                 updateTriangulationBadge('triangulated',
                     'Error: ' + frameResults[0].meanError.toFixed(2) + 'px');
-            } else {
+                setStatus('Triangulated frame ' + frameIdx + ' (' + frameResults.length + ' group(s), error: ' +
+                    frameResults[0].meanError.toFixed(2) + 'px)', 'success');
+            } else if (frameResults.length > 0) {
                 updateTriangulationBadge('triangulated', 'Triangulated');
+                setStatus('Triangulated frame ' + frameIdx + ' (' + frameResults.length + ' group(s))', 'success');
+            } else {
+                updateTriangulationBadge('needs-triangulation', 'No groups triangulated');
+                setStatus('No groups could be triangulated on frame ' + frameIdx +
+                    ' - check that instance groups have labels in 2+ camera views', 'warning');
             }
-
-            setStatus('Triangulated frame ' + frameIdx, 'success');
         }
 
         // ============================================
@@ -1098,8 +1173,14 @@
         }
 
         function update3DViewport(frameIdx) {
-            if (!viewport3d) return;
+            if (!viewport3d) {
+                console.warn('[3D] viewport3d is null - 3D viewport not initialized');
+                return;
+            }
             const groups = getInstanceGroupsForFrame(frameIdx);
+            const groupsWithPts = groups.filter(g => g.points3d && g.points3d.length > 0);
+            console.log('[3D] update3DViewport frame', frameIdx,
+                '| groups:', groups.length, '| with points3d:', groupsWithPts.length);
             viewport3d.setFrame(groups);
         }
 
@@ -2924,30 +3005,164 @@
                     return;
                 }
 
+                showLoading('Loading project...');
+
                 const text = await files[0].text();
                 const data = JSON.parse(text);
 
+                // 1. Restore session data (cameras, skeleton, instances, groups)
+                var cameras;
                 if (data.version === 2) {
-                    loadProjectV2(data);
+                    cameras = _restoreProjectV2(data);
                 } else {
-                    // Fall through to legacy session loading
-                    loadLegacySession(data);
+                    cameras = _restoreLegacySession(data);
                 }
+
+                // 2. Load videos (same flow as Load Videos button)
+                hideLoading();
+                var videoFiles = [];
+                try {
+                    videoFiles = await pickVideoFiles();
+                } catch (e) {
+                    // User cancelled the picker
+                }
+
+                if (videoFiles.length > 0) {
+                    // Clear any stale views/videoFiles from a previous session
+                    if (videoController) {
+                        if (state.isPlaying) videoController.pause();
+                        videoController = null;
+                    }
+                    state.views = [];
+                    state.videoFiles = [];
+                    var gridEl = document.getElementById('videoGrid');
+                    if (gridEl) gridEl.innerHTML = '';
+
+                    var videoManifest = data.videoManifest || [];
+                    var failedVideos = [];
+
+                    for (var i = 0; i < videoFiles.length; i++) {
+                        var file = videoFiles[i];
+                        var stem = file.name.replace(/\.[^.]+$/, '');
+
+                        showLoading('Loading ' + file.name + ' (' + (i + 1) + '/' + videoFiles.length + ')...');
+                        try {
+                            var decoder = new OnDemandVideoDecoder({ cacheSize: 60, lookahead: 10 });
+                            await decoder.init(file);
+
+                            var vw = decoder.videoTrack.video.width;
+                            var vh = decoder.videoTrack.video.height;
+
+                            state.videoFiles.push({
+                                file: file,
+                                name: stem,
+                                decoder: decoder,
+                                videoWidth: vw,
+                                videoHeight: vh,
+                                frameCount: decoder.samples.length,
+                                assignedCamera: null,
+                            });
+                        } catch (videoErr) {
+                            console.error('Failed to load ' + file.name + ':', videoErr);
+                            failedVideos.push(stem);
+                        }
+                    }
+
+                    // Match videos to cameras using manifest, then auto-assign
+                    for (var mi = 0; mi < videoManifest.length; mi++) {
+                        var entry = videoManifest[mi];
+                        if (!entry.filename || !entry.assignedCamera) continue;
+                        for (var vfi = 0; vfi < state.videoFiles.length; vfi++) {
+                            var vf = state.videoFiles[vfi];
+                            if (!vf.assignedCamera && vf.name === entry.filename) {
+                                vf.assignedCamera = entry.assignedCamera;
+                                break;
+                            }
+                        }
+                    }
+                    autoAssignVideosToCameras();
+
+                    // For any still-unassigned video, try exact camera name match
+                    var cameraNames = cameras.map(function (c) { return c.name; });
+                    for (var vi = 0; vi < state.videoFiles.length; vi++) {
+                        var vf2 = state.videoFiles[vi];
+                        if (!vf2.assignedCamera && cameraNames.indexOf(vf2.name) >= 0) {
+                            vf2.assignedCamera = vf2.name;
+                        }
+                    }
+
+                    // Create views for assigned videos
+                    showLoading('Creating views...');
+                    for (var vi2 = 0; vi2 < state.videoFiles.length; vi2++) {
+                        var vf3 = state.videoFiles[vi2];
+                        if (vf3.assignedCamera) {
+                            var hasView = state.views.some(function (v) { return v.name === vf3.assignedCamera; });
+                            if (!hasView) {
+                                createViewForVideoFile(vf3);
+                            }
+                        }
+                    }
+
+                    updateTotalFrames();
+                    if (state.views.length > 0) {
+                        hideWelcomeOverlay();
+                        rebuildVideoController();
+                        fitCanvasesToCells();
+                    }
+
+                    // Seek to first labeled frame or frame 0
+                    if (videoController && state.views.length > 0) {
+                        var firstFrame = 0;
+                        for (var [fIdx] of state.session.frameGroups) {
+                            firstFrame = fIdx;
+                            break;
+                        }
+                        state.currentFrame = firstFrame;
+                        await videoController.seekToFrame(firstFrame);
+                    }
+                }
+
+                // 3. Set up 3D viewport
+                if (viewport3d) {
+                    viewport3d.cameras = cameras;
+                    viewport3d.skeleton = state.session.skeleton;
+                    viewport3d.addCameraPyramids();
+                    viewport3d.fitToScene();
+                    viewport3d.setFrame(getInstanceGroupsForFrame(state.currentFrame));
+                } else {
+                    setup3DViewport();
+                }
+
+                // 4. Draw overlays and update UI
+                drawAllOverlays(state.currentFrame);
+                updateInfoPanel();
+                if (timeline) timeline.setData(state.session);
+
+                hideLoading();
+
+                var statusParts = [cameras.length + ' cameras', state.session.numFrames + ' labeled frames'];
+                if (state.views.length > 0) {
+                    statusParts.push(state.views.length + ' views');
+                }
+                setStatus('Project loaded (' + statusParts.join(', ') + ')', 'success');
             } catch (err) {
                 console.error('Failed to load project:', err);
+                hideLoading();
                 setStatus('Load error: ' + err.message, 'error');
             }
         }
 
-        function loadProjectV2(data) {
-            // Parse cameras
-            let cameras = [];
+        /**
+         * Restore session data from a v2 project JSON. Sets state.session.
+         * @returns {Camera[]} parsed cameras
+         */
+        function _restoreProjectV2(data) {
+            var cameras = [];
             if (data.cameras) {
                 cameras = parseCalibrationJSON(JSON.stringify({ cameras: data.cameras }));
             }
 
-            // Parse skeleton
-            let skeleton;
+            var skeleton;
             if (data.skeleton) {
                 skeleton = new Skeleton(
                     data.skeleton.name || 'skeleton',
@@ -2958,32 +3173,31 @@
                 skeleton = createDemoSkeleton();
             }
 
-            const tracks = data.tracks || ['track_0'];
-            const session = new Session(cameras, skeleton, tracks);
+            var tracks = data.tracks || ['track_0'];
+            var session = new Session(cameras, skeleton, tracks);
 
-            // Reconstruct frames
             if (data.frames) {
-                for (const frameIdxStr in data.frames) {
-                    const frameIdx = parseInt(frameIdxStr);
-                    const frameData = data.frames[frameIdxStr];
-                    const fg = new FrameGroup(frameIdx);
+                for (var frameIdxStr in data.frames) {
+                    var frameIdx = parseInt(frameIdxStr);
+                    var frameData = data.frames[frameIdxStr];
+                    var fg = new FrameGroup(frameIdx);
 
-                    // Reconstruct instance groups
                     if (frameData.instanceGroups) {
                         if (!session.instanceGroups.has(frameIdx)) {
                             session.instanceGroups.set(frameIdx, new Map());
                         }
-                        const trackMap = session.instanceGroups.get(frameIdx);
+                        var trackMap = session.instanceGroups.get(frameIdx);
 
-                        for (const groupData of frameData.instanceGroups) {
-                            const group = new InstanceGroup(groupData.id || Date.now(), groupData.trackIdx);
+                        for (var gi = 0; gi < frameData.instanceGroups.length; gi++) {
+                            var groupData = frameData.instanceGroups[gi];
+                            var group = new InstanceGroup(groupData.id || Date.now(), groupData.trackIdx);
                             if (groupData.points3d) {
                                 group.points3d = groupData.points3d;
                             }
 
-                            for (const camName in groupData.instances) {
-                                const instData = groupData.instances[camName];
-                                const inst = new Instance(
+                            for (var camName in groupData.instances) {
+                                var instData = groupData.instances[camName];
+                                var inst = new Instance(
                                     instData.points,
                                     instData.trackIdx || groupData.trackIdx,
                                     instData.type || 'user',
@@ -3001,17 +3215,16 @@
                         }
                     }
 
-                    // Reconstruct unlinked instances
                     if (frameData.unlinkedInstances) {
-                        for (const ulData of frameData.unlinkedInstances) {
-                            const inst = new Instance(
-                                ulData.points,
-                                0,
+                        for (var ui = 0; ui < frameData.unlinkedInstances.length; ui++) {
+                            var ulData = frameData.unlinkedInstances[ui];
+                            var ulInst = new Instance(
+                                ulData.points, 0,
                                 ulData.type || 'user',
                                 ulData.score || 1.0
                             );
-                            inst.modified = ulData.modified || false;
-                            const unlinked = new UnlinkedInstance(inst, ulData.cameraName);
+                            ulInst.modified = ulData.modified || false;
+                            var unlinked = new UnlinkedInstance(ulInst, ulData.cameraName);
                             fg.addUnlinkedInstance(ulData.cameraName, unlinked);
                         }
                     }
@@ -3022,30 +3235,104 @@
 
             state.session = session;
             state.triangulationResults = new Map();
-            updateInfoPanel();
-            setStatus('Project loaded (v2, ' + cameras.length + ' cameras, ' + session.numFrames + ' frames)', 'success');
 
-            // Rebuild 3D viewport
-            if (viewport3d) {
-                viewport3d.cameras = cameras;
-                viewport3d.addCameraPyramids();
-                viewport3d.fitToScene();
-                const groups = getInstanceGroupsForFrame(state.currentFrame);
-                viewport3d.setFrame(groups);
-            }
+            // Fix camera name mismatches: instance keys may differ from camera names
+            // (e.g., instances keyed by video name "CamA" but camera named "A")
+            _resolveInstanceCameraNames(session, cameras, data.videoManifest || []);
 
-            drawAllOverlays(state.currentFrame);
+            return cameras;
         }
 
-        function loadLegacySession(data) {
-            // Parse cameras
-            let cameras = [];
+        /**
+         * Resolve camera name mismatches between instance keys and calibration camera names.
+         * Uses the videoManifest to build old→new name mapping, then renames all instance data.
+         */
+        function _resolveInstanceCameraNames(session, cameras, videoManifest) {
+            var cameraNames = cameras.map(function (c) { return c.name; });
+
+            // Collect all instance keys actually used in the data
+            var usedKeys = new Set();
+            for (var [fIdx, trackMap] of session.instanceGroups) {
+                for (var [tIdx, groups] of trackMap) {
+                    for (var g of groups) {
+                        for (var key of g.instances.keys()) usedKeys.add(key);
+                    }
+                }
+            }
+            for (var [fIdx2, fg] of session.frameGroups) {
+                for (var fgKey of fg.instances.keys()) usedKeys.add(fgKey);
+                for (var ulKey of fg.unlinkedInstances.keys()) usedKeys.add(ulKey);
+            }
+
+            // Check if all used keys already match camera names
+            var allMatch = true;
+            for (var usedKey of usedKeys) {
+                if (cameraNames.indexOf(usedKey) < 0) { allMatch = false; break; }
+            }
+            if (allMatch) return; // No mismatch
+
+            console.log('[project] Instance keys', Array.from(usedKeys), 'do not match camera names', cameraNames);
+
+            // Build mapping from old names to new names
+            // Strategy 1: Use videoManifest (filename → assignedCamera → camera name)
+            var renameMap = {};
+            for (var mi = 0; mi < videoManifest.length; mi++) {
+                var entry = videoManifest[mi];
+                var oldKey = entry.assignedCamera || entry.filename;
+                if (!oldKey || cameraNames.indexOf(oldKey) >= 0) continue; // Already matches
+                // Try to match this old key to a camera by substring
+                var oldLower = oldKey.toLowerCase();
+                for (var ci = 0; ci < cameraNames.length; ci++) {
+                    var camLower = cameraNames[ci].toLowerCase();
+                    var alreadyMapped = false;
+                    for (var mk in renameMap) {
+                        if (renameMap[mk] === cameraNames[ci]) { alreadyMapped = true; break; }
+                    }
+                    if (alreadyMapped) continue;
+                    if (oldLower === camLower || oldLower.indexOf(camLower) >= 0 || camLower.indexOf(oldLower) >= 0) {
+                        renameMap[oldKey] = cameraNames[ci];
+                        break;
+                    }
+                }
+            }
+
+            // Strategy 2: For any used key not in renameMap, try direct substring match
+            for (var usedKey2 of usedKeys) {
+                if (cameraNames.indexOf(usedKey2) >= 0) continue; // Already matches
+                if (renameMap[usedKey2]) continue; // Already mapped
+                var usedLower = usedKey2.toLowerCase();
+                for (var ci2 = 0; ci2 < cameraNames.length; ci2++) {
+                    var camLower2 = cameraNames[ci2].toLowerCase();
+                    var alreadyMapped2 = false;
+                    for (var mk2 in renameMap) {
+                        if (renameMap[mk2] === cameraNames[ci2]) { alreadyMapped2 = true; break; }
+                    }
+                    if (alreadyMapped2) continue;
+                    if (usedLower === camLower2 || usedLower.indexOf(camLower2) >= 0 || camLower2.indexOf(usedLower) >= 0) {
+                        renameMap[usedKey2] = cameraNames[ci2];
+                        break;
+                    }
+                }
+            }
+
+            // Apply renames
+            for (var oldName in renameMap) {
+                console.log('[project] Renaming instance key "' + oldName + '" -> "' + renameMap[oldName] + '"');
+                session.renameCameraInAllData(oldName, renameMap[oldName]);
+            }
+        }
+
+        /**
+         * Restore session data from a legacy (flat) project JSON. Sets state.session.
+         * @returns {Camera[]} parsed cameras
+         */
+        function _restoreLegacySession(data) {
+            var cameras = [];
             if (data.cameras) {
                 cameras = parseCalibrationJSON(JSON.stringify({ cameras: data.cameras }));
             }
 
-            // Parse skeleton
-            let skeleton;
+            var skeleton;
             if (data.skeleton) {
                 skeleton = new Skeleton(
                     data.skeleton.name || 'skeleton',
@@ -3056,21 +3343,22 @@
                 skeleton = createDemoSkeleton();
             }
 
-            const tracks = data.tracks || ['track_0'];
-            const session = new Session(cameras, skeleton, tracks);
+            var tracks = data.tracks || ['track_0'];
+            var session = new Session(cameras, skeleton, tracks);
 
-            // Parse frames
             if (data.frames) {
-                for (const frameIdxStr in data.frames) {
-                    const frameIdx = parseInt(frameIdxStr);
-                    const frameData = data.frames[frameIdxStr];
-                    const fg = new FrameGroup(frameIdx);
+                for (var frameIdxStr in data.frames) {
+                    var frameIdx = parseInt(frameIdxStr);
+                    var frameData = data.frames[frameIdxStr];
+                    var fg = new FrameGroup(frameIdx);
 
-                    for (const camName in frameData) {
-                        const instances = frameData[camName];
-                        for (let i = 0; i < instances.length; i++) {
-                            const instData = instances[i];
-                            const inst = new Instance(
+                    for (var camName in frameData) {
+                        if (camName === 'instanceGroups' || camName === 'unlinkedInstances') continue;
+                        var instances = frameData[camName];
+                        if (!Array.isArray(instances)) continue;
+                        for (var i = 0; i < instances.length; i++) {
+                            var instData = instances[i];
+                            var inst = new Instance(
                                 instData.points,
                                 instData.trackIdx || 0,
                                 instData.type || 'predicted',
@@ -3086,38 +3374,32 @@
             }
 
             // Reconstruct InstanceGroups by grouping instances with the same trackIdx
-            for (const [frameIdx, fg] of session.frameGroups) {
-                const trackInstances = new Map();  // trackIdx -> [{camName, instance}]
-                for (const [camName, instances] of fg.instances) {
-                    for (const inst of instances) {
-                        const tIdx = inst.trackIdx || 0;
+            for (var [frameIdx2, fg2] of session.frameGroups) {
+                var trackInstances = new Map();
+                for (var [cn, insts] of fg2.instances) {
+                    for (var ii = 0; ii < insts.length; ii++) {
+                        var tIdx = insts[ii].trackIdx || 0;
                         if (!trackInstances.has(tIdx)) trackInstances.set(tIdx, []);
-                        trackInstances.get(tIdx).push({ camName, instance: inst });
+                        trackInstances.get(tIdx).push({ camName: cn, instance: insts[ii] });
                     }
                 }
-                if (!session.instanceGroups.has(frameIdx)) session.instanceGroups.set(frameIdx, new Map());
-                const trackMap = session.instanceGroups.get(frameIdx);
-                for (const [trackIdx, entries] of trackInstances) {
-                    const group = new InstanceGroup(Date.now() + trackIdx, trackIdx);
-                    for (const e of entries) group.addInstance(e.camName, e.instance);
-                    if (!trackMap.has(trackIdx)) trackMap.set(trackIdx, []);
-                    trackMap.get(trackIdx).push(group);
+                if (!session.instanceGroups.has(frameIdx2)) session.instanceGroups.set(frameIdx2, new Map());
+                var tMap = session.instanceGroups.get(frameIdx2);
+                for (var [trkIdx, entries] of trackInstances) {
+                    var grp = new InstanceGroup(Date.now() + trkIdx, trkIdx);
+                    for (var ei = 0; ei < entries.length; ei++) grp.addInstance(entries[ei].camName, entries[ei].instance);
+                    if (!tMap.has(trkIdx)) tMap.set(trkIdx, []);
+                    tMap.get(trkIdx).push(grp);
                 }
             }
 
             state.session = session;
             state.triangulationResults = new Map();
-            updateInfoPanel();
-            setStatus('Session loaded (' + cameras.length + ' cameras, ' + session.numFrames + ' frames)', 'success');
 
-            // Rebuild 3D viewport
-            if (viewport3d) {
-                viewport3d.cameras = cameras;
-                viewport3d.addCameraPyramids();
-                viewport3d.fitToScene();
-            }
+            // Fix camera name mismatches
+            _resolveInstanceCameraNames(session, cameras, data.videoManifest || []);
 
-            drawAllOverlays(state.currentFrame);
+            return cameras;
         }
 
         // ============================================
@@ -3160,6 +3442,49 @@
                 } else {
                     const skeleton = new Skeleton('skeleton', [], []);
                     state.session = new Session(cameras, skeleton, ['track_0']);
+                }
+
+                // Re-assign videos to the new calibration cameras
+                // First clear existing assignments so auto-assign can re-match
+                var cameraNames = cameras.map(function (c) { return c.name; });
+                for (var vi = 0; vi < state.videoFiles.length; vi++) {
+                    var vf = state.videoFiles[vi];
+                    // Keep assignment if camera name still exists in new calibration
+                    if (vf.assignedCamera && cameraNames.indexOf(vf.assignedCamera) < 0) {
+                        vf.assignedCamera = null;
+                    }
+                }
+                autoAssignVideosToCameras();
+
+                // Update view names to match new camera assignments
+                // Also update all instance/group data to use the new camera names
+                for (var vi2 = 0; vi2 < state.videoFiles.length; vi2++) {
+                    var vf2 = state.videoFiles[vi2];
+                    if (vf2.assignedCamera) {
+                        // Find the view that was created for this video and rename it
+                        for (var vIdx = 0; vIdx < state.views.length; vIdx++) {
+                            if (state.views[vIdx].name === vf2.name ||
+                                state.views[vIdx].decoder === vf2.decoder) {
+                                var oldName = state.views[vIdx].name;
+                                if (oldName !== vf2.assignedCamera) {
+                                    console.log('[calibration] Renaming view "' + oldName + '" -> "' + vf2.assignedCamera + '"');
+                                    state.views[vIdx].name = vf2.assignedCamera;
+                                    // Update the label in the grid cell
+                                    var cell = document.getElementById('cell-' + oldName);
+                                    if (cell) {
+                                        cell.id = 'cell-' + vf2.assignedCamera;
+                                        var lbl = cell.querySelector('.view-label');
+                                        if (lbl) lbl.textContent = vf2.assignedCamera;
+                                    }
+                                    // Rename camera keys in all session data (FrameGroups, InstanceGroups, etc.)
+                                    if (state.session) {
+                                        state.session.renameCameraInAllData(oldName, vf2.assignedCamera);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 // Rebuild the 3D viewport with new cameras
@@ -3327,6 +3652,23 @@
                 for (var j = 0; j < cameraNames.length; j++) {
                     if (cameraNames[j].toLowerCase() === lower) {
                         vf.assignedCamera = cameraNames[j];
+                        break;
+                    }
+                }
+                if (vf.assignedCamera) continue;
+
+                // Try substring match: video name contains camera name or vice versa
+                for (var j2 = 0; j2 < cameraNames.length; j2++) {
+                    var camLower = cameraNames[j2].toLowerCase();
+                    // Check if already assigned to another video
+                    var alreadyUsed = state.videoFiles.some(function (other) {
+                        return other !== vf && other.assignedCamera === cameraNames[j2];
+                    });
+                    if (alreadyUsed) continue;
+
+                    if (lower.indexOf(camLower) >= 0 || camLower.indexOf(lower) >= 0) {
+                        vf.assignedCamera = cameraNames[j2];
+                        console.log('[auto-assign] Matched video "' + vf.name + '" to camera "' + cameraNames[j2] + '" (substring)');
                         break;
                     }
                 }
