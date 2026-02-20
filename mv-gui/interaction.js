@@ -193,13 +193,14 @@ class InteractionManager {
         // feels consistent regardless of the display size and zoom level.
         // Use getBoundingClientRect() which includes CSS transforms.
         let threshold = this.hitThreshold;
+        let displayToVideo = 1;
         const state = this._getState();
         if (state) {
             const view = this._findView(state, viewName);
             if (view && view.overlayCanvas) {
                 const rect = view.overlayCanvas.getBoundingClientRect();
                 if (rect.width > 0) {
-                    const displayToVideo = view.overlayCanvas.width / rect.width;
+                    displayToVideo = view.overlayCanvas.width / rect.width;
                     threshold = this.hitThreshold * displayToVideo;
                 }
             }
@@ -208,8 +209,9 @@ class InteractionManager {
         let best = null;
         let bestDist = threshold;
 
-        // Base node size for label region estimation (in video pixels)
-        const baseNodeSize = 4;
+        // Get actual node size from slider (matches what overlays.js renders)
+        const sliderEl = document.getElementById('nodeSizeSlider');
+        const nodeSize = sliderEl ? parseInt(sliderEl.value) || 4 : 4;
 
         for (let g = 0; g < groups.length; g++) {
             const group = groups[g];
@@ -239,7 +241,15 @@ class InteractionManager {
 
         // Secondary check: label regions (to the right of each node).
         // Allows clicking on a node's label text to select/drag that node.
+        // Overlay canvas internal size = video size, so rendering scale = 1.
+        // Labels in overlays.js are drawn at:
+        //   tx = pt.x + nodeSize + nodeSize*0.5, ty = pt.y - nodeSize*0.5
+        //   fontSize = max(10, nodeSize * 3), textBaseline = 'bottom'
         if (!best) {
+            const fontSize = Math.max(10, nodeSize * 3);
+            const labelOffsetX = 1.5 * nodeSize;
+            const labelOffsetY = 0.5 * nodeSize;
+
             for (let g = 0; g < groups.length; g++) {
                 const group = groups[g];
                 const instance = group.getInstance(viewName);
@@ -249,11 +259,10 @@ class InteractionManager {
                     const pt = instance.points[n];
                     if (pt == null) continue;
 
-                    // Label is drawn to the right and slightly above the node
-                    const labelLeft = pt[0] + baseNodeSize;
-                    const labelRight = pt[0] + baseNodeSize + 80;
-                    const labelTop = pt[1] - 16;
-                    const labelBottom = pt[1] + 4;
+                    const labelLeft = pt[0] + labelOffsetX;
+                    const labelRight = pt[0] + labelOffsetX + fontSize * 5;
+                    const labelTop = pt[1] - labelOffsetY - fontSize;
+                    const labelBottom = pt[1] + fontSize * 0.3;
 
                     if (videoX >= labelLeft && videoX <= labelRight &&
                         videoY >= labelTop && videoY <= labelBottom) {
@@ -294,11 +303,12 @@ class InteractionManager {
 
         // Compute threshold using getBoundingClientRect() which includes CSS transforms
         let threshold = this.hitThreshold;
+        let displayToVideo = 1;
         const view = this._findView(state, viewName);
         if (view && view.overlayCanvas) {
             const rect = view.overlayCanvas.getBoundingClientRect();
             if (rect.width > 0) {
-                const displayToVideo = view.overlayCanvas.width / rect.width;
+                displayToVideo = view.overlayCanvas.width / rect.width;
                 threshold = this.hitThreshold * displayToVideo;
             }
         }
@@ -306,8 +316,9 @@ class InteractionManager {
         let best = null;
         let bestDist = threshold;
 
-        // Base node size for label region estimation (in video pixels)
-        const baseNodeSize = 4;
+        // Get actual node size from slider (matches what overlays.js renders)
+        const sliderEl = document.getElementById('nodeSizeSlider');
+        const nodeSize = sliderEl ? parseInt(sliderEl.value) || 4 : 4;
 
         for (let u = 0; u < unlinkedList.length; u++) {
             const ul = unlinkedList[u];
@@ -334,7 +345,12 @@ class InteractionManager {
         }
 
         // Secondary check: label regions (to the right of each node).
+        // Overlay canvas internal size = video size, so rendering scale = 1.
         if (!best) {
+            const fontSize = Math.max(10, nodeSize * 3);
+            const labelOffsetX = 1.5 * nodeSize;
+            const labelOffsetY = 0.5 * nodeSize;
+
             for (let u = 0; u < unlinkedList.length; u++) {
                 const ul = unlinkedList[u];
                 const points = ul.instance.points;
@@ -344,10 +360,10 @@ class InteractionManager {
                     const pt = points[n];
                     if (pt == null) continue;
 
-                    const labelLeft = pt[0] + baseNodeSize;
-                    const labelRight = pt[0] + baseNodeSize + 80;
-                    const labelTop = pt[1] - 16;
-                    const labelBottom = pt[1] + 4;
+                    const labelLeft = pt[0] + labelOffsetX;
+                    const labelRight = pt[0] + labelOffsetX + fontSize * 5;
+                    const labelTop = pt[1] - labelOffsetY - fontSize;
+                    const labelBottom = pt[1] + fontSize * 0.3;
 
                     if (videoX >= labelLeft && videoX <= labelRight &&
                         videoY >= labelTop && videoY <= labelBottom) {
