@@ -54,10 +54,16 @@ class OnDemandVideoDecoder {
             this.sourceType = "url";
             // Probe for range request support and file size
             const headResp = await fetch(this.url, { method: "HEAD" });
+            if (!headResp.ok) {
+                throw new Error("Failed to load video: " + this.url + " (HTTP " + headResp.status + ")");
+            }
             const acceptRanges = headResp.headers.get("Accept-Ranges");
             this.supportsRangeRequests = acceptRanges === "bytes";
             const contentLength = headResp.headers.get("Content-Length");
             this.fileSize = contentLength ? parseInt(contentLength, 10) : 0;
+            if (this.fileSize === 0) {
+                throw new Error("Video file is empty or size unknown: " + this.url);
+            }
             videoLog("URL source: size=" + this.fileSize + " rangeRequests=" + this.supportsRangeRequests);
         } else if (source instanceof Blob || source instanceof File) {
             this.file = source;
