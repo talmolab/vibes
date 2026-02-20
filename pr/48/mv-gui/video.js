@@ -1166,6 +1166,9 @@ class VideoController {
         var leftDragPending = false;
 
         container.addEventListener("mousedown", function (e) {
+            // Skip ALL zoom logic if the interaction manager is handling a drag
+            if (window.__mvguiDragging || e._consumedByInteraction) return;
+
             if (e.button === 1) {
                 isPanning = true;
                 lastX = e.clientX;
@@ -1174,7 +1177,7 @@ class VideoController {
                 return;
             }
 
-            if (e.button === 0 && !e._consumedByInteraction) {
+            if (e.button === 0) {
                 leftDragPending = true;
                 dragStartX = e.clientX;
                 dragStartY = e.clientY;
@@ -1195,6 +1198,12 @@ class VideoController {
         };
 
         document.addEventListener("mousemove", function (e) {
+            // Skip if interaction manager owns the mouse
+            if (window.__mvguiDragging) {
+                leftDragPending = false;
+                return;
+            }
+
             if (isPanning) {
                 var dx = e.clientX - lastX;
                 var dy = e.clientY - lastY;
@@ -1249,6 +1258,9 @@ class VideoController {
 
         document.addEventListener("mouseup", function (e) {
             leftDragPending = false;
+
+            // Skip zoom actions if interaction manager owns the mouse
+            if (window.__mvguiDragging) return;
 
             if (e.button === 1 && isPanning) {
                 isPanning = false;

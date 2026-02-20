@@ -196,20 +196,32 @@ function drawSkeleton(ctx, instance, skeleton, options) {
         ctx.fill();
     }
 
-    // --- 3. Optional labels ---
-    if (showLabels && skeleton.nodes) {
+    // --- 3. Optional labels (SLEAP-style with dark outline) ---
+    if (showLabels) {
+        var savedAlpha = ctx.globalAlpha;
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = '#ffffff';
-        ctx.font = Math.round(10 * scale) + 'px sans-serif';
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+        // Font size = 3x the node radius. Since nodeSize is already scaled
+        // to canvas coordinates, this ensures labels are always visible and
+        // proportional to the node display size.
+        var fontSize = Math.max(10, Math.round(nodeSize * 3));
+        ctx.lineWidth = Math.max(1, Math.round(nodeSize * 0.5));
+        ctx.font = 'bold ' + fontSize + 'px sans-serif';
         ctx.textBaseline = 'bottom';
-        for (let i = 0; i < canvasPoints.length; i++) {
-            const cp = canvasPoints[i];
-            if (!cp) continue;
-            const node = skeleton.nodes[i];
-            const name = typeof node === 'string' ? node : (node && node.name ? node.name : '');
-            if (name) {
-                ctx.fillText(name, cp.x + nodeSize + 2, cp.y - 2);
-            }
+        ctx.textAlign = 'left';
+        var labelOffset = Math.round(nodeSize * 0.5);
+        for (var li = 0; li < canvasPoints.length; li++) {
+            var lp = canvasPoints[li];
+            if (!lp) continue;
+            var node = skeleton.nodes ? skeleton.nodes[li] : undefined;
+            var name = typeof node === 'string' ? node : (node && node.name ? node.name : 'node_' + li);
+            var tx = lp.x + nodeSize + labelOffset;
+            var ty = lp.y - labelOffset;
+            ctx.strokeText(name, tx, ty);
+            ctx.fillText(name, tx, ty);
         }
+        ctx.globalAlpha = savedAlpha;
     }
 
     ctx.restore();
@@ -907,6 +919,7 @@ function drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, options) {
 
     const baseNodeSize = options.nodeSize != null ? options.nodeSize : 4;
     const baseLineWidth = options.lineWidth != null ? options.lineWidth : 2;
+    const showLabels = options.showLabels !== false; // default true for unlinked
     const assignmentSelectedIds = options.assignmentSelectedIds || [];
     const assignmentColor = options.assignmentColor || '#fbbf24';
     const selectedUnlinkedId = options.selectedUnlinkedId || null;
@@ -998,6 +1011,31 @@ function drawUnlinkedInstances(ctx, unlinkedInstances, skeleton, options) {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText('?', anchorCp.x - nodeSize * 2, anchorCp.y - nodeSize * 2);
+        }
+
+        // Node name labels
+        if (showLabels) {
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+            // Font size = 3x the node radius. Since nodeSize is already scaled
+            // to canvas coordinates, labels are always proportional to nodes.
+            var fontSize = Math.max(10, Math.round(nodeSize * 3));
+            ctx.lineWidth = Math.max(1, Math.round(nodeSize * 0.5));
+            ctx.font = 'bold ' + fontSize + 'px sans-serif';
+            ctx.textBaseline = 'bottom';
+            ctx.textAlign = 'left';
+            var labelOffset = Math.round(nodeSize * 0.5);
+            for (var li = 0; li < canvasPoints.length; li++) {
+                var lp = canvasPoints[li];
+                if (!lp) continue;
+                var node2 = skeleton.nodes ? skeleton.nodes[li] : undefined;
+                var lname = typeof node2 === 'string' ? node2 : (node2 && node2.name ? node2.name : 'node_' + li);
+                var ltx = lp.x + nodeSize + labelOffset;
+                var lty = lp.y - labelOffset;
+                ctx.strokeText(lname, ltx, lty);
+                ctx.fillText(lname, ltx, lty);
+            }
         }
 
         // Selection ring (assignment = yellow, edit = blue)

@@ -392,56 +392,39 @@ class InteractionManager {
      * @param {string} viewName
      */
     onMouseDown(e, viewName) {
-        const state = this._getState();
+        var state = this._getState();
         if (!state) return;
 
         this.lastInteractedView = viewName;
 
-        const [vx, vy] = this.canvasToVideo(e.clientX, e.clientY, viewName);
-        const frameIdx = state.currentFrame;
+        // Guard: clean up any stale drag state from a missed mouseup
+        if (this.isDragging) {
+            this._endDrag();
+        }
+
+        var coords = this.canvasToVideo(e.clientX, e.clientY, viewName);
+        var vx = coords[0], vy = coords[1];
+        var frameIdx = state.currentFrame;
 
         // --- Right-click: toggle node visibility ---
         if (e.button === 2) {
             e.preventDefault();
-            const hit = this.findNearestNode(vx, vy, viewName, frameIdx);
+            var hit = this.findNearestNode(vx, vy, viewName, frameIdx);
             if (hit) {
                 this._toggleNodeVisibility(viewName, hit.instanceGroup, hit.nodeIdx);
             }
             return;
         }
 
-        // --- Left click ---
+        // --- Left click only ---
         if (e.button !== 0) return;
 
-        // --- Double-click: convert predicted -> user ---
-        if (e.detail === 2) {
-            const hit = this.findNearestNode(vx, vy, viewName, frameIdx);
-            if (hit) {
-                this._convertToUserInstance(hit.instanceGroup);
-            }
-            return;
-        }
+        // --- Find the closest node (linked or unlinked) ---
+        var linkedHit = this.findNearestNode(vx, vy, viewName, frameIdx);
+        var ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
 
-        // --- Assignment mode: click unlinked instances to assign ---
-        if (this.assignmentMode) {
-            const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
-            if (ulHit) {
-                this.select(null, -1);
-                this.selectedUnlinked = ulHit.unlinked;
-                this.addToAssignmentSelection(ulHit.unlinked);
-                this._requestRedraw();
-                e._consumedByInteraction = true;
-                return;
-            }
-        }
-
-        // --- Single left click: find closest hit (linked or unlinked) ---
-        const linkedHit = this.findNearestNode(vx, vy, viewName, frameIdx);
-        const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
-
-        // Determine which hit is closer
-        let useLinked = false;
-        let useUnlinked = false;
+        var useLinked = false;
+        var useUnlinked = false;
         if (linkedHit && ulHit) {
             useLinked = linkedHit.distance <= ulHit.distance;
             useUnlinked = !useLinked;
@@ -451,92 +434,38 @@ class InteractionManager {
             useUnlinked = true;
         }
 
+        // --- Double-click on linked instance: convert predicted -> user ---
+        if (e.detail >= 2 && useLinked) {
+            this._convertToUserInstance(linkedHit.instanceGroup);
+            this._requestRedraw();
+            return;
+        }
+
+        // --- Linked node: select + drag ---
         if (useLinked) {
-            // Select the linked instance group and node
             this.selectedUnlinked = null;
             if (this.assignmentMode) {
                 this.setAssignmentMode(false);
             }
             this.select(linkedHit.instanceGroup, linkedHit.nodeIdx);
-
-            // Alt/Option key: whole-instance drag mode
-            if (e.altKey) {
-                const instance = linkedHit.instanceGroup.getInstance(viewName);
-                this.isDragging = true;
-                this.dragInfo = {
-                    mode: 'instance',
-                    viewName: viewName,
-                    instanceGroupIdx: linkedHit.instanceGroupIdx,
-                    nodeIdx: linkedHit.nodeIdx,
-                    startPos: [vx, vy],
-                    currentPos: [vx, vy],
-                    unlinked: null,
-                    originalPoints: instance && instance.points
-                        ? instance.points.map(function (p) { return p ? [p[0], p[1]] : null; })
-                        : null,
-                };
-            } else {
-                // Start single-node drag
-                this.isDragging = true;
-                this.dragInfo = {
-                    mode: 'node',
-                    viewName: viewName,
-                    instanceGroupIdx: linkedHit.instanceGroupIdx,
-                    nodeIdx: linkedHit.nodeIdx,
-                    startPos: [vx, vy],
-                    currentPos: [vx, vy],
-                    unlinked: null,
-                    originalPoints: null,
-                };
-            }
-
+            this._startDrag(viewName, linkedHit.instanceGroupIdx, linkedHit.nodeIdx,
+                vx, vy, null, e.altKey ? linkedHit.instanceGroup.getInstance(viewName) : null);
+            e.preventDefault();
+            e.stopPropagation();
             e._consumedByInteraction = true;
+
+        // --- Unlinked node: select + drag ---
         } else if (useUnlinked) {
-            // Select the unlinked instance (for editing/deletion)
             this.select(null, -1);
             this.selectedUnlinked = ulHit.unlinked;
-
-            // Auto-enter assignment mode and add to selection for grouping
-            if (!this.assignmentMode) {
-                this.assignmentMode = true;
-            }
-            this.addToAssignmentSelection(ulHit.unlinked);
-
-            // Start dragging the unlinked node
-            if (e.altKey) {
-                // Whole-instance drag on unlinked
-                const pts = ulHit.unlinked.instance.points;
-                this.isDragging = true;
-                this.dragInfo = {
-                    mode: 'instance',
-                    viewName: viewName,
-                    instanceGroupIdx: -1,
-                    nodeIdx: ulHit.nodeIdx,
-                    startPos: [vx, vy],
-                    currentPos: [vx, vy],
-                    unlinked: ulHit.unlinked,
-                    originalPoints: pts
-                        ? pts.map(function (p) { return p ? [p[0], p[1]] : null; })
-                        : null,
-                };
-            } else {
-                // Single-node drag on unlinked
-                this.isDragging = true;
-                this.dragInfo = {
-                    mode: 'node',
-                    viewName: viewName,
-                    instanceGroupIdx: -1,
-                    nodeIdx: ulHit.nodeIdx,
-                    startPos: [vx, vy],
-                    currentPos: [vx, vy],
-                    unlinked: ulHit.unlinked,
-                    originalPoints: null,
-                };
-            }
-
+            this._startDrag(viewName, -1, ulHit.nodeIdx,
+                vx, vy, ulHit.unlinked, e.altKey ? ulHit.unlinked : null);
+            e.preventDefault();
+            e.stopPropagation();
             e._consumedByInteraction = true;
+
+        // --- Clicked empty space: clear selection ---
         } else {
-            // Clicked on empty space
             this.clearSelection();
             if (this.assignmentMode) {
                 this.setAssignmentMode(false);
@@ -547,67 +476,28 @@ class InteractionManager {
     }
 
     /**
-     * Handle mousemove on an overlay canvas.
-     *
-     * If dragging: update the node position in the Instance.points array
-     * and trigger a redraw for real-time visual feedback.
-     *
-     * If not dragging: update the hovered-node state for visual feedback
-     * (e.g. cursor change, highlight ring).
+     * Handle mousemove on an overlay canvas (hover tracking only).
+     * During active drags, movement is handled by _onDragMove at the
+     * document level instead.
      *
      * @param {MouseEvent} e
      * @param {string} viewName
      */
     onMouseMove(e, viewName) {
-        const state = this._getState();
+        // During drags, all movement is handled by _onDragMove (document-level)
+        if (this.isDragging) return;
+
+        var state = this._getState();
         if (!state) return;
 
-        const [vx, vy] = this.canvasToVideo(e.clientX, e.clientY, viewName);
+        var coords = this.canvasToVideo(e.clientX, e.clientY, viewName);
+        var vx = coords[0], vy = coords[1];
 
-        if (this.isDragging && this.dragInfo && this.dragInfo.viewName === viewName) {
-            // Update the drag position
-            this.dragInfo.currentPos = [vx, vy];
+        // Update hover state
+        var frameIdx = state.currentFrame;
+        var hit = this.findNearestNode(vx, vy, viewName, frameIdx);
 
-            // Determine the instance being dragged (linked or unlinked)
-            let instance = null;
-            if (this.dragInfo.unlinked) {
-                instance = this.dragInfo.unlinked.instance;
-            } else {
-                const groups = this._getInstanceGroups(state.currentFrame);
-                if (groups && groups.length > this.dragInfo.instanceGroupIdx) {
-                    const group = groups[this.dragInfo.instanceGroupIdx];
-                    instance = group.getInstance(viewName);
-                }
-            }
-
-            if (instance && instance.points) {
-                if (this.dragInfo.mode === 'instance' && this.dragInfo.originalPoints) {
-                    // Whole-instance drag: translate all points by delta
-                    const dx = vx - this.dragInfo.startPos[0];
-                    const dy = vy - this.dragInfo.startPos[1];
-                    for (var pi = 0; pi < instance.points.length; pi++) {
-                        if (this.dragInfo.originalPoints[pi]) {
-                            instance.points[pi] = [
-                                this.dragInfo.originalPoints[pi][0] + dx,
-                                this.dragInfo.originalPoints[pi][1] + dy
-                            ];
-                        }
-                    }
-                } else if (instance.points.length > this.dragInfo.nodeIdx) {
-                    // Single-node drag
-                    instance.points[this.dragInfo.nodeIdx] = [vx, vy];
-                }
-            }
-
-            this._requestRedraw();
-            return;
-        }
-
-        // Not dragging - update hover state
-        const frameIdx = state.currentFrame;
-        const hit = this.findNearestNode(vx, vy, viewName, frameIdx);
-
-        const prevHover = this.hoveredNode;
+        var prevHover = this.hoveredNode;
         if (hit) {
             this.hoveredNode = {
                 viewName: viewName,
@@ -619,14 +509,14 @@ class InteractionManager {
         }
 
         // Also check unlinked instances for cursor feedback
-        let hoverUnlinked = false;
+        var hoverUnlinked = false;
         if (!this.hoveredNode) {
-            const ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
+            var ulHit = this.findNearestUnlinkedNode(vx, vy, viewName, frameIdx);
             if (ulHit) hoverUnlinked = true;
         }
 
         // Update cursor style on the overlay canvas
-        const view = this._findView(state, viewName);
+        var view = this._findView(state, viewName);
         if (view && view.overlayCanvas) {
             if ((this.hoveredNode || hoverUnlinked) && e.altKey) {
                 view.overlayCanvas.style.cursor = 'move';
@@ -636,7 +526,7 @@ class InteractionManager {
         }
 
         // Redraw if hover state changed (for highlight rendering)
-        const hoverChanged = !this._hoveredNodesEqual(prevHover, this.hoveredNode);
+        var hoverChanged = !this._hoveredNodesEqual(prevHover, this.hoveredNode);
         if (hoverChanged) {
             this._requestRedraw();
         }
@@ -843,40 +733,35 @@ class InteractionManager {
     attach(views) {
         if (!views || views.length === 0) return;
 
-        for (const view of views) {
-            const canvas = view.overlayCanvas;
+        var self = this;
+        for (var vi = 0; vi < views.length; vi++) {
+            var view = views[vi];
+            var canvas = view.overlayCanvas;
             if (!canvas) continue;
 
-            const viewName = view.name;
+            var viewName = view.name;
 
-            // Create bound handlers so we can remove them later
-            const handlers = {
-                mousedown: (e) => this.onMouseDown(e, viewName),
-                mousemove: (e) => this.onMouseMove(e, viewName),
-                mouseup: (e) => this.onMouseUp(e, viewName),
-                mouseleave: () => this.onMouseLeave(viewName),
-                contextmenu: (e) => e.preventDefault(), // suppress right-click menu
-            };
+            // Create bound handlers so we can remove them later.
+            // Use IIFE to capture viewName properly in the closure.
+            var handlers = (function (vn) {
+                return {
+                    mousedown: function (e) { self.onMouseDown(e, vn); },
+                    mousemove: function (e) { self.onMouseMove(e, vn); },
+                    mouseleave: function () { self.onMouseLeave(vn); },
+                    contextmenu: function (e) { e.preventDefault(); },
+                };
+            })(viewName);
 
             canvas.addEventListener('mousedown', handlers.mousedown);
             canvas.addEventListener('mousemove', handlers.mousemove);
-            canvas.addEventListener('mouseup', handlers.mouseup);
             canvas.addEventListener('mouseleave', handlers.mouseleave);
             canvas.addEventListener('contextmenu', handlers.contextmenu);
 
-            this._boundHandlers.set(viewName, { canvas, handlers });
+            this._boundHandlers.set(viewName, { canvas: canvas, handlers: handlers });
         }
 
-        // Document-level mouseup to catch drags that leave the canvas
-        this._docMouseUpHandler = (e) => {
-            if (this.isDragging && this.dragInfo) {
-                this.onMouseUp(e, this.dragInfo.viewName);
-            }
-        };
-        document.addEventListener('mouseup', this._docMouseUpHandler);
-
         // Keyboard handler
-        this._keyHandler = (e) => this.onKeyDown(e);
+        this._keyHandler = function (e) { self.onKeyDown(e); };
         document.addEventListener('keydown', this._keyHandler);
     }
 
@@ -884,21 +769,18 @@ class InteractionManager {
      * Remove all event listeners that were added by attach().
      */
     detach() {
-        for (const [viewName, entry] of this._boundHandlers) {
-            const canvas = entry.canvas;
-            const h = entry.handlers;
+        for (var entry of this._boundHandlers.values()) {
+            var canvas = entry.canvas;
+            var h = entry.handlers;
             canvas.removeEventListener('mousedown', h.mousedown);
             canvas.removeEventListener('mousemove', h.mousemove);
-            canvas.removeEventListener('mouseup', h.mouseup);
             canvas.removeEventListener('mouseleave', h.mouseleave);
             canvas.removeEventListener('contextmenu', h.contextmenu);
         }
         this._boundHandlers.clear();
 
-        if (this._docMouseUpHandler) {
-            document.removeEventListener('mouseup', this._docMouseUpHandler);
-            this._docMouseUpHandler = null;
-        }
+        // Clean up any active drag listeners
+        this._removeDragListeners();
 
         if (this._keyHandler) {
             document.removeEventListener('keydown', this._keyHandler);
@@ -961,12 +843,145 @@ class InteractionManager {
     }
 
     /**
+     * Start a drag operation. Sets up document-level mousemove + mouseup
+     * listeners so the drag works even if the mouse leaves the overlay canvas.
+     *
+     * @param {string} viewName
+     * @param {number} instanceGroupIdx - Index in groups array, or -1 for unlinked
+     * @param {number} nodeIdx
+     * @param {number} vx - Start X in video coords
+     * @param {number} vy - Start Y in video coords
+     * @param {UnlinkedInstance|null} unlinked
+     * @param {Object|null} altDragSource - If Alt+drag, the instance or unlinked to copy points from
+     * @private
+     */
+    _startDrag(viewName, instanceGroupIdx, nodeIdx, vx, vy, unlinked, altDragSource) {
+        // Clean up any previous drag listeners
+        this._removeDragListeners();
+
+        var originalPoints = null;
+        var mode = 'node';
+        if (altDragSource) {
+            mode = 'instance';
+            var srcInst = unlinked ? unlinked.instance : altDragSource;
+            if (srcInst && srcInst.points) {
+                originalPoints = srcInst.points.map(function (p) { return p ? [p[0], p[1]] : null; });
+            }
+        }
+
+        this.isDragging = true;
+        window.__mvguiDragging = true;
+        this.dragInfo = {
+            mode: mode,
+            viewName: viewName,
+            instanceGroupIdx: instanceGroupIdx,
+            nodeIdx: nodeIdx,
+            startPos: [vx, vy],
+            currentPos: [vx, vy],
+            unlinked: unlinked,
+            originalPoints: originalPoints,
+        };
+
+        // Install document-level listeners for the drag duration
+        var self = this;
+        this._dragMoveHandler = function (e) { self._onDragMove(e); };
+        this._dragUpHandler = function (e) { self._onDragUp(e); };
+        document.addEventListener('mousemove', this._dragMoveHandler, true); // capture phase
+        document.addEventListener('mouseup', this._dragUpHandler, true); // capture phase
+    }
+
+    /**
+     * Document-level mousemove during a drag. Uses capture phase so it
+     * fires before any other handlers, preventing zoom interference.
+     * @param {MouseEvent} e
+     * @private
+     */
+    _onDragMove(e) {
+        if (!this.isDragging || !this.dragInfo) return;
+
+        var info = this.dragInfo;
+        var coords = this.canvasToVideo(e.clientX, e.clientY, info.viewName);
+        var vx = coords[0], vy = coords[1];
+        info.currentPos = [vx, vy];
+
+        // Determine the instance being dragged
+        var instance = null;
+        if (info.unlinked) {
+            instance = info.unlinked.instance;
+        } else {
+            var state = this._getState();
+            if (state) {
+                var groups = this._getInstanceGroups(state.currentFrame);
+                if (groups && groups.length > info.instanceGroupIdx) {
+                    var group = groups[info.instanceGroupIdx];
+                    instance = group.getInstance(info.viewName);
+                }
+            }
+        }
+
+        if (instance && instance.points) {
+            if (info.mode === 'instance' && info.originalPoints) {
+                var dx = vx - info.startPos[0];
+                var dy = vy - info.startPos[1];
+                for (var pi = 0; pi < instance.points.length; pi++) {
+                    if (info.originalPoints[pi]) {
+                        instance.points[pi] = [
+                            info.originalPoints[pi][0] + dx,
+                            info.originalPoints[pi][1] + dy
+                        ];
+                    }
+                }
+            } else if (instance.points.length > info.nodeIdx) {
+                instance.points[info.nodeIdx] = [vx, vy];
+            }
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+        this._requestRedraw();
+    }
+
+    /**
+     * Document-level mouseup during a drag. Finalizes the drag and removes
+     * the temporary document listeners.
+     * @param {MouseEvent} e
+     * @private
+     */
+    _onDragUp(e) {
+        if (!this.isDragging || !this.dragInfo) {
+            this._endDrag();
+            return;
+        }
+
+        // Delegate to the existing onMouseUp logic
+        this.onMouseUp(e, this.dragInfo.viewName);
+    }
+
+    /**
      * End the current drag operation without finalizing (internal cleanup).
+     * Removes document-level drag listeners.
      * @private
      */
     _endDrag() {
         this.isDragging = false;
         this.dragInfo = null;
+        window.__mvguiDragging = false;
+        this._removeDragListeners();
+    }
+
+    /**
+     * Remove temporary document-level drag listeners.
+     * @private
+     */
+    _removeDragListeners() {
+        if (this._dragMoveHandler) {
+            document.removeEventListener('mousemove', this._dragMoveHandler, true);
+            this._dragMoveHandler = null;
+        }
+        if (this._dragUpHandler) {
+            document.removeEventListener('mouseup', this._dragUpHandler, true);
+            this._dragUpHandler = null;
+        }
     }
 
     /**

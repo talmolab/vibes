@@ -35,8 +35,10 @@
                     <div class="menu-dropdown-item" id="menuLoadVideos">Load Videos...</div>
                     <div class="menu-dropdown-item" id="menuLoadCalibration">Load Calibration...</div>
                     <div class="menu-dropdown-item" id="menuLoadSession">Load Session...</div>
+                    <div class="menu-dropdown-item" id="menuLoadSkeletonMenu">Load Skeleton...</div>
                     <div class="menu-dropdown-item" id="menuLoadDemo">Load Demo Session</div>
                     <div class="menu-separator"></div>
+                    <div class="menu-dropdown-item" id="menuSaveSkeleton">Save Skeleton (JSON)</div>
                     <div class="menu-dropdown-item" id="menuExportLabels">Export Labels (JSON)</div>
                     <div class="menu-dropdown-item" id="menuExportSlp">Export SLP (JSON)</div>
                     <div class="menu-dropdown-item" id="menuExportSlpH5">Export SLP (H5)</div>
@@ -95,9 +97,9 @@
             <div class="toolbar-separator"></div>
             <div class="toolbar-group">
                 <label class="toolbar-btn" style="cursor:default;font-size:12px;">
-                    Node Size <span id="nodeSizeValue">4</span>
+                    Node Size <span id="nodeSizeValue">8</span>
                 </label>
-                <input type="range" id="nodeSizeSlider" min="1" max="12" value="4" step="1" style="width:80px;">
+                <input type="range" id="nodeSizeSlider" min="1" max="20" value="8" step="1" style="width:80px;">
             </div>
             <div class="toolbar-separator"></div>
             <div class="toolbar-group">
@@ -111,7 +113,7 @@
                     <input type="checkbox" id="toggleErrors" checked> Errors
                 </label>
                 <label style="font-size:12px;color:var(--text-secondary);display:flex;align-items:center;gap:4px;">
-                    <input type="checkbox" id="toggleLabels"> Labels
+                    <input type="checkbox" id="toggleLabels" checked> Labels
                 </label>
             </div>
         </div>
@@ -318,6 +320,11 @@
                                 style="flex:1;padding:3px;font-size:12px;background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);border-radius:3px;"></select>
                             <button class="panel-btn" id="btnAddEdge" title="Add skeleton edge">+ Edge</button>
                         </div>
+                    </div>
+
+                    <div style="margin-top:10px;display:flex;gap:6px">
+                        <button class="panel-btn" id="btnLoadSkeleton" title="Load skeleton from SLEAP .json file" style="flex:1">Load Skeleton</button>
+                        <button class="panel-btn" id="btnSaveSkeleton" title="Save skeleton in SLEAP format" style="flex:1">Save Skeleton</button>
                     </div>
                 </div>
 
@@ -642,6 +649,7 @@
 
                 hideWelcomeOverlay();
                 rebuildVideoController();
+                fitCanvasesToCells();
                 setup3DViewport();
                 updateInfoPanel();
 
@@ -934,6 +942,7 @@
                     showErrors: showErrors,
                     showLabels: showLabels,
                     nodeSize: nodeSize,
+                    lineWidth: Math.max(2, Math.round(nodeSize / 2)),
                     videoWidth: view.videoWidth,
                     videoHeight: view.videoHeight,
                     canvasWidth: view.overlayCanvas.width,
@@ -1233,9 +1242,19 @@
                 handleLoadSession();
             });
 
+            document.getElementById('menuLoadSkeletonMenu').addEventListener('click', function () {
+                closeMenus();
+                document.getElementById('btnLoadSkeleton').click();
+            });
+
             document.getElementById('menuLoadDemo').addEventListener('click', function () {
                 closeMenus();
                 loadDemoSession();
+            });
+
+            document.getElementById('menuSaveSkeleton').addEventListener('click', function () {
+                closeMenus();
+                document.getElementById('btnSaveSkeleton').click();
             });
 
             document.getElementById('menuExportLabels').addEventListener('click', function () {
@@ -1982,10 +2001,21 @@
             });
         }
 
+        // Ensure a session exists (creates a minimal empty one if needed)
+        function ensureSession() {
+            if (!state.session) {
+                var cameras = state.videoFiles.map(function (vf) {
+                    return new Camera(vf.name, [[600, 0, 320], [0, 600, 240], [0, 0, 1]],
+                        [0, 0, 0, 0, 0], [0, 0, 0], [0, 0, 0], [640, 480]);
+                });
+                state.session = new Session(cameras, new Skeleton('skeleton', [], []), ['track_0']);
+            }
+        }
+
         function setupSkeletonEditing() {
             // Add Node button
             document.getElementById('btnAddNode').addEventListener('click', function () {
-                if (!state.session) return;
+                ensureSession();
                 const input = document.getElementById('newNodeName');
                 const name = input.value.trim();
                 if (!name) { input.focus(); return; }
@@ -2005,7 +2035,7 @@
             });
             // Add Edge button
             document.getElementById('btnAddEdge').addEventListener('click', function () {
-                if (!state.session) return;
+                ensureSession();
                 const src = parseInt(document.getElementById('edgeSrcSelect').value, 10);
                 const dst = parseInt(document.getElementById('edgeDstSelect').value, 10);
                 if (isNaN(src) || isNaN(dst)) return;
@@ -2016,6 +2046,255 @@
                 populateSkeletonTable();
                 drawAllOverlays(state.currentFrame);
             });
+
+            // Save Skeleton button
+            document.getElementById('btnSaveSkeleton').addEventListener('click', function () {
+                if (!state.session || !state.session.skeleton) {
+                    setStatus('No skeleton to save', 'warning');
+                    return;
+                }
+                const sk = state.session.skeleton;
+                if (sk.nodes.length === 0) {
+                    setStatus('Skeleton has no nodes', 'warning');
+                    return;
+                }
+                exportSkeletonJSON(sk);
+            });
+
+            // Load Skeleton button
+            document.getElementById('btnLoadSkeleton').addEventListener('click', function () {
+                var input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = function () {
+                    if (!input.files || input.files.length === 0) return;
+                    var reader = new FileReader();
+                    reader.onload = function (ev) {
+                        try {
+                            var sk = parseSkeletonJSON(ev.target.result);
+                            if (!sk) {
+                                setStatus('Could not parse skeleton file', 'error');
+                                return;
+                            }
+                            ensureSession();
+                            state.session.skeleton = sk;
+                            populateSkeletonTable();
+                            drawAllOverlays(state.currentFrame);
+                            updateInfoPanel();
+                            setStatus('Loaded skeleton: ' + sk.nodes.length + ' nodes, ' + sk.edges.length + ' edges', 'success');
+                        } catch (err) {
+                            console.error('Failed to load skeleton:', err);
+                            setStatus('Skeleton load error: ' + err.message, 'error');
+                        }
+                    };
+                    reader.readAsText(input.files[0]);
+                };
+                input.click();
+            });
+        }
+
+        /**
+         * Parse a SLEAP skeleton JSON file (jsonpickle format or simple format).
+         * Returns a Skeleton object or null on failure.
+         */
+        function parseSkeletonJSON(jsonText) {
+            var data = JSON.parse(jsonText);
+
+            // Format 1: SLEAP jsonpickle format (has "links" array)
+            if (data.links && data.nodes) {
+                var name = (data.graph && data.graph.name) ? data.graph.name : 'skeleton';
+
+                // jsonpickle assigns py/id values sequentially to objects on first
+                // appearance. We scan all links to collect node names and build the
+                // py/id -> name mapping.
+                var nextPyId = 1;
+                var pyIdToName = {};
+                var edgeTypeId = null;  // py/id of the first EdgeType
+
+                function extractNodeName(ref) {
+                    if (!ref || typeof ref !== 'object') return null;
+                    if (ref['py/id'] != null) {
+                        return pyIdToName[ref['py/id']] || null;
+                    }
+                    if (ref['py/object'] === 'sleap.skeleton.Node' && ref['py/state']) {
+                        var tuple = ref['py/state']['py/tuple'];
+                        var nodeName = tuple ? tuple[0] : null;
+                        // This object gets the next py/id
+                        pyIdToName[nextPyId] = nodeName;
+                        nextPyId++;
+                        return nodeName;
+                    }
+                    return null;
+                }
+
+                function extractEdgeType(ref) {
+                    if (!ref) return 1;
+                    if (ref['py/reduce']) {
+                        // First occurrence of EdgeType - assign py/id
+                        var args = ref['py/reduce'][1];
+                        var val = (args && args['py/tuple']) ? args['py/tuple'][0] : 1;
+                        edgeTypeId = nextPyId;
+                        nextPyId++;
+                        return val;
+                    }
+                    if (ref['py/id'] != null) {
+                        // Reference to previously seen EdgeType - assume regular (1)
+                        return 1;
+                    }
+                    return 1;
+                }
+
+                // Scan links to resolve all node names and edge types
+                var linkData = [];
+                for (var li = 0; li < data.links.length; li++) {
+                    var link = data.links[li];
+                    var srcName = extractNodeName(link.source);
+                    var dstName = extractNodeName(link.target);
+                    var eType = extractEdgeType(link.type);
+                    linkData.push({ src: srcName, dst: dstName, type: eType });
+                }
+
+                // Build node names from data.nodes array (preserves canonical order)
+                var nodeNames = [];
+                for (var ni = 0; ni < data.nodes.length; ni++) {
+                    var nodeEntry = data.nodes[ni];
+                    var nodeName = null;
+                    if (nodeEntry.id != null) {
+                        if (typeof nodeEntry.id === 'object' && nodeEntry.id['py/id'] != null) {
+                            nodeName = pyIdToName[nodeEntry.id['py/id']];
+                        } else if (typeof nodeEntry.id === 'object' && nodeEntry.id['py/state']) {
+                            var t = nodeEntry.id['py/state']['py/tuple'];
+                            nodeName = t ? t[0] : null;
+                        } else if (typeof nodeEntry.id === 'number') {
+                            nodeName = 'node_' + nodeEntry.id;
+                        }
+                    }
+                    nodeNames.push(nodeName || ('node_' + ni));
+                }
+
+                // Build edges (only type=1, skip symmetries)
+                var edges = [];
+                for (var ei = 0; ei < linkData.length; ei++) {
+                    if (linkData[ei].type !== 1) continue;
+                    var srcIdx = nodeNames.indexOf(linkData[ei].src);
+                    var dstIdx = nodeNames.indexOf(linkData[ei].dst);
+                    if (srcIdx >= 0 && dstIdx >= 0) {
+                        edges.push([srcIdx, dstIdx]);
+                    }
+                }
+
+                return new Skeleton(name, nodeNames, edges);
+            }
+
+            // Format 2: Simple format (our own export or custom)
+            if (data.skeleton) {
+                return new Skeleton(
+                    data.skeleton.name || 'skeleton',
+                    data.skeleton.nodes || [],
+                    data.skeleton.edges || []
+                );
+            }
+
+            // Format 3: Direct node/edge arrays
+            if (data.nodes && Array.isArray(data.nodes) && !data.links) {
+                var simpleNodes = data.nodes.map(function (n) {
+                    return typeof n === 'string' ? n : (n.name || 'node');
+                });
+                return new Skeleton(data.name || 'skeleton', simpleNodes, data.edges || []);
+            }
+
+            return null;
+        }
+
+        /**
+         * Export skeleton in SLEAP-compatible jsonpickle format (.json).
+         * Matches the format used by sleap-io for .skeleton.json files.
+         */
+        function exportSkeletonJSON(skeleton) {
+            // Build node objects with py/object format
+            // First occurrence uses full object, subsequent use py/id
+            var nodeRefs = [];     // py/id references (1-indexed)
+            var pyIdCounter = 0;
+
+            // Edge type object (type=1 for regular edges)
+            var edgeTypeId = null;
+
+            // Build links array (edges)
+            var links = [];
+            var nodeIdMap = {};  // node index -> py/id
+
+            function getNodeRef(nodeIdx) {
+                if (nodeIdMap[nodeIdx] !== undefined) {
+                    return { 'py/id': nodeIdMap[nodeIdx] };
+                }
+                pyIdCounter++;
+                nodeIdMap[nodeIdx] = pyIdCounter;
+                return {
+                    'py/object': 'sleap.skeleton.Node',
+                    'py/state': { 'py/tuple': [skeleton.nodes[nodeIdx], 1.0] }
+                };
+            }
+
+            function getEdgeType() {
+                if (edgeTypeId !== null) {
+                    return { 'py/id': edgeTypeId };
+                }
+                pyIdCounter++;
+                edgeTypeId = pyIdCounter;
+                return {
+                    'py/reduce': [
+                        { 'py/type': 'sleap.skeleton.EdgeType' },
+                        { 'py/tuple': [1] }
+                    ]
+                };
+            }
+
+            for (var i = 0; i < skeleton.edges.length; i++) {
+                var edge = skeleton.edges[i];
+                links.push({
+                    edge_insert_idx: i,
+                    key: 0,
+                    source: getNodeRef(edge[0]),
+                    target: getNodeRef(edge[1]),
+                    type: getEdgeType()
+                });
+            }
+
+            // Ensure all nodes are referenced (even those without edges)
+            for (var n = 0; n < skeleton.nodes.length; n++) {
+                getNodeRef(n);
+            }
+
+            // Build nodes array
+            var nodes = [];
+            for (var j = 0; j < skeleton.nodes.length; j++) {
+                nodes.push({ id: { 'py/id': nodeIdMap[j] } });
+            }
+
+            var skeletonJSON = {
+                directed: true,
+                graph: {
+                    name: skeleton.name || 'skeleton',
+                    num_edges_inserted: skeleton.edges.length
+                },
+                links: links,
+                multigraph: true,
+                nodes: nodes
+            };
+
+            // Download as JSON file
+            var jsonStr = JSON.stringify(skeletonJSON, null, 2);
+            var blob = new Blob([jsonStr], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = (skeleton.name || 'skeleton') + '.skeleton.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            setStatus('Saved skeleton: ' + skeleton.nodes.length + ' nodes, ' + skeleton.edges.length + ' edges', 'success');
         }
 
         // ============================================
@@ -2090,6 +2369,7 @@
                 }
                 if (created > 0) {
                     rebuildVideoController();
+                    fitCanvasesToCells();
                     populateSessionAssignTable();
                     setStatus('Created ' + created + ' new view(s)', 'success');
                 } else {
@@ -2176,6 +2456,7 @@
                         if (vf) {
                             createViewForVideoFile(vf);
                             rebuildVideoController();
+                            fitCanvasesToCells();
                             populateSessionAssignTable();
                         }
                     });
@@ -2877,7 +3158,7 @@
                 if (state.session) {
                     state.session.cameras = cameras;
                 } else {
-                    const skeleton = createDemoSkeleton();
+                    const skeleton = new Skeleton('skeleton', [], []);
                     state.session = new Session(cameras, skeleton, ['track_0']);
                 }
 
@@ -2959,7 +3240,7 @@
                         return new Camera(vf.name, [[600, 0, 320], [0, 600, 240], [0, 0, 1]],
                             [0, 0, 0, 0, 0], [0, 0, 0], [0, 0, 0], [640, 480]);
                     });
-                    var skeleton = createDemoSkeleton();
+                    var skeleton = new Skeleton('skeleton', [], []);
                     state.session = new Session(cameras, skeleton, ['track_0']);
                 }
 
@@ -3003,6 +3284,7 @@
                 if (newViewsCreated) {
                     hideWelcomeOverlay();
                     rebuildVideoController();
+                    fitCanvasesToCells();
                 }
 
                 // Seek to frame 0 to display the first frame (await ensures it renders)
@@ -3088,11 +3370,6 @@
             overlayCanvas.width = videoFile.videoWidth;
             overlayCanvas.height = videoFile.videoHeight;
 
-            // Set CSS aspect-ratio so canvases scale uniformly within grid cells
-            var ar = videoFile.videoWidth + ' / ' + videoFile.videoHeight;
-            canvas.style.aspectRatio = ar;
-            overlayCanvas.style.aspectRatio = ar;
-
             var view = {
                 name: name,
                 decoder: videoFile.decoder,
@@ -3116,6 +3393,47 @@
 
             return view;
         }
+
+        /**
+         * Fit all canvases to their grid cells while maintaining video aspect ratio.
+         * Called on resize and after views are created.
+         */
+        function fitCanvasesToCells() {
+            for (var i = 0; i < state.views.length; i++) {
+                var view = state.views[i];
+                var wrapper = view.wrapper;
+                if (!wrapper) continue;
+
+                var cellW = wrapper.clientWidth;
+                var cellH = wrapper.clientHeight;
+                if (cellW <= 0 || cellH <= 0) continue;
+
+                var videoAR = view.videoWidth / view.videoHeight;
+                var cellAR = cellW / cellH;
+
+                var cssW, cssH;
+                if (videoAR > cellAR) {
+                    // Video is wider than cell - fit to width
+                    cssW = cellW;
+                    cssH = cellW / videoAR;
+                } else {
+                    // Video is taller than cell - fit to height
+                    cssH = cellH;
+                    cssW = cellH * videoAR;
+                }
+
+                cssW = Math.floor(cssW);
+                cssH = Math.floor(cssH);
+
+                view.canvas.style.width = cssW + 'px';
+                view.canvas.style.height = cssH + 'px';
+                view.overlayCanvas.style.width = cssW + 'px';
+                view.overlayCanvas.style.height = cssH + 'px';
+            }
+        }
+
+        // Refit canvases on window resize
+        window.addEventListener('resize', fitCanvasesToCells);
 
         function rebuildVideoController() {
             // Detach old interaction handlers

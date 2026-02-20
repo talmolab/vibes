@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Plan: Fix Drag Freeze + Labels Not Showing | vibes.tlab.sh</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="Plan: Fix Drag Freeze + Labels Not Showing" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Self-contained HTML vibes for the web" />
+<meta property="og:description" content="Self-contained HTML vibes for the web" />
+<link rel="canonical" href="http://vibes.tlab.sh/mv-gui/PLAN-bugfixes.html" />
+<meta property="og:url" content="http://vibes.tlab.sh/mv-gui/PLAN-bugfixes.html" />
+<meta property="og:site_name" content="vibes.tlab.sh" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Plan: Fix Drag Freeze + Labels Not Showing" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Self-contained HTML vibes for the web","headline":"Plan: Fix Drag Freeze + Labels Not Showing","url":"http://vibes.tlab.sh/mv-gui/PLAN-bugfixes.html"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <link rel="stylesheet" href="/assets/css/style.css?v=960c907ee1ff272aad73f58223c18422fe32f7f4">
+    <style>
+/* README badge styling for vibe list */
+.readme-badge {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    color: #1a7f9c !important;
+    text-decoration: none;
+    margin-left: 0.35em;
+}
+.readme-badge:hover {
+    color: #0969da !important;
+    text-decoration: underline;
+}
+
+/* Vibe description caption styling */
+.vibe-desc {
+    font-size: 0.9em;
+    color: #656d76;
+    display: inline;
+}
+</style>
+
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      
+      <h1><a href="http://vibes.tlab.sh/">vibes.tlab.sh</a></h1>
+      
+
+      <h1 id="plan-fix-drag-freeze--labels-not-showing">Plan: Fix Drag Freeze + Labels Not Showing</h1>
+
+<h2 id="bug-1-node-drag-freeze-after-first-move">Bug 1: Node Drag Freeze After First Move</h2>
+
+<h3 id="symptoms">Symptoms</h3>
+<ul>
+  <li>Click unlinked instance → highlighted (correct)</li>
+  <li>Drag one node → node moves (correct)</li>
+  <li>Release → instance stays highlighted (correct)</li>
+  <li>Try to drag another node → <strong>NOTHING HAPPENS</strong> (BUG)</li>
+  <li>Click empty space → deselects → can now drag again</li>
+</ul>
+
+<h3 id="root-cause-analysis">Root Cause Analysis</h3>
+<p>After extensive investigation, the most likely cause is <strong>interference between the zoom handler’s document-level event listeners and the interaction manager</strong>:</p>
+
+<ol>
+  <li>
+    <p><strong>Zoom handler registers document-level <code class="language-plaintext highlighter-rouge">mousemove</code> and <code class="language-plaintext highlighter-rouge">mouseup</code> handlers</strong> in <code class="language-plaintext highlighter-rouge">video.js:1197-1274</code>. These fire for ALL mouse events regardless of <code class="language-plaintext highlighter-rouge">stopPropagation()</code> on child elements… actually <code class="language-plaintext highlighter-rouge">stopPropagation()</code> DOES prevent bubbling to document. But there may be timing issues with event dispatch.</p>
+  </li>
+  <li>
+    <p><strong>Potential <code class="language-plaintext highlighter-rouge">leftDragPending</code> ghost state</strong>: The zoom handler’s closure variable <code class="language-plaintext highlighter-rouge">leftDragPending</code> could be set to <code class="language-plaintext highlighter-rouge">true</code> if any mousedown event leaks past <code class="language-plaintext highlighter-rouge">stopPropagation()</code> (race condition during redraw), causing subsequent mouse moves to trigger box-zoom mode, which creates a blocking overlay div.</p>
+  </li>
+  <li>
+    <p><strong>Assignment mode state complexity</strong>: The <code class="language-plaintext highlighter-rouge">onMouseDown</code> handler has complex branching for assignment mode that could mask the drag start path in certain states.</p>
+  </li>
+</ol>
+
+<h3 id="fix-strategy">Fix Strategy</h3>
+
+<p><strong>A. Restructure zoom handler to use a global interaction lock</strong> (<code class="language-plaintext highlighter-rouge">video.js</code>)</p>
+<ul>
+  <li>Add <code class="language-plaintext highlighter-rouge">window.__mvguiInteractionActive</code> flag</li>
+  <li>Check this flag in zoom handler’s container mousedown AND document-level listeners</li>
+  <li>Set the flag in interaction manager during drags</li>
+</ul>
+
+<p><strong>B. Guard against stale drag state</strong> (<code class="language-plaintext highlighter-rouge">interaction.js</code>)</p>
+<ul>
+  <li>At the start of <code class="language-plaintext highlighter-rouge">onMouseDown</code>, check if <code class="language-plaintext highlighter-rouge">isDragging</code> is true and force <code class="language-plaintext highlighter-rouge">_endDrag()</code> cleanup</li>
+  <li>This catches any scenario where mouseup was missed</li>
+</ul>
+
+<p><strong>C. Simplify unlinked node mousedown path</strong> (<code class="language-plaintext highlighter-rouge">interaction.js</code>)</p>
+<ul>
+  <li>Make drag initiation UNCONDITIONAL for any node hit</li>
+  <li>Assignment mode selection handled as side-effect only, never blocking drag</li>
+</ul>
+
+<p><strong>D. Add diagnostic logging</strong> (<code class="language-plaintext highlighter-rouge">interaction.js</code>)</p>
+<ul>
+  <li>Log every mousedown: what was hit, what state was set</li>
+  <li>Log every mousemove during drag: confirm drag is active</li>
+  <li>Log mouseup: confirm drag cleanup</li>
+</ul>
+
+<hr />
+
+<h2 id="bug-2-node-labels-not-showing-on-2d-views">Bug 2: Node Labels Not Showing on 2D Views</h2>
+
+<h3 id="symptoms-1">Symptoms</h3>
+<ul>
+  <li>Labels checkbox checked (default on)</li>
+  <li>Node names exist in skeleton</li>
+  <li>Points exist on instances</li>
+  <li>No labels visible on any 2D overlay view</li>
+</ul>
+
+<h3 id="root-cause-analysis-1">Root Cause Analysis</h3>
+<p>Labels in <code class="language-plaintext highlighter-rouge">drawSkeleton()</code> (for linked instances) are gated by <code class="language-plaintext highlighter-rouge">showLabels</code> option. Labels in <code class="language-plaintext highlighter-rouge">drawUnlinkedInstances()</code> are ALWAYS drawn (not gated by <code class="language-plaintext highlighter-rouge">showLabels</code>). The code paths look correct on paper.</p>
+
+<p>Possible causes:</p>
+<ol>
+  <li><strong>Canvas coordinate mismatch</strong>: If <code class="language-plaintext highlighter-rouge">videoWidth</code>/<code class="language-plaintext highlighter-rouge">videoHeight</code> don’t match the actual video, the <code class="language-plaintext highlighter-rouge">toCanvas</code> transform could place labels off-screen</li>
+  <li><strong>Font rendering at very small scale</strong>: If <code class="language-plaintext highlighter-rouge">scale</code> is very small, <code class="language-plaintext highlighter-rouge">Math.round(11 * scale)</code> could produce a font size of 0</li>
+  <li><strong>Labels drawn behind other elements</strong>: The labels are drawn at alpha = 0.5 (unlinked instance alpha), making them nearly invisible</li>
+</ol>
+
+<h3 id="fix-strategy-1">Fix Strategy</h3>
+
+<p><strong>A. Make labels more robust</strong> (<code class="language-plaintext highlighter-rouge">overlays.js</code>)</p>
+<ul>
+  <li>Ensure minimum font size of 10px regardless of scale</li>
+  <li>Draw labels with full opacity (override globalAlpha for label text)</li>
+  <li>Add index-based fallback labels (“node 0”, “node 1”) when skeleton nodes don’t have names</li>
+  <li>Add a dark background rectangle behind each label for readability</li>
+</ul>
+
+<p><strong>B. Verify rendering pipeline</strong> (<code class="language-plaintext highlighter-rouge">index.html</code>)</p>
+<ul>
+  <li>Confirm <code class="language-plaintext highlighter-rouge">showLabels</code> flows correctly from checkbox → drawAllOverlays → drawFrameOverlays → drawSkeleton</li>
+  <li>Add console.log in drawFrameOverlays to verify showLabels value during debug</li>
+</ul>
+
+<hr />
+
+<h2 id="implementation-order">Implementation Order</h2>
+
+<ol>
+  <li>Fix drag freeze (interaction.js + video.js)</li>
+  <li>Fix labels (overlays.js)</li>
+  <li>Remove debug logging after confirming fixes work</li>
+</ol>
+
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/anchor-js/4.1.0/anchor.min.js" integrity="sha256-lZaRhKri35AyJSypXXs4o6OPFTbTmUoltBbDCbdzegg=" crossorigin="anonymous"></script>
+    <script>anchors.add();</script>
+  </body>
+</html>
