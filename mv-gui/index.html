@@ -1305,12 +1305,80 @@
             document.getElementById('btnNext').addEventListener('click', function () { if (videoController) videoController.seekToFrame(state.currentFrame + 1); });
             document.getElementById('btnLast').addEventListener('click', function () { if (videoController) videoController.seekToFrame(state.totalFrames - 1); });
 
-            // Seekbar
-            if (videoController) {
-                videoController.setupSeekbar(document.getElementById('seekbar'), updateSeekbarVisual);
-                // Keyboard
-                videoController.setupKeyboardHandlers();
-            }
+            // Seekbar scrubbing (delegates to current videoController)
+            (function () {
+                var isDragging = false;
+                var seekbar = document.getElementById('seekbar');
+
+                var getFrameFromEvent = function (e) {
+                    var rect = seekbar.getBoundingClientRect();
+                    var fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                    return Math.round(fraction * (state.totalFrames - 1));
+                };
+
+                seekbar.addEventListener('mousedown', function (e) {
+                    isDragging = true;
+                    var frame = getFrameFromEvent(e);
+                    updateSeekbarVisual(frame);
+                    if (videoController) videoController.scrubToFrame(frame);
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mousemove', function (e) {
+                    if (!isDragging) return;
+                    var frame = getFrameFromEvent(e);
+                    updateSeekbarVisual(frame);
+                    if (videoController) videoController.scrubToFrame(frame);
+                    e.preventDefault();
+                });
+
+                document.addEventListener('mouseup', function () {
+                    if (isDragging) isDragging = false;
+                });
+            })();
+
+            // Video navigation keyboard shortcuts (delegates to current videoController)
+            document.addEventListener('keydown', function (e) {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+                if (!videoController) return;
+
+                switch (e.key) {
+                    case 'ArrowRight':
+                        e.preventDefault();
+                        videoController.seekToFrame(state.currentFrame + (e.shiftKey ? 10 : 1));
+                        break;
+                    case 'ArrowLeft':
+                        e.preventDefault();
+                        videoController.seekToFrame(state.currentFrame - (e.shiftKey ? 10 : 1));
+                        break;
+                    case ' ':
+                        e.preventDefault();
+                        videoController.togglePlayback();
+                        break;
+                    case 'Home':
+                        e.preventDefault();
+                        videoController.seekToFrame(0);
+                        break;
+                    case 'End':
+                        e.preventDefault();
+                        videoController.seekToFrame(state.totalFrames - 1);
+                        break;
+                    case '+':
+                    case '=':
+                        e.preventDefault();
+                        videoController.zoomAllVideos(1.2);
+                        break;
+                    case '-':
+                    case '_':
+                        e.preventDefault();
+                        videoController.zoomAllVideos(1 / 1.2);
+                        break;
+                    case '0':
+                        e.preventDefault();
+                        videoController.resetAllZoom();
+                        break;
+                }
+            });
 
             // Additional keyboard shortcuts
             document.addEventListener('keydown', function (e) {
@@ -1366,11 +1434,16 @@
                 }
             });
 
-            // Zoom handlers for each view
-            for (const view of state.views) {
-                videoController.initZoom(view);
-                const cell = view.canvas.closest('.video-cell');
-                videoController.setupZoomHandlers(view, cell);
+            // Zoom handlers for each view (track to avoid duplicates)
+            if (videoController) {
+                for (const view of state.views) {
+                    if (!view._zoomSetup) {
+                        view._zoomSetup = true;
+                        videoController.initZoom(view);
+                        const cell = view.canvas.closest('.video-cell');
+                        if (cell) videoController.setupZoomHandlers(view, cell);
+                    }
+                }
             }
 
             // Info panel toggle
@@ -2837,6 +2910,7 @@
                 showLoading('Loading videos...');
 
                 // Append new files to state.videoFiles (skip duplicates)
+                var failedVideos = [];
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
                     const stem = file.name.replace(/\.[^.]+$/, '');
@@ -2849,70 +2923,103 @@
                     }
 
                     showLoading('Loading ' + file.name + '...');
-                    const decoder = new OnDemandVideoDecoder({ cacheSize: 60, lookahead: 10 });
-                    await decoder.init(file);
+                    try {
+                        const decoder = new OnDemandVideoDecoder({ cacheSize: 60, lookahead: 10 });
+                        await decoder.init(file);
 
-                    const vw = decoder.videoTrack.video.width;
-                    const vh = decoder.videoTrack.video.height;
-                    const frameCount = decoder.samples.length;
+                        const vw = decoder.videoTrack.video.width;
+                        const vh = decoder.videoTrack.video.height;
+                        const frameCount = decoder.samples.length;
 
-                    state.videoFiles.push({
-                        file: file,
-                        name: stem,
-                        decoder: decoder,
-                        videoWidth: vw,
-                        videoHeight: vh,
-                        frameCount: frameCount,
-                        assignedCamera: null,
+                        state.videoFiles.push({
+                            file: file,
+                            name: stem,
+                            decoder: decoder,
+                            videoWidth: vw,
+                            videoHeight: vh,
+                            frameCount: frameCount,
+                            assignedCamera: null,
+                        });
+                    } catch (videoErr) {
+                        console.error('Failed to load ' + file.name + ':', videoErr);
+                        var errMsg = videoErr.message || String(videoErr);
+                        // Detect unsupported codec errors
+                        if (errMsg.indexOf('NO_SUPPORTED_STREAMS') >= 0 || errMsg.indexOf('DEMUXER_ERROR') >= 0 ||
+                            (errMsg.indexOf('Video error code 4') >= 0)) {
+                            failedVideos.push(stem + ' (unsupported codec - try transcoding to H.264 with: ffmpeg -i input.mp4 -c:v libx264 -crf 23 output.mp4)');
+                        } else {
+                            failedVideos.push(stem + ': ' + errMsg);
+                        }
+                    }
+                }
+
+                // If no session exists yet, create one with cameras for each video
+                if (!state.session) {
+                    var cameras = state.videoFiles.map(function (vf) {
+                        return new Camera(vf.name, [[600, 0, 320], [0, 600, 240], [0, 0, 1]],
+                            [0, 0, 0, 0, 0], [0, 0, 0], [0, 0, 0], [640, 480]);
                     });
+                    var skeleton = createDemoSkeleton();
+                    state.session = new Session(cameras, skeleton, ['track_0']);
+                }
+
+                // For any unassigned video, add a camera to the session and assign it
+                for (var vi = 0; vi < state.videoFiles.length; vi++) {
+                    var vf = state.videoFiles[vi];
+                    if (!vf.assignedCamera) {
+                        // Check if a camera with this name already exists
+                        var cameraExists = state.session.cameras.some(function (c) { return c.name === vf.name; });
+                        if (!cameraExists) {
+                            state.session.cameras.push(
+                                new Camera(vf.name, [[600, 0, 320], [0, 600, 240], [0, 0, 1]],
+                                    [0, 0, 0, 0, 0], [0, 0, 0], [0, 0, 0], [640, 480])
+                            );
+                        }
+                        vf.assignedCamera = vf.name;
+                    }
                 }
 
                 // Auto-assign if we have calibration cameras
-                if (state.session && state.session.cameras.length > 0) {
+                if (state.session.cameras.length > 0) {
                     autoAssignVideosToCameras();
                 }
 
-                // Auto-create views for assigned videos that don't have views yet
+                // Create views for assigned videos that don't have views yet
                 var newViewsCreated = false;
-                for (var vi = 0; vi < state.videoFiles.length; vi++) {
-                    var vf = state.videoFiles[vi];
-                    if (vf.assignedCamera) {
-                        var hasView = state.views.some(function (v) { return v.name === vf.assignedCamera; });
+                for (var vi2 = 0; vi2 < state.videoFiles.length; vi2++) {
+                    var vf2 = state.videoFiles[vi2];
+                    if (vf2.assignedCamera) {
+                        var hasView = state.views.some(function (v) { return v.name === vf2.assignedCamera; });
                         if (!hasView) {
-                            createViewForVideoFile(vf);
+                            createViewForVideoFile(vf2);
                             newViewsCreated = true;
                         }
                     }
                 }
 
-                // If no cameras assigned but no session exists, create views using filenames
-                if (state.views.length === 0 && state.videoFiles.length > 0) {
-                    if (!state.session) {
-                        var cameras = state.videoFiles.map(function (vf) {
-                            return new Camera(vf.name, [[600, 0, 320], [0, 600, 240], [0, 0, 1]],
-                                [0, 0, 0, 0, 0], [0, 0, 0], [0, 0, 0], [640, 480]);
-                        });
-                        var skeleton = createDemoSkeleton();
-                        state.session = new Session(cameras, skeleton, ['track_0']);
-                    }
-                    for (var vi2 = 0; vi2 < state.videoFiles.length; vi2++) {
-                        state.videoFiles[vi2].assignedCamera = state.videoFiles[vi2].name;
-                        createViewForVideoFile(state.videoFiles[vi2]);
-                    }
-                    newViewsCreated = true;
-                }
+                // Update total frames before rebuilding controller so seekToFrame works correctly
+                updateTotalFrames();
 
                 if (newViewsCreated) {
                     hideWelcomeOverlay();
                     rebuildVideoController();
                 }
 
-                // Update total frames from the longest video
-                updateTotalFrames();
+                // Seek to frame 0 to display the first frame (await ensures it renders)
+                if (videoController && state.views.length > 0) {
+                    await videoController.seekToFrame(0);
+                }
 
                 hideLoading();
                 updateInfoPanel();
-                setStatus('Loaded ' + files.length + ' video(s), ' + state.views.length + ' views active', 'success');
+
+                if (failedVideos.length > 0 && state.views.length === 0) {
+                    setStatus('All videos failed to load: ' + failedVideos.join('; '), 'error');
+                } else if (failedVideos.length > 0) {
+                    setStatus('Loaded ' + state.views.length + ' view(s), ' + failedVideos.length + ' failed: ' + failedVideos.join('; '), 'warning');
+                } else {
+                    setStatus('Loaded ' + files.length + ' video(s), ' + state.views.length + ' views active', 'success');
+                }
             } catch (err) {
                 console.error('Failed to load videos:', err);
                 hideLoading();
@@ -2975,11 +3082,16 @@
             cell.appendChild(wrapper);
             gridEl.appendChild(cell);
 
-            // Set canvas dimensions
+            // Set canvas dimensions (internal resolution)
             canvas.width = videoFile.videoWidth;
             canvas.height = videoFile.videoHeight;
             overlayCanvas.width = videoFile.videoWidth;
             overlayCanvas.height = videoFile.videoHeight;
+
+            // Set CSS aspect-ratio so canvases scale uniformly within grid cells
+            var ar = videoFile.videoWidth + ' / ' + videoFile.videoHeight;
+            canvas.style.aspectRatio = ar;
+            overlayCanvas.style.aspectRatio = ar;
 
             var view = {
                 name: name,
@@ -2995,10 +3107,12 @@
 
             state.views.push(view);
 
-            // Update grid layout
+            // Update grid layout (columns and rows)
             var count = state.views.length;
             var cols = Math.ceil(Math.sqrt(count));
+            var rows = Math.ceil(count / cols);
             gridEl.style.gridTemplateColumns = 'repeat(' + cols + ', 1fr)';
+            gridEl.style.gridTemplateRows = 'repeat(' + rows + ', 1fr)';
 
             return view;
         }
@@ -3017,8 +3131,16 @@
                 log: window.logMessage,
             });
 
-            // Re-setup UI components
-            setupUI();
+            // Set up zoom handlers for new views (don't re-register UI listeners)
+            for (const view of state.views) {
+                if (!view._zoomSetup) {
+                    view._zoomSetup = true;
+                    videoController.initZoom(view);
+                    const cell = view.canvas.closest('.video-cell');
+                    if (cell) videoController.setupZoomHandlers(view, cell);
+                }
+            }
+
             setupInteraction();
             if (timeline) {
                 timeline.setData(state.session);
@@ -3026,8 +3148,6 @@
 
             document.getElementById('totalFrames').textContent = state.totalFrames;
             document.getElementById('fpsDisplay').textContent = state.fps.toFixed(1) + ' fps';
-
-            videoController.seekToFrame(state.currentFrame);
         }
 
         function updateTotalFrames() {
@@ -3047,6 +3167,9 @@
                 state.fps = bestFps;
                 document.getElementById('totalFrames').textContent = state.totalFrames;
                 document.getElementById('fpsDisplay').textContent = state.fps.toFixed(1) + ' fps';
+                if (timeline) {
+                    timeline.setTotalFrames(maxFrames);
+                }
             }
         }
 
