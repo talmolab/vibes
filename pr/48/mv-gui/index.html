@@ -2889,6 +2889,7 @@
             if (videoController && state.isPlaying) {
                 videoController.pause();
             }
+            state.isPlaying = false;
             videoController = null;
 
             // Clear session and annotation data
@@ -2909,31 +2910,73 @@
             if (viewport3d) {
                 viewport3d.setFrame([]);
                 viewport3d.cameras = [];
+                viewport3d.skeleton = null;
                 viewport3d.addCameraPyramids();
             }
 
             // Clear the video grid and show welcome overlay
-            const gridEl = document.getElementById('videoGrid');
+            var gridEl = document.getElementById('videoGrid');
             if (gridEl) gridEl.innerHTML = '';
             showWelcomeOverlay();
 
             // Reset frame counter display
-            const curFrameEl = document.getElementById('currentFrame');
+            var curFrameEl = document.getElementById('currentFrame');
             if (curFrameEl) curFrameEl.textContent = '0';
-            const totalFramesEl = document.getElementById('totalFrames');
+            var totalFramesEl = document.getElementById('totalFrames');
             if (totalFramesEl) totalFramesEl.textContent = '0';
-            const fpsEl = document.getElementById('fpsDisplay');
+            var fpsEl = document.getElementById('fpsDisplay');
             if (fpsEl) fpsEl.textContent = '30.0 fps';
 
             // Reset seekbar
-            const seekbar = document.getElementById('seekbar');
+            var seekbar = document.getElementById('seekbar');
             if (seekbar) { seekbar.value = 0; seekbar.max = 0; }
+
+            // Reset play button
+            var playBtn = document.getElementById('btnPlay');
+            if (playBtn) { playBtn.textContent = '\u25B6'; playBtn.classList.remove('active'); }
+
+            // Reset status bar selection
+            var selEl = document.getElementById('statusSelection');
+            if (selEl) selEl.textContent = 'Selection: none';
+            var selInfo = document.getElementById('selectedInfo');
+            if (selInfo) selInfo.textContent = 'None';
+
+            // Reset triangulation badge
+            var badge = document.getElementById('triangulationBadge');
+            if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+
+            // Clear skeleton editing tables and dropdowns
+            var skelBody = document.querySelector('#skeletonNodesTable tbody');
+            if (skelBody) skelBody.innerHTML = '';
+            var edgesBody = document.querySelector('#skeletonEdgesTable tbody');
+            if (edgesBody) edgesBody.innerHTML = '';
+            var srcSelect = document.getElementById('edgeSrcSelect');
+            if (srcSelect) srcSelect.innerHTML = '';
+            var dstSelect = document.getElementById('edgeDstSelect');
+            if (dstSelect) dstSelect.innerHTML = '';
+            var newNodeInput = document.getElementById('newNodeName');
+            if (newNodeInput) newNodeInput.value = '';
+
+            // Clear videos table
+            var vidBody = document.querySelector('#videosTable tbody');
+            if (vidBody) vidBody.innerHTML = '';
+
+            // Clear cameras table
+            var camBody = document.querySelector('#camerasTable tbody');
+            if (camBody) camBody.innerHTML = '';
+
+            // Clear session assignment table
+            var sessBody = document.querySelector('#sessionAssignTable tbody');
+            if (sessBody) sessBody.innerHTML = '';
 
             // Update panels
             updateInfoPanel();
             if (timeline) {
                 timeline.setData(null);
             }
+
+            // Re-create interaction manager so keyboard shortcuts work immediately
+            setupInteraction();
 
             setStatus('New project started', 'success');
         }
