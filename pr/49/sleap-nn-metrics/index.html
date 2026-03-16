@@ -49,38 +49,180 @@
         .drop-zone-text { color: #666; }
         .drop-zone-hint { font-size: 0.9rem; color: #999; margin-top: 10px; }
 
-        /* Model List */
+        /* Model Cards */
         .model-list {
             display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
+            flex-direction: column;
+            gap: 15px;
             margin-bottom: 20px;
         }
-        .model-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 14px;
+        .model-card {
             background: white;
-            border-radius: 20px;
-            font-size: 0.9rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            padding: 16px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
-        .model-chip .color-dot {
-            width: 12px;
-            height: 12px;
+        .model-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        .model-card-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        .model-card-title .color-dot {
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
         }
-        .model-chip .remove-btn {
+        .model-card .remove-btn {
             background: none;
             border: none;
             color: #999;
             cursor: pointer;
-            font-size: 1.2rem;
+            font-size: 1.3rem;
             padding: 0;
             line-height: 1;
         }
-        .model-chip .remove-btn:hover { color: #dc3545; }
+        .model-card .remove-btn:hover { color: #dc3545; }
+        .model-card-metrics {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .model-card-metric {
+            font-size: 0.85rem;
+        }
+        .model-card-metric .label {
+            color: #888;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.3px;
+        }
+        .model-card-metric .value {
+            font-weight: 600;
+            color: #333;
+        }
+        .model-card-uploads {
+            display: block;
+        }
+
+        /* Shared Ground Truth Section */
+        .shared-gt-section {
+            background: white;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            display: none;
+        }
+        .shared-gt-section.visible {
+            display: block;
+        }
+        .shared-gt-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #333;
+        }
+        .shared-gt-header .icon {
+            font-size: 1.2rem;
+        }
+        .shared-gt-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .shared-gt-slot {
+            flex: 1;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        .shared-gt-info {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .shared-gt-info code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
+        .model-upload-slot {
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #fafafa;
+        }
+        .model-upload-slot:hover {
+            border-color: #007bff;
+            background: #f0f7ff;
+        }
+        .model-upload-slot.drag-over {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .model-upload-slot.has-file {
+            border-style: solid;
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+        .model-upload-slot .slot-label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            margin-bottom: 4px;
+        }
+        .model-upload-slot .slot-content {
+            font-size: 0.85rem;
+            color: #999;
+        }
+        .model-upload-slot.has-file .slot-content {
+            color: #2e7d32;
+            font-weight: 500;
+        }
+        .model-upload-slot .slot-remove {
+            display: inline-block;
+            margin-left: 6px;
+            color: #999;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .model-upload-slot .slot-remove:hover {
+            color: #dc3545;
+        }
+        .model-card-nodes {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .model-card-nodes code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
+        @media (max-width: 500px) {
+            .model-card-uploads {
+                grid-template-columns: 1fr;
+            }
+        }
 
         /* Cards */
         .cards-grid {
@@ -739,6 +881,151 @@
             color: #dc3545;
         }
 
+        /* Confidence Stats */
+        .confidence-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .confidence-stat {
+            text-align: center;
+        }
+        .confidence-stat .label {
+            font-size: 0.75rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .confidence-stat .value {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #333;
+        }
+        .confidence-stat .value.good { color: #28a745; }
+        .confidence-stat .value.medium { color: #ffc107; }
+        .confidence-stat .value.poor { color: #dc3545; }
+
+        /* Model Selector */
+        .model-selector {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 15px;
+        }
+        .model-selector label {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: normal;
+        }
+        .model-selector select {
+            font-size: 0.85rem;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+        }
+        .model-selector select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        .model-selector .color-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        /* Collapsible Sections */
+        .collapsible-section {
+            background: white;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .collapsible-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            cursor: pointer;
+            user-select: none;
+            background: white;
+            border-bottom: 1px solid transparent;
+            transition: background 0.2s;
+        }
+        .collapsible-header:hover {
+            background: #f8f9fa;
+        }
+        .collapsible-header h3 {
+            margin: 0;
+            font-size: 1rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .collapsible-header .section-icon {
+            font-size: 1.2rem;
+        }
+        .collapsible-header .chevron {
+            font-size: 0.8rem;
+            color: #999;
+            transition: transform 0.3s ease;
+        }
+        .collapsible-section.collapsed .chevron {
+            transform: rotate(-90deg);
+        }
+        .collapsible-section.collapsed .collapsible-header {
+            border-bottom-color: transparent;
+        }
+        .collapsible-section:not(.collapsed) .collapsible-header {
+            border-bottom-color: #eee;
+        }
+        .collapsible-content {
+            padding: 20px;
+            transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.2s ease;
+            overflow: hidden;
+        }
+        .collapsible-section.collapsed .collapsible-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            opacity: 0;
+        }
+        .collapsible-section:not(.collapsed) .collapsible-content {
+            max-height: 5000px;
+            opacity: 1;
+        }
+        /* Remove duplicate backgrounds for nested content */
+        .collapsible-content .cards-grid {
+            margin-bottom: 0;
+        }
+        .collapsible-content .charts-grid {
+            margin-bottom: 0;
+        }
+        .collapsible-content .comparison-table {
+            margin-bottom: 0;
+            box-shadow: none;
+        }
+        .collapsible-content .ranking-section,
+        .collapsible-content .threshold-calc,
+        .collapsible-content .worst-frames {
+            box-shadow: none;
+            margin-bottom: 15px;
+            background: #fafafa;
+        }
+        .collapsible-content .ranking-section:last-child,
+        .collapsible-content .threshold-calc:last-child,
+        .collapsible-content .worst-frames:last-child {
+            margin-bottom: 0;
+        }
+
         /* Responsive */
         @media (max-width: 600px) {
             body { padding: 15px; }
@@ -760,90 +1047,110 @@
 
     <div class="model-list" id="modelList"></div>
 
-    <div class="slp-section" id="slpSection">
-        <h3>
-            <span>📦</span> SLP Files (Optional)
-            <span class="tooltip-container">
-                <span class="info-icon">?</span>
-                <span class="tooltip-text">
-                    <strong>Load SLP Files</strong>
-                    Upload preds.slp or gt.slp files to:<br>
-                    • Get real node names for charts<br>
-                    • Compare predictions vs ground truth
-                </span>
-            </span>
-        </h3>
-        <div class="slp-drop-zone" id="slpDropZone">
-            <div style="font-size: 24px; margin-bottom: 8px;">📁</div>
-            <div style="color: #666;">Drop preds.slp or gt.slp files here</div>
-            <div style="font-size: 0.85rem; color: #999; margin-top: 5px;">For real keypoint names in charts</div>
+    <!-- Shared Ground Truth Section (appears when models are loaded) -->
+    <div class="shared-gt-section" id="sharedGtSection">
+        <div class="shared-gt-header">
+            <span class="icon">🎯</span>
+            <span>Ground Truth Labels (shared)</span>
         </div>
-        <input type="file" id="slpFileInput" accept=".slp" multiple />
-        <div class="slp-files-list" id="slpFilesList"></div>
-        <div class="node-names-preview" id="nodeNamesPreview"></div>
+        <div class="shared-gt-content">
+            <div class="shared-gt-slot">
+                <div class="model-upload-slot" id="sharedGtSlot"
+                     onclick="triggerGtUpload()"
+                     ondragover="handleSlotDragOver(event)"
+                     ondragleave="handleSlotDragLeave(event)"
+                     ondrop="handleGtDrop(event)">
+                    <div class="slot-label">Ground Truth</div>
+                    <div class="slot-content" id="sharedGtContent">+ Drop labels.slp</div>
+                </div>
+            </div>
+            <div class="shared-gt-info" id="sharedGtInfo"></div>
+        </div>
     </div>
 
-    <div class="charts-section" id="chartsSection">
-        <div class="cards-grid" id="summaryCards"></div>
+    <!-- Hidden file inputs for SLP uploads -->
+    <input type="file" id="slpFileInput" accept=".slp" style="display: none;" />
+    <input type="file" id="gtFileInput" accept=".slp" style="display: none;" />
 
-        <!-- Node Filter -->
-        <div class="node-filter" id="nodeFilter" style="display: none;">
-            <h4>Filter Keypoints (affects per-node charts)</h4>
-            <div class="node-filter-chips" id="nodeFilterChips"></div>
-            <div class="node-filter-actions">
-                <button onclick="selectAllNodes()">Select All</button>
-                <button onclick="selectNoNodes()">Clear All</button>
-                <button onclick="selectTopNodes(5)">Top 5 (Best)</button>
-                <button onclick="selectBottomNodes(5)">Bottom 5 (Worst)</button>
+    <div class="charts-section" id="chartsSection">
+        <!-- Summary Metrics -->
+        <div class="collapsible-section" id="summarySection">
+            <div class="collapsible-header" onclick="toggleSection('summarySection')">
+                <h3><span class="section-icon">📊</span> Summary Metrics</h3>
+                <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="cards-grid" id="summaryCards"></div>
             </div>
         </div>
 
-        <div class="charts-grid">
-            <div class="chart-card">
-                <h3 id="distChartTitle">Distance Error Distribution</h3>
-                <div class="chart-container">
-                    <canvas id="distChart"></canvas>
-                </div>
+        <!-- Charts -->
+        <div class="collapsible-section" id="chartsCollapsible">
+            <div class="collapsible-header" onclick="toggleSection('chartsCollapsible')">
+                <h3><span class="section-icon">📈</span> Charts</h3>
+                <span class="chevron">▼</span>
             </div>
-            <div class="chart-card">
-                <h3 id="pckChartTitle">PCK vs Threshold</h3>
-                <div class="chart-container">
-                    <canvas id="pckChart"></canvas>
+            <div class="collapsible-content">
+                <!-- Node Filter -->
+                <div class="node-filter" id="nodeFilter" style="display: none;">
+                    <h4>Filter Keypoints (affects per-node charts)</h4>
+                    <div class="node-filter-chips" id="nodeFilterChips"></div>
+                    <div class="node-filter-actions">
+                        <button onclick="selectAllNodes()">Select All</button>
+                        <button onclick="selectNoNodes()">Clear All</button>
+                        <button onclick="selectTopNodes(5)">Top 5 (Best)</button>
+                        <button onclick="selectBottomNodes(5)">Bottom 5 (Worst)</button>
+                    </div>
                 </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="partsChartTitle">Per-Keypoint Accuracy (mPCK)</h3>
-                <div class="chart-container">
-                    <canvas id="partsChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="nodeDistChartTitle">Distance Error by Node</h3>
-                <div class="chart-container">
-                    <canvas id="nodeDistChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="prChartTitle">Precision-Recall Curve</h3>
-                <div class="chart-container">
-                    <canvas id="prChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="apOksChartTitle">AP & AR vs OKS Threshold</h3>
-                <div class="chart-container">
-                    <canvas id="apOksChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="oksDistChartTitle">OKS Score Distribution</h3>
-                <div class="chart-container">
-                    <canvas id="oksDistChart"></canvas>
-                </div>
-            </div>
-            <div class="chart-card">
-                <h3 id="visMatrixTitle">Visibility Confusion Matrix</h3>
-                <div class="chart-container" id="visMatrixContainer" style="display: flex; align-items: center; justify-content: center;">
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3 id="distChartTitle">Distance Error Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="distChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="pckChartTitle">PCK vs Threshold</h3>
+                        <div class="chart-container">
+                            <canvas id="pckChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="partsChartTitle">Per-Keypoint Accuracy (mPCK)</h3>
+                        <div class="chart-container">
+                            <canvas id="partsChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="nodeDistChartTitle">Distance Error by Node</h3>
+                        <div class="chart-container">
+                            <canvas id="nodeDistChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="prChartTitle">Precision-Recall Curve</h3>
+                        <div class="chart-container">
+                            <canvas id="prChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="apOksChartTitle">AP & AR vs OKS Threshold</h3>
+                        <div class="chart-container">
+                            <canvas id="apOksChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="oksDistChartTitle">OKS Score Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="oksDistChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 id="visMatrixTitle">Visibility Confusion Matrix</h3>
+                        <div class="chart-container" id="visMatrixContainer" style="display: flex; align-items: center; justify-content: center;">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -851,64 +1158,138 @@
         <!-- Model Summary (multi-model comparison) -->
         <div class="model-summary" id="modelSummary" style="display: none;"></div>
 
-        <!-- Percentile Breakdown -->
-        <div class="ranking-section" id="percentileSection" style="display: none;">
-            <h3>Distance Error Percentiles</h3>
-            <div class="percentile-grid" id="percentileGrid"></div>
-        </div>
+        <!-- Advanced Analytics -->
+        <div class="collapsible-section" id="analyticsSection">
+            <div class="collapsible-header">
+                <h3 onclick="toggleSection('analyticsSection')" style="flex: 1; cursor: pointer;">
+                    <span class="section-icon">🔬</span> Advanced Analytics
+                </h3>
+                <div class="model-selector" onclick="event.stopPropagation()">
+                    <label>Model:</label>
+                    <select id="analyticsModelSelect" onchange="onAnalyticsModelChange()">
+                    </select>
+                </div>
+                <span class="chevron" onclick="toggleSection('analyticsSection')" style="cursor: pointer;">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <!-- Percentile Breakdown -->
+                <div class="ranking-section" id="percentileSection">
+                    <h3>Distance Error Percentiles</h3>
+                    <div class="percentile-grid" id="percentileGrid"></div>
+                </div>
 
-        <!-- Threshold Calculator -->
-        <div class="threshold-calc" id="thresholdCalc" style="display: none;">
-            <h3>PCK Threshold Calculator</h3>
-            <div class="threshold-calc-row">
-                <label>Target accuracy:</label>
-                <input type="range" id="targetAccuracy" min="50" max="99" value="90" />
-                <span id="targetAccuracyLabel">90%</span>
-                <span class="result" id="thresholdResult">Loading...</span>
+                <!-- Threshold Calculator -->
+                <div class="threshold-calc" id="thresholdCalc">
+                    <h3>PCK Threshold Calculator</h3>
+                    <div class="threshold-calc-row">
+                        <label>Target accuracy:</label>
+                        <input type="range" id="targetAccuracy" min="50" max="99" value="90" />
+                        <span id="targetAccuracyLabel">90%</span>
+                        <span class="result" id="thresholdResult">Loading...</span>
+                    </div>
+                </div>
+
+                <!-- Keypoint Ranking -->
+                <div class="ranking-section" id="keypointRanking">
+                    <h3>Keypoint Performance Ranking</h3>
+                    <table class="ranking-table" id="rankingTable">
+                        <thead>
+                            <tr>
+                                <th class="sorted" data-sort="rank">Rank <span class="sort-arrow">▲</span></th>
+                                <th data-sort="name">Keypoint <span class="sort-arrow">▲</span></th>
+                                <th data-sort="mpck">mPCK <span class="sort-arrow">▲</span></th>
+                                <th data-sort="dist">Avg Dist <span class="sort-arrow">▲</span></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <!-- Worst Frames -->
+                <div class="worst-frames" id="worstFrames">
+                    <h3>Instances with Highest Error</h3>
+                    <div class="worst-frames-list" id="worstFramesList"></div>
+                </div>
             </div>
         </div>
 
-        <!-- Keypoint Ranking -->
-        <div class="ranking-section" id="keypointRanking" style="display: none;">
-            <h3>Keypoint Performance Ranking</h3>
-            <table class="ranking-table" id="rankingTable">
-                <thead>
-                    <tr>
-                        <th class="sorted" data-sort="rank">Rank <span class="sort-arrow">▲</span></th>
-                        <th data-sort="name">Keypoint <span class="sort-arrow">▲</span></th>
-                        <th data-sort="mpck">mPCK <span class="sort-arrow">▲</span></th>
-                        <th data-sort="dist">Avg Dist <span class="sort-arrow">▲</span></th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-
-        <!-- Worst Frames -->
-        <div class="worst-frames" id="worstFrames" style="display: none;">
-            <h3>Instances with Highest Error</h3>
-            <div class="worst-frames-list" id="worstFramesList"></div>
-        </div>
-
-        <h3>Comparison Table</h3>
-        <table class="comparison-table" id="comparisonTable">
-            <thead>
-                <tr>
-                    <th>Metric</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-
-        <div class="raw-data-section" id="rawDataSection">
-            <div class="raw-data-header">
-                <h3>Raw Metrics Data</h3>
+        <!-- Confidence Analysis (requires predictions SLP) -->
+        <div class="collapsible-section collapsed" id="confidenceSection" style="display: none;">
+            <div class="collapsible-header" onclick="toggleSection('confidenceSection')">
+                <h3><span class="section-icon">📊</span> Confidence Analysis</h3>
+                <span class="chevron">▼</span>
             </div>
-            <div id="rawDataGroups"></div>
+            <div class="collapsible-content">
+                <p class="confidence-info" style="color: #666; font-size: 0.9rem; margin-bottom: 15px;">
+                    Confidence scores extracted from predictions SLP files. Upload preds.slp for each model to compare.
+                </p>
+                <div class="charts-grid" style="grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));">
+                    <div class="chart-card">
+                        <h3>Instance Confidence Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="instanceConfChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Per-Keypoint Confidence</h3>
+                        <div class="chart-container">
+                            <canvas id="nodeConfChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Confidence Threshold Analysis</h3>
+                        <div class="chart-container">
+                            <canvas id="thresholdAnalysisChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card" id="calibrationChartCard" style="display: none;">
+                        <h3>Confidence Calibration <span style="font-size: 0.75rem; color: #666; font-weight: normal;">(requires GT)</span></h3>
+                        <div class="chart-container">
+                            <canvas id="calibrationChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="confidence-stats" id="confidenceStats"></div>
+            </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="collapsible-section" id="comparisonSection">
+            <div class="collapsible-header" onclick="toggleSection('comparisonSection')">
+                <h3><span class="section-icon">📋</span> Comparison Table</h3>
+                <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <table class="comparison-table" id="comparisonTable">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Raw Data -->
+        <div class="collapsible-section collapsed" id="rawDataCollapsible">
+            <div class="collapsible-header" onclick="toggleSection('rawDataCollapsible')">
+                <h3><span class="section-icon">🗂️</span> Raw Metrics Data</h3>
+                <span class="chevron">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div id="rawDataGroups"></div>
+            </div>
         </div>
     </div>
 
     <script>
+        // Toggle collapsible sections
+        function toggleSection(sectionId) {
+            const section = document.getElementById(sectionId);
+            section.classList.toggle('collapsed');
+        }
+
         // Field-level documentation for raw metrics
         const FIELD_DOCS = {
             'voc_metrics': {
@@ -1207,6 +1588,35 @@ parse_npz_to_json(_npz_bytes.tobytes())
         let models = [];
         let charts = {};
         let selectedNodes = new Set(); // Empty = all selected
+        let selectedAnalyticsModel = 0; // Index of model shown in Advanced Analytics
+
+        // Get the currently selected model for analytics
+        function getAnalyticsModel() {
+            if (models.length === 0) return null;
+            if (selectedAnalyticsModel >= models.length) {
+                selectedAnalyticsModel = 0;
+            }
+            return models[selectedAnalyticsModel];
+        }
+
+        // Update the model selector dropdown
+        function updateAnalyticsModelSelector() {
+            const select = document.getElementById('analyticsModelSelect');
+            if (!select) return;
+
+            select.innerHTML = models.map((m, i) => `
+                <option value="${i}" ${i === selectedAnalyticsModel ? 'selected' : ''}>
+                    ${m.name}
+                </option>
+            `).join('');
+        }
+
+        // Handle model selection change
+        function onAnalyticsModelChange() {
+            const select = document.getElementById('analyticsModelSelect');
+            selectedAnalyticsModel = parseInt(select.value);
+            updateAnalysisSections();
+        }
 
         // File handling
         async function handleFiles(files) {
@@ -1245,15 +1655,76 @@ parse_npz_to_json(_npz_bytes.tobytes())
         }
 
         function updateUI() {
-            // Update model list
+            // Update model list with cards
             const modelList = document.getElementById('modelList');
-            modelList.innerHTML = models.map((m, i) => `
-                <div class="model-chip">
-                    <span class="color-dot" style="background: ${m.color}"></span>
-                    <span>${m.name}</span>
-                    <button class="remove-btn" onclick="removeModel(${i})">&times;</button>
+            modelList.innerHTML = models.map((m, i) => {
+                const metrics = m.metrics;
+                const mOKS = metrics.mOKS?.mOKS ?? metrics.mOKS;
+                const mAP = metrics.voc_metrics?.['oks_voc.mAP'];
+                const avgDist = metrics.distance_metrics?.avg;
+                const pck10 = metrics.pck_metrics?.['PCK@10'];
+
+                const formatPct = (v) => v != null ? (v * 100).toFixed(1) + '%' : 'N/A';
+                const formatPx = (v) => v != null ? v.toFixed(1) + 'px' : 'N/A';
+
+                const predsFile = m.slpFiles?.preds;
+
+                const nodeNames = getModelNodeNames(i);
+                const nodePreview = nodeNames ?
+                    (nodeNames.length <= 5 ? nodeNames.join(', ') : nodeNames.slice(0, 4).join(', ') + ` +${nodeNames.length - 4}`)
+                    : '';
+
+                return `
+                <div class="model-card" data-model-index="${i}">
+                    <div class="model-card-header">
+                        <div class="model-card-title">
+                            <span class="color-dot" style="background: ${m.color}"></span>
+                            <span>${m.name}</span>
+                        </div>
+                        <button class="remove-btn" onclick="removeModel(${i})">&times;</button>
+                    </div>
+                    <div class="model-card-metrics">
+                        <div class="model-card-metric">
+                            <div class="label">mOKS</div>
+                            <div class="value">${formatPct(mOKS)}</div>
+                        </div>
+                        <div class="model-card-metric">
+                            <div class="label">mAP</div>
+                            <div class="value">${formatPct(mAP)}</div>
+                        </div>
+                        <div class="model-card-metric">
+                            <div class="label">Avg Dist</div>
+                            <div class="value">${formatPx(avgDist)}</div>
+                        </div>
+                        <div class="model-card-metric">
+                            <div class="label">PCK@10</div>
+                            <div class="value">${formatPct(pck10)}</div>
+                        </div>
+                    </div>
+                    <div class="model-card-uploads">
+                        <div class="model-upload-slot ${predsFile ? 'has-file' : ''}"
+                             data-model="${i}" data-type="preds"
+                             onclick="triggerSlpUpload(${i}, 'preds')"
+                             ondragover="handleSlotDragOver(event)"
+                             ondragleave="handleSlotDragLeave(event)"
+                             ondrop="handleSlotDrop(event, ${i}, 'preds')">
+                            <div class="slot-label">Predictions SLP</div>
+                            <div class="slot-content">
+                                ${predsFile
+                                    ? `${predsFile.name}<span class="slot-remove" onclick="removeModelSlp(event, ${i}, 'preds')">&times;</span>`
+                                    : '+ Drop preds.slp'}
+                            </div>
+                        </div>
+                    </div>
+                    ${nodePreview ? `<div class="model-card-nodes">Nodes: <code>${nodePreview}</code></div>` : ''}
                 </div>
-            `).join('');
+                `;
+            }).join('');
+
+            // Show/hide shared GT section
+            const gtSection = document.getElementById('sharedGtSection');
+            gtSection.classList.toggle('visible', models.length > 0);
+            updateSharedGtUI();
 
             // Show/hide charts section
             const chartsSection = document.getElementById('chartsSection');
@@ -1262,9 +1733,11 @@ parse_npz_to_json(_npz_bytes.tobytes())
             if (models.length > 0) {
                 updateSummaryCards();
                 updateCharts();
+                updateAnalyticsModelSelector();
                 updateAnalysisSections();
                 updateComparisonTable();
                 updateRawDataViewer();
+                updateConfidenceAnalysis();
             }
 
             // Hide summary cards when comparing multiple models
@@ -1874,14 +2347,10 @@ parse_npz_to_json(_npz_bytes.tobytes())
         }
 
         function updatePercentileBreakdown() {
-            const section = document.getElementById('percentileSection');
-            if (models.length === 0) {
-                section.style.display = 'none';
-                return;
-            }
-            section.style.display = 'block';
+            const model = getAnalyticsModel();
+            if (!model) return;
 
-            const m = models[0].metrics.distance_metrics;
+            const m = model.metrics.distance_metrics;
             const grid = document.getElementById('percentileGrid');
 
             const percentiles = [
@@ -1905,12 +2374,8 @@ parse_npz_to_json(_npz_bytes.tobytes())
         }
 
         function updateThresholdCalculator() {
-            const section = document.getElementById('thresholdCalc');
-            if (models.length === 0) {
-                section.style.display = 'none';
-                return;
-            }
-            section.style.display = 'block';
+            const model = getAnalyticsModel();
+            if (!model) return;
 
             const slider = document.getElementById('targetAccuracy');
             const label = document.getElementById('targetAccuracyLabel');
@@ -1920,7 +2385,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
                 const targetPct = parseInt(slider.value) / 100;
                 label.textContent = `${slider.value}%`;
 
-                const pck = models[0].metrics.pck_metrics;
+                const pck = model.metrics.pck_metrics;
                 const thresholds = Array.from(pck.thresholds);
                 const pcks = pck.pcks;
 
@@ -1958,14 +2423,10 @@ parse_npz_to_json(_npz_bytes.tobytes())
         }
 
         function updateKeypointRanking() {
-            const section = document.getElementById('keypointRanking');
-            if (models.length === 0) {
-                section.style.display = 'none';
-                return;
-            }
-            section.style.display = 'block';
+            const model = getAnalyticsModel();
+            if (!model) return;
 
-            const m = models[0].metrics;
+            const m = model.metrics;
             const numNodes = m.pck_metrics.mPCK_parts.length;
 
             // Build data for each keypoint
@@ -2062,14 +2523,10 @@ parse_npz_to_json(_npz_bytes.tobytes())
         });
 
         function updateWorstFrames() {
-            const section = document.getElementById('worstFrames');
-            if (models.length === 0) {
-                section.style.display = 'none';
-                return;
-            }
-            section.style.display = 'block';
+            const model = getAnalyticsModel();
+            if (!model) return;
 
-            const m = models[0].metrics.distance_metrics;
+            const m = model.metrics.distance_metrics;
             const dists = m.dists;
             const frameIdxs = m.frame_idxs || [];
             const videoPaths = m.video_paths || [];
@@ -2267,11 +2724,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
         const expandedGroups = new Set();
 
         function updateRawDataViewer() {
-            if (models.length === 0) {
-                document.getElementById('rawDataSection').style.display = 'none';
-                return;
-            }
-            document.getElementById('rawDataSection').style.display = 'block';
+            if (models.length === 0) return;
 
             const container = document.getElementById('rawDataGroups');
             const metrics = models[0].metrics;
@@ -2375,14 +2828,14 @@ parse_npz_to_json(_npz_bytes.tobytes())
         }
 
         // ========================================
-        // SLP File Handling (sleap-io.js)
+        // SLP File Handling (sleap-io.js) - Per-Model + Shared GT
         // ========================================
 
         let loadSlp = null;
         let slpLoading = false;
         let slpReady = false;
-        let slpFiles = { preds: null, gt: null };
-        let nodeNames = null; // Will be populated from SLP skeleton
+        let pendingSlpUpload = { modelIndex: null, type: null };
+        let sharedGtFile = null; // Shared ground truth file
 
         // Lazy load sleap-io.js
         async function initSleapIO() {
@@ -2409,152 +2862,652 @@ parse_npz_to_json(_npz_bytes.tobytes())
             }
         }
 
-        // Handle SLP file upload
-        async function handleSlpFiles(files) {
-            for (const file of files) {
-                if (!file.name.endsWith('.slp')) continue;
+        // Get node names from a model's predictions or shared GT
+        function getModelNodeNames(modelIndex) {
+            const model = models[modelIndex];
 
-                try {
-                    await initSleapIO();
-                    showLoading(`Loading ${file.name}...`);
-
-                    const labels = await loadSlp(file, {
-                        openVideos: false,
-                        h5: { filenameHint: file.name }
-                    });
-
-                    hideLoading();
-
-                    // Determine file type from name
-                    const fileName = file.name.toLowerCase();
-                    let fileType = 'other';
-                    if (fileName.includes('pred')) {
-                        fileType = 'preds';
-                    } else if (fileName.includes('gt') || fileName.includes('ground') || fileName.includes('labels')) {
-                        fileType = 'gt';
-                    }
-
-                    // Store the labels
-                    if (fileType === 'preds' || fileType === 'gt') {
-                        slpFiles[fileType] = { name: file.name, labels };
-                    } else {
-                        // Default to preds if we don't have one yet
-                        if (!slpFiles.preds) {
-                            slpFiles.preds = { name: file.name, labels };
-                            fileType = 'preds';
-                        } else {
-                            slpFiles.gt = { name: file.name, labels };
-                            fileType = 'gt';
-                        }
-                    }
-
-                    // Extract node names from skeleton
-                    if (labels.skeletons && labels.skeletons.length > 0) {
-                        const skeleton = labels.skeletons[0];
-                        nodeNames = skeleton.nodeNames;
-                        updateNodeNamesPreview();
-                        // Re-render charts with real node names
-                        if (models.length > 0) {
-                            updateCharts();
-                        }
-                    }
-
-                    updateSlpFilesUI();
-
-                } catch (error) {
-                    hideLoading();
-                    console.error('Error loading SLP file:', error);
-                    alert(`Error loading ${file.name}: ${error.message}`);
-                }
+            // Try model's predictions first
+            if (model?.slpFiles?.preds?.labels?.skeletons?.[0]?.nodeNames) {
+                return model.slpFiles.preds.labels.skeletons[0].nodeNames;
             }
+
+            // Fall back to shared GT
+            if (sharedGtFile?.labels?.skeletons?.[0]?.nodeNames) {
+                return sharedGtFile.labels.skeletons[0].nodeNames;
+            }
+
+            return null;
         }
 
-        function removeSlpFile(type) {
-            slpFiles[type] = null;
-            // If we removed the source of node names, try to get from the other file
-            if (slpFiles.preds?.labels?.skeletons?.[0]) {
-                nodeNames = slpFiles.preds.labels.skeletons[0].nodeNames;
-            } else if (slpFiles.gt?.labels?.skeletons?.[0]) {
-                nodeNames = slpFiles.gt.labels.skeletons[0].nodeNames;
-            } else {
-                nodeNames = null;
-            }
-            updateNodeNamesPreview();
-            updateSlpFilesUI();
-            if (models.length > 0) {
-                updateCharts();
-            }
-        }
-
-        function updateSlpFilesUI() {
-            const container = document.getElementById('slpFilesList');
-            container.innerHTML = '';
-
-            if (slpFiles.preds) {
-                container.innerHTML += `
-                    <div class="slp-file-chip">
-                        <span class="file-type">Predictions:</span>
-                        <span class="file-name">${slpFiles.preds.name}</span>
-                        <button class="remove-btn" onclick="removeSlpFile('preds')">&times;</button>
-                    </div>
-                `;
-            }
-
-            if (slpFiles.gt) {
-                container.innerHTML += `
-                    <div class="slp-file-chip">
-                        <span class="file-type">Ground Truth:</span>
-                        <span class="file-name">${slpFiles.gt.name}</span>
-                        <button class="remove-btn" onclick="removeSlpFile('gt')">&times;</button>
-                    </div>
-                `;
-            }
-        }
-
-        function updateNodeNamesPreview() {
-            const preview = document.getElementById('nodeNamesPreview');
-            if (nodeNames && nodeNames.length > 0) {
-                const displayNames = nodeNames.length <= 8
-                    ? nodeNames.join(', ')
-                    : nodeNames.slice(0, 6).join(', ') + `, ... (+${nodeNames.length - 6} more)`;
-                preview.innerHTML = `<strong>Node names:</strong> <code>${displayNames}</code>`;
-            } else {
-                preview.innerHTML = '';
-            }
-        }
-
-        // Get node label for charts (uses real names if available)
+        // Get node label for charts (uses first available node names)
         function getNodeLabel(index) {
-            if (nodeNames && nodeNames[index]) {
-                return nodeNames[index];
+            // Try shared GT first (most reliable source)
+            if (sharedGtFile?.labels?.skeletons?.[0]?.nodeNames?.[index]) {
+                return sharedGtFile.labels.skeletons[0].nodeNames[index];
+            }
+
+            // Try to get node names from any model that has predictions
+            for (let i = 0; i < models.length; i++) {
+                const names = getModelNodeNames(i);
+                if (names && names[index]) {
+                    return names[index];
+                }
             }
             return `Node ${index + 1}`;
         }
 
-        // SLP drop zone event listeners
-        const slpDropZone = document.getElementById('slpDropZone');
+        // Shared GT handling
+        function triggerGtUpload() {
+            document.getElementById('gtFileInput').click();
+        }
+
+        async function handleGtDrop(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.classList.remove('drag-over');
+
+            const files = event.dataTransfer.files;
+            for (const file of files) {
+                if (file.name.endsWith('.slp')) {
+                    await loadSharedGt(file);
+                    break;
+                }
+            }
+        }
+
+        async function loadSharedGt(file) {
+            if (!file.name.endsWith('.slp')) return;
+
+            try {
+                await initSleapIO();
+                showLoading(`Loading ${file.name}...`);
+
+                const labels = await loadSlp(file, {
+                    openVideos: false,
+                    h5: { filenameHint: file.name }
+                });
+
+                hideLoading();
+
+                sharedGtFile = { name: file.name, labels };
+                updateSharedGtUI();
+                updateUI();
+                updateCharts();
+
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading GT file:', error);
+                alert(`Error loading ${file.name}: ${error.message}`);
+            }
+        }
+
+        function removeSharedGt(event) {
+            event.stopPropagation();
+            sharedGtFile = null;
+            updateSharedGtUI();
+            updateCharts();
+        }
+
+        function updateSharedGtUI() {
+            const slot = document.getElementById('sharedGtSlot');
+            const content = document.getElementById('sharedGtContent');
+            const info = document.getElementById('sharedGtInfo');
+
+            if (sharedGtFile) {
+                slot.classList.add('has-file');
+                content.innerHTML = `${sharedGtFile.name}<span class="slot-remove" onclick="removeSharedGt(event)">&times;</span>`;
+
+                // Show node names from GT
+                const nodeNames = sharedGtFile.labels?.skeletons?.[0]?.nodeNames;
+                if (nodeNames?.length > 0) {
+                    const preview = nodeNames.length <= 6
+                        ? nodeNames.join(', ')
+                        : nodeNames.slice(0, 5).join(', ') + ` +${nodeNames.length - 5} more`;
+                    info.innerHTML = `Nodes: <code>${preview}</code>`;
+                } else {
+                    info.innerHTML = '';
+                }
+            } else {
+                slot.classList.remove('has-file');
+                content.textContent = '+ Drop labels.slp';
+                info.innerHTML = '';
+            }
+        }
+
+        // GT file input listener
+        const gtFileInput = document.getElementById('gtFileInput');
+        gtFileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (files.length > 0) {
+                await loadSharedGt(files[0]);
+            }
+            gtFileInput.value = '';
+        });
+
+        // Trigger file picker for a specific model slot
+        function triggerSlpUpload(modelIndex, type) {
+            pendingSlpUpload = { modelIndex, type };
+            document.getElementById('slpFileInput').click();
+        }
+
+        // Handle drag over for upload slots
+        function handleSlotDragOver(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.classList.add('drag-over');
+        }
+
+        // Handle drag leave for upload slots
+        function handleSlotDragLeave(event) {
+            event.currentTarget.classList.remove('drag-over');
+        }
+
+        // Handle drop on upload slots
+        async function handleSlotDrop(event, modelIndex, type) {
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.classList.remove('drag-over');
+
+            const files = event.dataTransfer.files;
+            for (const file of files) {
+                if (file.name.endsWith('.slp')) {
+                    await loadSlpForModel(file, modelIndex, type);
+                    break; // Only load first .slp file
+                }
+            }
+        }
+
+        // Remove SLP file from a model
+        function removeModelSlp(event, modelIndex, type) {
+            event.stopPropagation();
+            if (models[modelIndex]?.slpFiles) {
+                models[modelIndex].slpFiles[type] = null;
+                updateUI();
+                updateCharts();
+            }
+        }
+
+        // Load SLP file for a specific model
+        async function loadSlpForModel(file, modelIndex, type) {
+            if (!file.name.endsWith('.slp')) return;
+
+            try {
+                await initSleapIO();
+                showLoading(`Loading ${file.name}...`);
+
+                const labels = await loadSlp(file, {
+                    openVideos: false,
+                    h5: { filenameHint: file.name }
+                });
+
+                hideLoading();
+
+                // Ensure model has slpFiles object
+                if (!models[modelIndex].slpFiles) {
+                    models[modelIndex].slpFiles = { preds: null, gt: null };
+                }
+
+                // Store the labels
+                models[modelIndex].slpFiles[type] = { name: file.name, labels };
+
+                // Update UI and charts
+                updateUI();
+                updateCharts();
+                updateConfidenceAnalysis();
+
+            } catch (error) {
+                hideLoading();
+                console.error('Error loading SLP file:', error);
+                alert(`Error loading ${file.name}: ${error.message}`);
+            }
+        }
+
+        // Hidden file input for SLP uploads
         const slpFileInput = document.getElementById('slpFileInput');
-
-        slpDropZone.addEventListener('click', () => slpFileInput.click());
-
-        slpDropZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            slpDropZone.classList.add('drag-over');
+        slpFileInput.addEventListener('change', async (e) => {
+            const files = e.target.files;
+            if (files.length > 0 && pendingSlpUpload.modelIndex !== null) {
+                await loadSlpForModel(files[0], pendingSlpUpload.modelIndex, pendingSlpUpload.type);
+                pendingSlpUpload = { modelIndex: null, type: null };
+            }
+            slpFileInput.value = ''; // Reset for next upload
         });
 
-        slpDropZone.addEventListener('dragleave', () => {
-            slpDropZone.classList.remove('drag-over');
-        });
+        // ========================================
+        // Confidence Analysis (Multi-Model Overlay)
+        // ========================================
 
-        slpDropZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            slpDropZone.classList.remove('drag-over');
-            handleSlpFiles(e.dataTransfer.files);
-        });
+        let confidenceCharts = { instance: null, node: null, threshold: null, calibration: null };
 
-        slpFileInput.addEventListener('change', (e) => {
-            handleSlpFiles(e.target.files);
-        });
+        // Check if any model has predictions loaded
+        function hasAnyPredictions() {
+            return models.some(m => m.slpFiles?.preds?.labels);
+        }
+
+        // Get models that have predictions loaded
+        function getModelsWithPredictions() {
+            return models.filter(m => m.slpFiles?.preds?.labels);
+        }
+
+        // Extract confidence scores from SLP labels
+        function extractConfidenceScores(labels) {
+            const instanceScores = [];
+            const nodeScores = [];
+            const nodeScoresByIndex = {}; // Per-node scores
+
+            if (!labels?.labeledFrames) return { instanceScores, nodeScores, nodeScoresByIndex };
+
+            for (const lf of labels.labeledFrames) {
+                if (!lf.instances) continue;
+
+                for (const inst of lf.instances) {
+                    // Instance score
+                    if (inst.score != null && !isNaN(inst.score)) {
+                        instanceScores.push(inst.score);
+                    }
+
+                    // Node scores
+                    if (inst.points) {
+                        inst.points.forEach((pt, idx) => {
+                            if (pt?.score != null && !isNaN(pt.score)) {
+                                nodeScores.push(pt.score);
+                                if (!nodeScoresByIndex[idx]) nodeScoresByIndex[idx] = [];
+                                nodeScoresByIndex[idx].push(pt.score);
+                            }
+                        });
+                    }
+                }
+            }
+
+            return { instanceScores, nodeScores, nodeScoresByIndex };
+        }
+
+        function updateConfidenceAnalysis() {
+            const section = document.getElementById('confidenceSection');
+
+            // Show/hide section based on predictions availability
+            if (!hasAnyPredictions()) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = 'block';
+
+            // Get all models with predictions
+            const modelsWithPreds = getModelsWithPredictions();
+
+            // Extract scores for each model
+            const modelData = modelsWithPreds.map(m => ({
+                model: m,
+                ...extractConfidenceScores(m.slpFiles.preds.labels)
+            }));
+
+            // Update charts with all models overlaid
+            updateInstanceConfChartMulti(modelData);
+            updateNodeConfChartMulti(modelData);
+            updateThresholdAnalysisChart(modelData);
+            updateCalibrationChart(modelData);
+            updateConfidenceStatsMulti(modelData);
+        }
+
+        function updateInstanceConfChartMulti(modelData) {
+            const ctx = document.getElementById('instanceConfChart')?.getContext('2d');
+            if (!ctx) return;
+
+            if (confidenceCharts.instance) confidenceCharts.instance.destroy();
+
+            if (modelData.length === 0) {
+                confidenceCharts.instance = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+                return;
+            }
+
+            // Create histogram bins (0-1 range)
+            const bins = 20;
+            const labels = Array.from({ length: bins }, (_, i) =>
+                `${(i * 5)}-${((i + 1) * 5)}%`
+            );
+
+            // Create dataset for each model
+            const datasets = modelData.map(({ model, instanceScores }) => {
+                const counts = new Array(bins).fill(0);
+                instanceScores.forEach(s => {
+                    const bin = Math.min(Math.floor(s * bins), bins - 1);
+                    counts[bin]++;
+                });
+                // Normalize to percentage
+                const total = counts.reduce((a, b) => a + b, 0);
+                const normalized = total > 0 ? counts.map(c => (c / total) * 100) : counts;
+
+                return {
+                    label: model.name,
+                    data: normalized,
+                    backgroundColor: model.color + '60',
+                    borderColor: model.color,
+                    borderWidth: 1
+                };
+            });
+
+            confidenceCharts.instance = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: modelData.length > 1 } },
+                    scales: {
+                        x: { title: { display: true, text: 'Confidence Score' } },
+                        y: { title: { display: true, text: 'Frequency (%)' } }
+                    }
+                }
+            });
+        }
+
+        function updateNodeConfChartMulti(modelData) {
+            const ctx = document.getElementById('nodeConfChart')?.getContext('2d');
+            if (!ctx) return;
+
+            if (confidenceCharts.node) confidenceCharts.node.destroy();
+
+            if (modelData.length === 0) {
+                confidenceCharts.node = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+                return;
+            }
+
+            // Get all node indices from first model (assume same skeleton)
+            const nodeIndices = Object.keys(modelData[0].nodeScoresByIndex)
+                .map(Number).sort((a, b) => a - b);
+
+            if (nodeIndices.length === 0) {
+                confidenceCharts.node = new Chart(ctx, {
+                    type: 'bar',
+                    data: { labels: [], datasets: [] },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+                return;
+            }
+
+            const labels = nodeIndices.map(i => getNodeLabel(i));
+
+            // Create dataset for each model
+            const datasets = modelData.map(({ model, nodeScoresByIndex }) => {
+                const avgScores = nodeIndices.map(i => {
+                    const scores = nodeScoresByIndex[i] || [];
+                    if (scores.length === 0) return null;
+                    return (scores.reduce((a, b) => a + b, 0) / scores.length) * 100;
+                });
+
+                return {
+                    label: model.name,
+                    data: avgScores,
+                    backgroundColor: model.color + '80',
+                    borderColor: model.color,
+                    borderWidth: 1
+                };
+            });
+
+            confidenceCharts.node = new Chart(ctx, {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: modelData.length > 1 } },
+                    scales: {
+                        x: { title: { display: true, text: 'Keypoint' } },
+                        y: {
+                            title: { display: true, text: 'Avg Confidence (%)' },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateThresholdAnalysisChart(modelData) {
+            const ctx = document.getElementById('thresholdAnalysisChart')?.getContext('2d');
+            if (!ctx) return;
+
+            if (confidenceCharts.threshold) confidenceCharts.threshold.destroy();
+
+            if (modelData.length === 0) {
+                confidenceCharts.threshold = new Chart(ctx, {
+                    type: 'line',
+                    data: { labels: [], datasets: [] },
+                    options: { responsive: true, maintainAspectRatio: false }
+                });
+                return;
+            }
+
+            // Thresholds from 0 to 1 in 0.05 increments
+            const thresholds = Array.from({ length: 21 }, (_, i) => i * 0.05);
+            const labels = thresholds.map(t => (t * 100).toFixed(0) + '%');
+
+            // Create dataset for each model (instance confidence)
+            const datasets = modelData.map(({ model, instanceScores }) => {
+                const passingPct = thresholds.map(threshold => {
+                    if (instanceScores.length === 0) return 0;
+                    const passing = instanceScores.filter(s => s >= threshold).length;
+                    return (passing / instanceScores.length) * 100;
+                });
+
+                return {
+                    label: model.name,
+                    data: passingPct,
+                    borderColor: model.color,
+                    backgroundColor: model.color + '20',
+                    fill: true,
+                    tension: 0.3
+                };
+            });
+
+            confidenceCharts.threshold = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: modelData.length > 1 } },
+                    scales: {
+                        x: { title: { display: true, text: 'Confidence Threshold' } },
+                        y: {
+                            title: { display: true, text: '% Instances Passing' },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateCalibrationChart(modelData) {
+            const ctx = document.getElementById('calibrationChart')?.getContext('2d');
+            const card = document.getElementById('calibrationChartCard');
+            if (!ctx || !card) return;
+
+            if (confidenceCharts.calibration) confidenceCharts.calibration.destroy();
+
+            // Calibration requires both predictions and GT with matching
+            // For now, we need the metrics data to get actual accuracy
+            // We'll use the distance_metrics.dists to determine if predictions are "correct"
+
+            // Check if we have GT loaded AND metrics data
+            const hasGt = sharedGtFile?.labels != null;
+            const hasMetrics = models.length > 0 && models.some(m => m.metrics?.distance_metrics?.dists);
+
+            if (!hasGt || !hasMetrics || modelData.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+            card.style.display = 'block';
+
+            // For calibration, we need to match confidence with error
+            // We'll use instance scores and check what % are "correct" (within threshold) per confidence bin
+            // This is an approximation - true calibration would need frame-level matching
+
+            // Use a 5px threshold to define "correct"
+            const correctThreshold = 5; // pixels
+
+            // Confidence bins
+            const numBins = 10;
+            const bins = Array.from({ length: numBins }, (_, i) => ({
+                min: i / numBins,
+                max: (i + 1) / numBins,
+                label: `${(i / numBins * 100).toFixed(0)}-${((i + 1) / numBins * 100).toFixed(0)}%`
+            }));
+
+            const datasets = [];
+
+            // For each model that has both predictions AND metrics
+            modelData.forEach(({ model, instanceScores }) => {
+                const modelIdx = models.indexOf(model);
+                const metrics = model.metrics;
+                if (!metrics?.distance_metrics?.dists) return;
+
+                const dists = metrics.distance_metrics.dists;
+
+                // Calculate mean distance per instance
+                const instanceErrors = dists.map(nodeDists => {
+                    const valid = nodeDists.filter(d => d != null && !isNaN(d) && isFinite(d));
+                    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
+                });
+
+                // We need to align instance scores with errors
+                // Assuming they're in the same order (which may not be true)
+                // This is a simplification - true calibration needs proper matching
+                const numToUse = Math.min(instanceScores.length, instanceErrors.length);
+
+                // Bin the predictions and calculate accuracy per bin
+                const binData = bins.map(bin => {
+                    let correct = 0;
+                    let total = 0;
+                    for (let i = 0; i < numToUse; i++) {
+                        const conf = instanceScores[i];
+                        const err = instanceErrors[i];
+                        if (conf >= bin.min && conf < bin.max && err != null) {
+                            total++;
+                            if (err <= correctThreshold) correct++;
+                        }
+                    }
+                    return total > 0 ? (correct / total) * 100 : null;
+                });
+
+                datasets.push({
+                    label: model.name,
+                    data: binData,
+                    borderColor: model.color,
+                    backgroundColor: model.color + '40',
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                });
+            });
+
+            // Add perfect calibration line
+            datasets.push({
+                label: 'Perfect Calibration',
+                data: bins.map((_, i) => ((i + 0.5) / numBins) * 100),
+                borderColor: '#999',
+                borderDash: [5, 5],
+                pointRadius: 0,
+                fill: false
+            });
+
+            const labels = bins.map(b => b.label);
+
+            confidenceCharts.calibration = new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: true },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    if (ctx.raw == null) return `${ctx.dataset.label}: No data`;
+                                    return `${ctx.dataset.label}: ${ctx.raw.toFixed(1)}% accurate`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Confidence Bin' } },
+                        y: {
+                            title: { display: true, text: 'Actual Accuracy (% within 5px)' },
+                            min: 0,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateConfidenceStatsMulti(modelData) {
+            const container = document.getElementById('confidenceStats');
+            if (!container) return;
+
+            if (modelData.length === 0) {
+                container.innerHTML = '';
+                return;
+            }
+
+            const calcStats = (arr) => {
+                if (arr.length === 0) return { mean: null, median: null };
+                const sorted = [...arr].sort((a, b) => a - b);
+                return {
+                    mean: arr.reduce((a, b) => a + b, 0) / arr.length,
+                    median: sorted[Math.floor(sorted.length / 2)]
+                };
+            };
+
+            const getClass = (val) => {
+                if (val == null) return '';
+                if (val >= 0.8) return 'good';
+                if (val >= 0.5) return 'medium';
+                return 'poor';
+            };
+
+            const formatVal = (val) => val != null ? (val * 100).toFixed(1) + '%' : 'N/A';
+
+            // Build table for multi-model comparison
+            const headers = ['Model', 'Instances', 'Mean Inst Conf', 'Mean Node Conf'];
+            const rows = modelData.map(({ model, instanceScores, nodeScores }) => {
+                const instStats = calcStats(instanceScores);
+                const nodeStats = calcStats(nodeScores);
+                return `
+                    <tr>
+                        <td style="display: flex; align-items: center; gap: 8px;">
+                            <span style="width: 12px; height: 12px; border-radius: 50%; background: ${model.color};"></span>
+                            ${model.name}
+                        </td>
+                        <td>${instanceScores.length.toLocaleString()}</td>
+                        <td class="${getClass(instStats.mean)}">${formatVal(instStats.mean)}</td>
+                        <td class="${getClass(nodeStats.mean)}">${formatVal(nodeStats.mean)}</td>
+                    </tr>
+                `;
+            });
+
+            container.innerHTML = `
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid #ddd;">
+                            ${headers.map(h => `<th style="text-align: left; padding: 8px; color: #666;">${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.join('')}
+                    </tbody>
+                </table>
+            `;
+        }
     </script>
 </body>
 </html>
