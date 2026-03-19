@@ -15,6 +15,7 @@
     }
     </script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-error-bars@4.4.5/build/index.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
     <style>
         * { box-sizing: border-box; }
@@ -530,6 +531,32 @@
             margin: 0;
             font-size: 1rem;
         }
+        .raw-data-model-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #eee;
+        }
+        .raw-data-model-selector label {
+            font-weight: 500;
+            color: #555;
+        }
+        .raw-data-model-selector select {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+            cursor: pointer;
+        }
+        .raw-data-model-selector .color-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
         .raw-data-group {
             border-bottom: 1px solid #eee;
         }
@@ -846,6 +873,28 @@
         .node-filter-actions button:hover {
             background: #f0f0f0;
         }
+        .node-filter-actions button.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .sort-controls {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sort-controls label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .sort-controls select {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
 
         /* Worst frames */
         .worst-frames {
@@ -1101,6 +1150,14 @@
                         <button onclick="selectTopNodes(5)">Top 5 (Best)</button>
                         <button onclick="selectBottomNodes(5)">Bottom 5 (Worst)</button>
                     </div>
+                    <div class="sort-controls">
+                        <label>Sort bars by:</label>
+                        <select id="nodeSortOrder" onchange="onNodeSortChange()">
+                            <option value="original">Original order</option>
+                            <option value="asc">Ascending (low → high)</option>
+                            <option value="desc">Descending (high → low)</option>
+                        </select>
+                    </div>
                 </div>
 
                 <div class="charts-grid">
@@ -1166,6 +1223,7 @@
                 </h3>
                 <div class="model-selector" onclick="event.stopPropagation()">
                     <label>Model:</label>
+                    <span class="color-indicator" id="analyticsColorIndicator"></span>
                     <select id="analyticsModelSelect" onchange="onAnalyticsModelChange()">
                     </select>
                 </div>
@@ -1207,7 +1265,7 @@
 
                 <!-- Worst Frames -->
                 <div class="worst-frames" id="worstFrames">
-                    <h3>Instances with Highest Error</h3>
+                    <h3>Instances with Highest Distance Error</h3>
                     <div class="worst-frames-list" id="worstFramesList"></div>
                 </div>
             </div>
@@ -1243,7 +1301,7 @@
                         </div>
                     </div>
                     <div class="chart-card" id="calibrationChartCard" style="display: none;">
-                        <h3>Confidence Calibration <span style="font-size: 0.75rem; color: #666; font-weight: normal;">(requires GT)</span></h3>
+                        <h3>Confidence Calibration <span style="font-size: 0.75rem; color: #666; font-weight: normal;">(requires preds.slp)</span></h3>
                         <div class="chart-container">
                             <canvas id="calibrationChart"></canvas>
                         </div>
@@ -1278,6 +1336,11 @@
                 <span class="chevron">▼</span>
             </div>
             <div class="collapsible-content">
+                <div class="raw-data-model-selector" id="rawDataModelSelector" style="display: none;">
+                    <label for="rawDataModelSelect">Model:</label>
+                    <span class="color-indicator" id="rawDataColorIndicator"></span>
+                    <select id="rawDataModelSelect" onchange="onRawDataModelChange()"></select>
+                </div>
                 <div id="rawDataGroups"></div>
             </div>
         </div>
@@ -1589,6 +1652,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
         let charts = {};
         let selectedNodes = new Set(); // Empty = all selected
         let selectedAnalyticsModel = 0; // Index of model shown in Advanced Analytics
+        let nodeSortOrder = 'original'; // 'original', 'asc', 'desc'
 
         // Get the currently selected model for analytics
         function getAnalyticsModel() {
@@ -1609,12 +1673,26 @@ parse_npz_to_json(_npz_bytes.tobytes())
                     ${m.name}
                 </option>
             `).join('');
+
+            updateAnalyticsColorIndicator();
+        }
+
+        // Update the color indicator next to the dropdown
+        function updateAnalyticsColorIndicator() {
+            const indicator = document.getElementById('analyticsColorIndicator');
+            if (!indicator || models.length === 0) return;
+
+            const model = models[selectedAnalyticsModel];
+            if (model) {
+                indicator.style.backgroundColor = model.color;
+            }
         }
 
         // Handle model selection change
         function onAnalyticsModelChange() {
             const select = document.getElementById('analyticsModelSelect');
             selectedAnalyticsModel = parseInt(select.value);
+            updateAnalyticsColorIndicator();
             updateAnalysisSections();
         }
 
@@ -1957,27 +2035,70 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
             const labels = filteredIndices.map(i => getNodeLabel(i));
 
-            const datasets = models.map((model, idx) => ({
-                label: model.name,
-                data: filteredIndices.map(i => model.metrics.pck_metrics.mPCK_parts[i] * 100),
-                backgroundColor: model.color + '80',
-                borderColor: model.color,
-                borderWidth: 1
-            }));
+            const datasets = models.map((model, idx) => {
+                const pcks = model.metrics.pck_metrics.pcks;
+                const numThresholds = pcks[0]?.[0]?.length || 1;
+
+                // Calculate mean and std for each node
+                const nodeStats = filteredIndices.map(nodeIdx => {
+                    // For each instance, compute average PCK across thresholds for this node
+                    const instancePCKs = [];
+                    for (let i = 0; i < pcks.length; i++) {
+                        let correct = 0;
+                        for (let t = 0; t < numThresholds; t++) {
+                            if (pcks[i][nodeIdx][t]) correct++;
+                        }
+                        instancePCKs.push((correct / numThresholds) * 100);
+                    }
+
+                    if (instancePCKs.length === 0) return { y: 0, yMin: 0, yMax: 0 };
+
+                    const mean = instancePCKs.reduce((a, b) => a + b, 0) / instancePCKs.length;
+                    const variance = instancePCKs.reduce((sum, v) => sum + (v - mean) ** 2, 0) / instancePCKs.length;
+                    const std = Math.sqrt(variance);
+
+                    return {
+                        y: mean,
+                        yMin: Math.max(0, mean - std),
+                        yMax: Math.min(100, mean + std)
+                    };
+                });
+
+                return {
+                    label: model.name,
+                    data: nodeStats,
+                    backgroundColor: model.color + '80',
+                    borderColor: model.color,
+                    borderWidth: 1,
+                    errorBarColor: model.color,
+                    errorBarWhiskerColor: model.color,
+                    errorBarLineWidth: 2,
+                    errorBarWhiskerLineWidth: 2
+                };
+            });
 
             charts.parts = new Chart(ctx, {
-                type: 'bar',
+                type: 'barWithErrorBars',
                 data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: models.length > 1 }
+                        legend: { display: models.length > 1 },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const d = context.raw;
+                                    const std = d.yMax - d.y;
+                                    return `${context.dataset.label}: ${d.y.toFixed(1)} ± ${std.toFixed(1)}%`;
+                                }
+                            }
+                        }
                     },
                     scales: {
                         x: { title: { display: true, text: 'Body Part' } },
                         y: {
-                            title: { display: true, text: 'mPCK (%)' },
+                            title: { display: true, text: 'mPCK (%), mean ± std' },
                             min: 0,
                             max: 100
                         }
@@ -1991,7 +2112,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
             if (charts.nodeDist) charts.nodeDist.destroy();
 
-            const filteredIndices = getFilteredNodeIndices();
+            const filteredIndices = getFilteredNodeIndices('distance');
             if (filteredIndices.length === 0) {
                 charts.nodeDist = new Chart(ctx, {
                     type: 'bar',
@@ -2006,41 +2127,63 @@ parse_npz_to_json(_npz_bytes.tobytes())
             const datasets = models.map((model, idx) => {
                 const dists = model.metrics.distance_metrics.dists;
 
-                const nodeAvgs = filteredIndices.map(nodeIdx => {
-                    let sum = 0;
-                    let count = 0;
+                // Calculate mean and std for each node
+                const nodeStats = filteredIndices.map(nodeIdx => {
+                    const values = [];
                     for (let i = 0; i < dists.length; i++) {
                         const d = dists[i][nodeIdx];
                         if (d != null && !isNaN(d) && isFinite(d)) {
-                            sum += d;
-                            count++;
+                            values.push(d);
                         }
                     }
-                    return count > 0 ? sum / count : 0;
+                    if (values.length === 0) return { y: 0, yMin: 0, yMax: 0 };
+
+                    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+                    const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+                    const std = Math.sqrt(variance);
+
+                    return {
+                        y: mean,
+                        yMin: Math.max(0, mean - std),
+                        yMax: mean + std
+                    };
                 });
 
                 return {
                     label: model.name,
-                    data: nodeAvgs,
+                    data: nodeStats,
                     backgroundColor: model.color + '80',
                     borderColor: model.color,
-                    borderWidth: 1
+                    borderWidth: 1,
+                    errorBarColor: model.color,
+                    errorBarWhiskerColor: model.color,
+                    errorBarLineWidth: 2,
+                    errorBarWhiskerLineWidth: 2
                 };
             });
 
             charts.nodeDist = new Chart(ctx, {
-                type: 'bar',
+                type: 'barWithErrorBars',
                 data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        legend: { display: models.length > 1 }
+                        legend: { display: models.length > 1 },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const d = context.raw;
+                                    const std = d.yMax - d.y;
+                                    return `${context.dataset.label}: ${d.y.toFixed(2)} ± ${std.toFixed(2)} px`;
+                                }
+                            }
+                        }
                     },
                     scales: {
                         x: { title: { display: true, text: 'Body Part' } },
                         y: {
-                            title: { display: true, text: 'Avg Distance (px)' },
+                            title: { display: true, text: 'Distance (px), mean ± std' },
                             min: 0
                         }
                     }
@@ -2229,8 +2372,8 @@ parse_npz_to_json(_npz_bytes.tobytes())
                 <div class="confusion-matrix">
                     <div class="label"></div>
                     <div class="label">Pred: Visible</div>
-                    <div class="label">Pred: Hidden</div>
-                    <div class="label vertical">Actual: Visible</div>
+                    <div class="label">Pred: Not Visible</div>
+                    <div class="label vertical">GT: Visible</div>
                     <div class="cell tp">
                         <span class="value">${m.tp}</span>
                         <span class="name">TP</span>
@@ -2239,7 +2382,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
                         <span class="value">${m.fn}</span>
                         <span class="name">FN</span>
                     </div>
-                    <div class="label vertical">Actual: Hidden</div>
+                    <div class="label vertical">GT: Not Visible</div>
                     <div class="cell fp">
                         <span class="value">${m.fp}</span>
                         <span class="name">FP</span>
@@ -2333,9 +2476,61 @@ parse_npz_to_json(_npz_bytes.tobytes())
             updateNodeDistChart();
         }
 
-        function getFilteredNodeIndices() {
+        function getFilteredNodeIndices(sortMetric = 'mPCK') {
             if (selectedNodes.size === 0) return [];
-            return Array.from(selectedNodes).sort((a, b) => a - b);
+            let indices = Array.from(selectedNodes);
+
+            if (nodeSortOrder === 'original') {
+                // Sort by node index
+                return indices.sort((a, b) => a - b);
+            }
+
+            // Sort by the chart's own metric
+            if (models.length > 0) {
+                const m = models[0].metrics;
+
+                if (sortMetric === 'mPCK' && m?.pck_metrics?.mPCK_parts) {
+                    const mPCK = m.pck_metrics.mPCK_parts;
+                    if (nodeSortOrder === 'asc') {
+                        indices.sort((a, b) => mPCK[a] - mPCK[b]);
+                    } else if (nodeSortOrder === 'desc') {
+                        indices.sort((a, b) => mPCK[b] - mPCK[a]);
+                    }
+                } else if (sortMetric === 'distance' && m?.distance_metrics?.dists) {
+                    // Calculate avg distance per node for sorting
+                    const dists = m.distance_metrics.dists;
+                    const nodeAvgs = {};
+                    indices.forEach(nodeIdx => {
+                        let sum = 0, count = 0;
+                        for (let i = 0; i < dists.length; i++) {
+                            const d = dists[i][nodeIdx];
+                            if (d != null && !isNaN(d) && isFinite(d)) {
+                                sum += d;
+                                count++;
+                            }
+                        }
+                        nodeAvgs[nodeIdx] = count > 0 ? sum / count : 0;
+                    });
+
+                    if (nodeSortOrder === 'asc') {
+                        indices.sort((a, b) => nodeAvgs[a] - nodeAvgs[b]);
+                    } else if (nodeSortOrder === 'desc') {
+                        indices.sort((a, b) => nodeAvgs[b] - nodeAvgs[a]);
+                    }
+                }
+            }
+            return indices;
+        }
+
+        function onNodeSortChange() {
+            const select = document.getElementById('nodeSortOrder');
+            nodeSortOrder = select.value;
+            updateNodeCharts();
+        }
+
+        function updateNodeCharts() {
+            updatePartsChart();
+            updateNodeDistChart();
         }
 
         function updateAnalysisSections() {
@@ -2556,7 +2751,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
                 return `
                     <div class="worst-frame-item">
                         <span class="frame-info">${frameLabel}${videoName ? ` (${videoName})` : ''}</span>
-                        <span class="error-value">${inst.avgError.toFixed(1)} px avg</span>
+                        <span class="error-value">${inst.avgError.toFixed(1)} px (avg dist)</span>
                     </div>
                 `;
             }).join('');
@@ -2722,12 +2917,58 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
         // Raw Data Viewer
         const expandedGroups = new Set();
+        let selectedRawDataModelIndex = 0;
+
+        function updateRawDataModelSelector() {
+            const selector = document.getElementById('rawDataModelSelector');
+            const select = document.getElementById('rawDataModelSelect');
+
+            if (models.length <= 1) {
+                selector.style.display = 'none';
+                selectedRawDataModelIndex = 0;
+                return;
+            }
+
+            selector.style.display = 'flex';
+
+            // Ensure selected index is valid
+            if (selectedRawDataModelIndex >= models.length) {
+                selectedRawDataModelIndex = 0;
+            }
+
+            select.innerHTML = models.map((model, idx) => `
+                <option value="${idx}" ${idx === selectedRawDataModelIndex ? 'selected' : ''}>
+                    ${model.name}
+                </option>
+            `).join('');
+
+            updateRawDataColorIndicator();
+        }
+
+        function onRawDataModelChange() {
+            const select = document.getElementById('rawDataModelSelect');
+            selectedRawDataModelIndex = parseInt(select.value, 10);
+            updateRawDataColorIndicator();
+            updateRawDataViewer();
+        }
+
+        function updateRawDataColorIndicator() {
+            const indicator = document.getElementById('rawDataColorIndicator');
+            if (!indicator || models.length === 0) return;
+
+            const model = models[selectedRawDataModelIndex];
+            if (model) {
+                indicator.style.backgroundColor = model.color;
+            }
+        }
 
         function updateRawDataViewer() {
             if (models.length === 0) return;
 
+            updateRawDataModelSelector();
+
             const container = document.getElementById('rawDataGroups');
-            const metrics = models[0].metrics;
+            const metrics = models[selectedRawDataModelIndex].metrics;
             const keys = Object.keys(metrics);
 
             container.innerHTML = keys.map(key => {
@@ -2789,7 +3030,7 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
         function copyRawData(key, btn, event) {
             event.stopPropagation();
-            const metrics = models[0].metrics;
+            const metrics = models[selectedRawDataModelIndex].metrics;
             const data = metrics[key];
             const jsonStr = JSON.stringify(data, null, 2);
 
@@ -3235,34 +3476,60 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
             const labels = nodeIndices.map(i => getNodeLabel(i));
 
-            // Create dataset for each model
+            // Create dataset for each model with mean ± std
             const datasets = modelData.map(({ model, nodeScoresByIndex }) => {
-                const avgScores = nodeIndices.map(i => {
+                const nodeStats = nodeIndices.map(i => {
                     const scores = nodeScoresByIndex[i] || [];
-                    if (scores.length === 0) return null;
-                    return (scores.reduce((a, b) => a + b, 0) / scores.length) * 100;
+                    if (scores.length === 0) return { y: 0, yMin: 0, yMax: 0 };
+
+                    // Convert to percentages
+                    const pctScores = scores.map(s => s * 100);
+                    const mean = pctScores.reduce((a, b) => a + b, 0) / pctScores.length;
+                    const variance = pctScores.reduce((sum, v) => sum + (v - mean) ** 2, 0) / pctScores.length;
+                    const std = Math.sqrt(variance);
+
+                    return {
+                        y: mean,
+                        yMin: Math.max(0, mean - std),
+                        yMax: Math.min(100, mean + std)
+                    };
                 });
 
                 return {
                     label: model.name,
-                    data: avgScores,
+                    data: nodeStats,
                     backgroundColor: model.color + '80',
                     borderColor: model.color,
-                    borderWidth: 1
+                    borderWidth: 1,
+                    errorBarColor: model.color,
+                    errorBarWhiskerColor: model.color,
+                    errorBarLineWidth: 2,
+                    errorBarWhiskerLineWidth: 2
                 };
             });
 
             confidenceCharts.node = new Chart(ctx, {
-                type: 'bar',
+                type: 'barWithErrorBars',
                 data: { labels, datasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: modelData.length > 1 } },
+                    plugins: {
+                        legend: { display: modelData.length > 1 },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const d = context.raw;
+                                    const std = d.yMax - d.y;
+                                    return `${context.dataset.label}: ${d.y.toFixed(1)} ± ${std.toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    },
                     scales: {
                         x: { title: { display: true, text: 'Keypoint' } },
                         y: {
-                            title: { display: true, text: 'Avg Confidence (%)' },
+                            title: { display: true, text: 'Confidence (%), mean ± std' },
                             min: 0,
                             max: 100
                         }
@@ -3334,15 +3601,14 @@ parse_npz_to_json(_npz_bytes.tobytes())
 
             if (confidenceCharts.calibration) confidenceCharts.calibration.destroy();
 
-            // Calibration requires both predictions and GT with matching
-            // For now, we need the metrics data to get actual accuracy
-            // We'll use the distance_metrics.dists to determine if predictions are "correct"
+            // Calibration requires predictions SLP (for confidence) and metrics (for dists to GT)
+            // The metrics file contains dists which were computed against GT during evaluation
+            // So we only need: predictions SLP + metrics file with dists
 
-            // Check if we have GT loaded AND metrics data
-            const hasGt = sharedGtFile?.labels != null;
+            // Check if we have metrics data with dists (GT is implicit in the dists)
             const hasMetrics = models.length > 0 && models.some(m => m.metrics?.distance_metrics?.dists);
 
-            if (!hasGt || !hasMetrics || modelData.length === 0) {
+            if (!hasMetrics || modelData.length === 0) {
                 card.style.display = 'none';
                 return;
             }
@@ -3366,34 +3632,39 @@ parse_npz_to_json(_npz_bytes.tobytes())
             const datasets = [];
 
             // For each model that has both predictions AND metrics
-            modelData.forEach(({ model, instanceScores }) => {
-                const modelIdx = models.indexOf(model);
+            modelData.forEach(({ model, nodeScoresByIndex }) => {
                 const metrics = model.metrics;
                 if (!metrics?.distance_metrics?.dists) return;
 
                 const dists = metrics.distance_metrics.dists;
 
-                // Calculate mean distance per instance
-                const instanceErrors = dists.map(nodeDists => {
-                    const valid = nodeDists.filter(d => d != null && !isNaN(d) && isFinite(d));
-                    return valid.length > 0 ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
-                });
+                // Use per-keypoint confidence and distance for calibration
+                // This gives more granular data than instance-level scores
+                const calibrationPairs = []; // { conf, dist }
 
-                // We need to align instance scores with errors
-                // Assuming they're in the same order (which may not be true)
-                // This is a simplification - true calibration needs proper matching
-                const numToUse = Math.min(instanceScores.length, instanceErrors.length);
+                // For each node, pair confidence scores with distances
+                Object.keys(nodeScoresByIndex).forEach(nodeIdx => {
+                    const nodeConfScores = nodeScoresByIndex[nodeIdx];
+                    const nIdx = parseInt(nodeIdx);
+
+                    // Match with distances for this node across instances
+                    for (let i = 0; i < Math.min(nodeConfScores.length, dists.length); i++) {
+                        const conf = nodeConfScores[i];
+                        const dist = dists[i]?.[nIdx];
+                        if (conf != null && dist != null && !isNaN(dist) && isFinite(dist)) {
+                            calibrationPairs.push({ conf, dist });
+                        }
+                    }
+                });
 
                 // Bin the predictions and calculate accuracy per bin
                 const binData = bins.map(bin => {
                     let correct = 0;
                     let total = 0;
-                    for (let i = 0; i < numToUse; i++) {
-                        const conf = instanceScores[i];
-                        const err = instanceErrors[i];
-                        if (conf >= bin.min && conf < bin.max && err != null) {
+                    for (const { conf, dist } of calibrationPairs) {
+                        if (conf >= bin.min && conf < bin.max) {
                             total++;
-                            if (err <= correctThreshold) correct++;
+                            if (dist <= correctThreshold) correct++;
                         }
                     }
                     return total > 0 ? (correct / total) * 100 : null;
