@@ -4,78 +4,187 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Info Tool</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #0c0d11; --surface: #161820; --surface-2: #1e2028; --border: #252832;
+            --text: #d8d8e0; --muted: #808090; --dim: #505060;
+            --amber: #e8a84c; --amber-dim: #8a6020;
+            --teal: #2dd4a8; --teal-dim: #1a6850;
+            --rose: #e86c8a; --rose-dim: #803848;
+            --green: #34d399;
+        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: system-ui, -apple-system, sans-serif;
-            max-width: 900px; margin: 0 auto; padding: 20px;
-            line-height: 1.6; background: #1a1a2e; color: #eee;
+            font-family: 'Syne', system-ui, sans-serif;
+            max-width: 920px; margin: 0 auto; padding: 24px;
+            line-height: 1.5; background: var(--bg); color: var(--text);
         }
-        h1 { text-align: center; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 25px; font-size: 14px; }
-        .subtitle a { color: #6c9fff; text-decoration: none; }
+        h1 {
+            text-align: center; font-size: 28px; font-weight: 800;
+            letter-spacing: -0.5px; margin-bottom: 4px;
+        }
+        .subtitle { text-align: center; color: var(--muted); margin-bottom: 28px; font-size: 13px; }
+        .subtitle a { color: var(--amber); text-decoration: none; }
+
+        /* Drop zone */
         .drop-zone {
-            border: 2px dashed #444; border-radius: 12px; padding: 50px 30px;
-            text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 25px;
+            border: 2px dashed var(--border); border-radius: 10px; padding: 48px 30px;
+            text-align: center; cursor: pointer; transition: all 0.3s ease;
+            margin-bottom: 20px; background: var(--surface);
         }
-        .drop-zone:hover, .drop-zone.dragover { border-color: #6c9fff; background: rgba(108,159,255,0.05); }
-        .drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
-        .drop-zone .text { color: #888; font-size: 16px; }
-        .drop-zone .text strong { color: #6c9fff; }
-        .section { background: #252540; border-radius: 8px; padding: 20px; margin-bottom: 15px; }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: var(--amber); background: rgba(232,168,76,0.04);
+        }
+        .drop-zone .icon { font-size: 36px; margin-bottom: 10px; }
+        .drop-zone .text { color: var(--muted); font-size: 16px; }
+        .drop-zone .text strong { color: var(--amber); }
+        .drop-zone.collapsed {
+            padding: 12px 20px; display: flex; align-items: center;
+            justify-content: space-between; cursor: default; border-style: solid;
+        }
+        .drop-zone.collapsed .drop-full { display: none; }
+        .drop-zone.collapsed .drop-mini { display: flex; align-items: center; gap: 12px; }
+        .drop-mini { display: none; }
+        .drop-mini .loaded-name {
+            font-family: 'JetBrains Mono', monospace; font-size: 13px;
+            color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* Sections */
+        .section {
+            --accent: var(--amber);
+            background: var(--surface); border-radius: 10px; padding: 22px;
+            margin-bottom: 14px; border-left: 3px solid var(--accent);
+            animation: fadeUp 0.35s ease both;
+        }
+        .section:nth-child(2) { animation-delay: 0.05s; }
+        .section:nth-child(3) { animation-delay: 0.1s; }
+        .section:nth-child(4) { animation-delay: 0.15s; }
+        .section:nth-child(5) { animation-delay: 0.2s; }
+        .section:nth-child(6) { animation-delay: 0.25s; }
+        .section.video { --accent: var(--teal); }
+        .section.audio { --accent: var(--rose); }
+        .section.tags { --accent: var(--dim); }
+        .section.export { --accent: var(--dim); border-left-color: var(--border); }
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
         .section h2 {
-            font-size: 13px; text-transform: uppercase; color: #888;
-            letter-spacing: 0.5px; margin: 0 0 15px;
+            font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; color: var(--accent); letter-spacing: 1.5px; margin: 0 0 16px;
         }
-        .grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
-        }
+
+        /* Grid */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
         .grid .item label {
-            display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 2px;
+            display: block; font-size: 10px; font-weight: 600; color: var(--dim);
+            text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3px;
         }
-        .grid .item .val { font-size: 16px; font-weight: 600; color: #6c9fff; word-break: break-all; }
-        .grid .item .val.sm { font-size: 13px; font-family: 'Monaco','Consolas',monospace; font-weight: 400; }
-        .efficiency {
-            font-size: 12px; color: #4ade80; font-family: 'Monaco','Consolas',monospace; margin-top: 10px;
+        .grid .item .val {
+            font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 500;
+            color: var(--accent); word-break: break-all;
         }
-        .track { margin-top: 15px; padding-top: 15px; border-top: 1px solid #333; }
+        .grid .item .val.sm { font-size: 12px; font-weight: 400; }
+
+        /* Efficiency bar */
+        .eff-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+        .eff-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+        .eff-bar .fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s; }
+        .eff-text {
+            font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green);
+            white-space: nowrap;
+        }
+
+        /* Frame preview */
+        .frame-wrap {
+            background: var(--bg); border-radius: 8px; overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 180px; margin-bottom: 14px; position: relative;
+        }
+        .frame-wrap img { max-width: 100%; max-height: 420px; display: block; }
+        .frame-wrap .placeholder { color: var(--dim); font-size: 13px; }
+        .frame-controls {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        }
+        .frame-controls input[type="range"] {
+            flex: 1; min-width: 120px; accent-color: var(--teal);
+        }
+        .frame-controls input[type="number"] {
+            width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
+            background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+        .frame-controls input[type="number"]:focus { outline: none; border-color: var(--teal); }
+        .frame-loading {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            background: rgba(12,13,17,0.8); color: var(--muted); font-size: 13px;
+        }
+
+        /* Tracks */
+        .track { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
         .track:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-        .track h3 { font-size: 13px; color: #ccc; margin: 0 0 10px; }
-        .tags { display: flex; flex-wrap: wrap; gap: 8px; }
-        .tag { font-size: 13px; background: #1a1a2e; padding: 4px 10px; border-radius: 4px; }
-        .tag .name { color: #888; }
+        .track h3 { font-size: 12px; color: var(--text); margin: 0 0 10px; font-weight: 600; }
+
+        /* Tags */
+        .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag {
+            font-family: 'JetBrains Mono', monospace; font-size: 12px;
+            background: var(--bg); padding: 5px 12px; border-radius: 20px;
+            border: 1px solid var(--border);
+        }
+        .tag .name { color: var(--muted); }
+
+        /* Buttons */
         .btn {
-            background: #6c9fff; color: #fff; border: none; padding: 8px 16px;
-            border-radius: 6px; cursor: pointer; font-size: 13px;
+            font-family: 'Syne', sans-serif; font-weight: 600;
+            background: var(--amber); color: var(--bg); border: none;
+            padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px;
+            transition: background 0.15s;
         }
-        .btn:hover { background: #5a8ae6; }
-        .btn.sec { background: #444; }
-        .btn.sec:hover { background: #555; }
-        .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+        .btn:hover { background: #d09540; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn.sec { background: var(--surface-2); color: var(--text); }
+        .btn.sec:hover { background: var(--border); }
+        .btn.teal { background: var(--teal); }
+        .btn.teal:hover { background: #28b892; }
+        .btn.sm { padding: 6px 14px; font-size: 12px; }
+
+        /* Export */
+        .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
         .tab {
-            background: #1a1a2e; border: 1px solid #444; color: #888;
-            padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
+            font-family: 'Syne', sans-serif; font-weight: 600;
+            background: var(--bg); border: 1px solid var(--border); color: var(--muted);
+            padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
         }
-        .tab:hover { border-color: #6c9fff; color: #fff; }
-        .tab.on { background: #6c9fff; border-color: #6c9fff; color: #fff; }
+        .tab:hover { border-color: var(--amber); color: var(--text); }
+        .tab.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
         pre.code {
-            background: #1a1a2e; padding: 12px; border-radius: 4px; font-size: 12px;
-            overflow: auto; margin: 0 0 12px; max-height: 300px; white-space: pre-wrap;
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--bg); padding: 14px; border-radius: 6px; font-size: 12px;
+            overflow: auto; margin: 0 0 12px; max-height: 280px; white-space: pre-wrap;
+            border: 1px solid var(--border);
         }
         .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .feedback { color: #4ade80; font-size: 13px; opacity: 0; transition: opacity 0.3s; }
+        .feedback { color: var(--green); font-size: 12px; opacity: 0; transition: opacity 0.3s; }
         .feedback.show { opacity: 1; }
         .error {
-            background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444;
-            padding: 12px; border-radius: 6px; margin-bottom: 15px; display: none;
+            background: rgba(232,108,138,0.08); border: 1px solid var(--rose); color: var(--rose);
+            padding: 12px; border-radius: 6px; margin-bottom: 14px; display: none; font-size: 13px;
         }
-        .loading { text-align: center; padding: 40px; color: #888; }
-        footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
-        footer a { color: #6c9fff; text-decoration: none; }
+        .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+        footer {
+            text-align: center; margin-top: 36px; padding-top: 20px;
+            border-top: 1px solid var(--border); color: var(--dim); font-size: 12px;
+        }
+        footer a { color: var(--amber); text-decoration: none; }
         @media (max-width: 600px) {
-            body { padding: 15px; }
-            .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            body { padding: 16px; }
+            .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
             .drop-zone { padding: 30px 15px; }
+            h1 { font-size: 22px; }
         }
     </style>
 </head>
@@ -87,8 +196,14 @@
     </p>
 
     <div class="drop-zone" id="drop">
-        <div class="icon">🎬</div>
-        <div class="text"><strong>Drop media file here</strong> or click to browse</div>
+        <div class="drop-full">
+            <div class="icon">🎬</div>
+            <div class="text"><strong>Drop media file here</strong> or click to browse</div>
+        </div>
+        <div class="drop-mini">
+            <span class="loaded-name" id="loadedName"></span>
+            <button class="btn sm" id="loadAnother">Load Another</button>
+        </div>
     </div>
     <div class="error" id="err"></div>
     <div id="out"></div>
@@ -98,31 +213,30 @@
     <script type="module">
     const CDN = 'https://cdn.jsdelivr.net/npm/mediabunny/+esm';
     let mb;
-    try {
-        mb = await import(CDN);
-    } catch {
+    try { mb = await import(CDN); } catch {
         document.getElementById('err').textContent = 'Failed to load mediabunny library.';
         document.getElementById('err').style.display = 'block';
         throw new Error('mediabunny import failed');
     }
     const { Input, ALL_FORMATS, BlobSource } = mb;
+    const canExtractFrames = 'CanvasSink' in mb && 'VideoDecoder' in window;
 
     const drop = document.getElementById('drop');
+    const loadAnother = document.getElementById('loadAnother');
+    const loadedName = document.getElementById('loadedName');
     const errEl = document.getElementById('err');
     const out = document.getElementById('out');
     let info = null, fmt = 'json', codeEl = null;
+    let currentInput = null, videoTrackObj = null;
 
-    // File picking: prefer File System Access API, fall back to <input>
     async function pickFile() {
         if ('showOpenFilePicker' in window) {
             try {
-                const [handle] = await window.showOpenFilePicker({
+                const [h] = await window.showOpenFilePicker({
                     types: [{ description: 'Media files', accept: { 'video/*': [], 'audio/*': [] } }]
                 });
-                return await handle.getFile();
-            } catch (e) {
-                if (e.name === 'AbortError') return null;
-            }
+                return await h.getFile();
+            } catch (e) { if (e.name === 'AbortError') return null; }
         }
         return new Promise(resolve => {
             const inp = Object.assign(document.createElement('input'), { type: 'file', accept: 'video/*,audio/*' });
@@ -131,7 +245,9 @@
         });
     }
 
-    drop.onclick = async () => { const f = await pickFile(); if (f) analyze(f); };
+    async function openFile() { const f = await pickFile(); if (f) analyze(f); }
+    drop.querySelector('.drop-full').onclick = openFile;
+    loadAnother.onclick = e => { e.stopPropagation(); openFile(); };
     drop.ondragover = e => { e.preventDefault(); drop.classList.add('dragover'); };
     drop.ondragleave = () => drop.classList.remove('dragover');
     drop.ondrop = e => {
@@ -139,7 +255,6 @@
         const f = e.dataTransfer.files[0]; if (f) analyze(f);
     };
 
-    // DOM helpers
     const h = (tag, cls, text) => {
         const e = document.createElement(tag);
         if (cls) e.className = cls;
@@ -173,6 +288,8 @@
         errEl.style.display = 'none';
         out.innerHTML = '';
         out.append(h('div', 'loading', 'Analyzing...'));
+        if (currentInput) { try { currentInput.dispose(); } catch {} }
+        currentInput = null; videoTrackObj = null;
 
         try {
             const source = new BlobSource(file);
@@ -181,12 +298,12 @@
             source.onread = (s, e) => { bytesRead += e - s; };
 
             const [format, mimeType, duration, tracks, tags] = await Promise.all([
-                input.getFormat(),
-                input.getMimeType(),
-                input.computeDuration(),
-                input.getTracks(),
-                input.getMetadataTags(),
+                input.getFormat(), input.getMimeType(), input.computeDuration(),
+                input.getTracks(), input.getMetadataTags(),
             ]);
+
+            videoTrackObj = tracks.find(t => t.isVideoTrack()) || null;
+            currentInput = input;
 
             const trackDetails = await Promise.all(tracks.map(async t => {
                 const [cs, stats, dur] = await Promise.all([
@@ -199,49 +316,30 @@
                     codec: String(t.codec ?? t.internalCodecId ?? 'unknown'),
                     codecString: cs, duration: dur, language: t.languageCode,
                 };
-                if (stats) {
-                    d.packetCount = stats.packetCount;
-                    d.packetRate = stats.averagePacketRate;
-                    d.bitrate = stats.averageBitrate;
-                }
+                if (stats) { d.packetCount = stats.packetCount; d.packetRate = stats.averagePacketRate; d.bitrate = stats.averageBitrate; }
                 if (t.isVideoTrack()) {
-                    const [color, hdr] = await Promise.all([
-                        t.getColorSpace().catch(() => null),
-                        t.hasHighDynamicRange().catch(() => false),
-                    ]);
-                    Object.assign(d, {
-                        codedWidth: t.codedWidth, codedHeight: t.codedHeight,
+                    const [color, hdr] = await Promise.all([t.getColorSpace().catch(() => null), t.hasHighDynamicRange().catch(() => false)]);
+                    Object.assign(d, { codedWidth: t.codedWidth, codedHeight: t.codedHeight,
                         displayWidth: t.displayWidth, displayHeight: t.displayHeight,
-                        rotation: t.rotation, par: t.pixelAspectRatio,
-                        colorSpace: color, hdr,
-                    });
+                        rotation: t.rotation, par: t.pixelAspectRatio, colorSpace: color, hdr });
                 }
-                if (t.isAudioTrack()) {
-                    Object.assign(d, { sampleRate: t.sampleRate, channels: t.numberOfChannels });
-                }
+                if (t.isAudioTrack()) Object.assign(d, { sampleRate: t.sampleRate, channels: t.numberOfChannels });
                 return d;
             }));
 
             const tagObj = {};
             if (tags) {
-                for (const k of ['title','artist','album','albumArtist','genre','date',
-                    'description','comment','trackNumber','tracksTotal','discNumber',
-                    'discsTotal','lyrics']) {
-                    if (tags[k] != null) {
-                        tagObj[k] = tags[k] instanceof Date ? tags[k].toISOString().slice(0, 10) : String(tags[k]);
-                    }
+                for (const k of ['title','artist','album','albumArtist','genre','date','description','comment','trackNumber','tracksTotal','discNumber','discsTotal','lyrics']) {
+                    if (tags[k] != null) tagObj[k] = tags[k] instanceof Date ? tags[k].toISOString().slice(0, 10) : String(tags[k]);
                 }
             }
 
-            info = {
-                filename: file.name, fileSize: file.size,
-                format: format.name, mimeType, duration,
-                tracks: trackDetails,
-                tags: Object.keys(tagObj).length ? tagObj : null,
-                bytesRead,
-            };
+            info = { filename: file.name, fileSize: file.size, format: format.name, mimeType, duration,
+                tracks: trackDetails, tags: Object.keys(tagObj).length ? tagObj : null, bytesRead };
 
-            input.dispose();
+            // Collapse drop zone
+            drop.classList.add('collapsed');
+            loadedName.textContent = file.name;
             render(info);
         } catch (e) {
             out.innerHTML = '';
@@ -250,32 +348,80 @@
         }
     }
 
+    async function extractFrame(timestamp, img, loadingEl) {
+        if (!videoTrackObj || !canExtractFrames) return;
+        loadingEl.style.display = 'flex';
+        try {
+            const sink = new mb.CanvasSink(videoTrackObj);
+            const result = await sink.getCanvas(timestamp);
+            const canvas = result.canvas ?? result; // unwrap {canvas, timestamp, duration}
+            const blob = await new Promise(r => canvas.toBlob(r));
+            if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
+            const url = URL.createObjectURL(blob);
+            img.dataset.blobUrl = url;
+            img.src = url;
+            img.style.display = 'block';
+            img.previousElementSibling?.remove(); // remove placeholder
+        } catch (e) {
+            console.error('Frame extraction failed:', e);
+        } finally { loadingEl.style.display = 'none'; }
+    }
+
     function render(info) {
         out.innerHTML = '';
+        const pct = (100 * info.bytesRead / info.fileSize);
 
         // Overview
         const ov = h('div', 'section');
         ov.append(h('h2', null, 'Overview'));
         const g = h('div', 'grid');
-        g.append(
-            gridItem('File', info.filename),
-            gridItem('Format', info.format),
-            gridItem('Duration', fmtDur(info.duration)),
+        g.append(gridItem('Format', info.format), gridItem('Duration', fmtDur(info.duration)),
             gridItem('File Size', fmtBytes(info.fileSize)),
-            gridItem('Overall Bitrate', fmtBits(info.fileSize * 8 / info.duration)),
-        );
+            gridItem('Overall Bitrate', fmtBits(info.fileSize * 8 / info.duration)));
         ov.append(g);
-        const mg = h('div', 'grid'); mg.style.marginTop = '12px';
+        const mg = h('div', 'grid'); mg.style.marginTop = '14px';
         mg.append(gridItem('MIME Type', info.mimeType, true));
         ov.append(mg);
-        ov.append(h('div', 'efficiency',
-            `Bytes read: ${fmtBytes(info.bytesRead)} / ${fmtBytes(info.fileSize)} (${(100 * info.bytesRead / info.fileSize).toFixed(1)}%)`));
+        const effRow = h('div', 'eff-row');
+        const bar = h('div', 'eff-bar'); const fill = h('div', 'fill');
+        fill.style.width = pct.toFixed(1) + '%'; bar.append(fill);
+        effRow.append(h('span', 'eff-text', `${fmtBytes(info.bytesRead)} read`), bar,
+            h('span', 'eff-text', `${pct.toFixed(1)}% of file`));
+        ov.append(effRow);
         out.append(ov);
 
-        // Video tracks
+        // Frame preview (if video tracks exist and extraction is supported)
         const vTracks = info.tracks.filter(t => t.type === 'video');
+        if (vTracks.length && canExtractFrames) {
+            const sec = h('div', 'section video');
+            sec.append(h('h2', null, 'Frame Preview'));
+            const wrap = h('div', 'frame-wrap');
+            const placeholder = h('div', 'placeholder', 'Click "Extract Frame" to preview');
+            const img = h('img'); img.style.display = 'none'; img.alt = 'Extracted frame';
+            const loadingEl = h('div', 'frame-loading', 'Extracting...'); loadingEl.style.display = 'none';
+            wrap.append(placeholder, img, loadingEl);
+            sec.append(wrap);
+
+            const controls = h('div', 'frame-controls');
+            const slider = Object.assign(document.createElement('input'), {
+                type: 'range', min: '0', max: String(info.duration), step: '0.001', value: '0',
+            });
+            const numInput = Object.assign(document.createElement('input'), {
+                type: 'number', min: '0', max: String(info.duration), step: '0.001', value: '0',
+            });
+            slider.oninput = () => { numInput.value = slider.value; };
+            numInput.oninput = () => { slider.value = numInput.value; };
+            const extractBtn = h('button', 'btn teal sm', 'Extract Frame');
+            extractBtn.onclick = () => extractFrame(parseFloat(slider.value), img, loadingEl);
+            const secLabel = h('span', null, 's'); secLabel.style.cssText = 'color:var(--muted);font-size:12px';
+            controls.append(slider, numInput, secLabel, extractBtn);
+            sec.append(controls);
+            out.append(sec);
+        }
+
+        // Video tracks
         if (vTracks.length) {
-            const sec = h('div', 'section');
+            const sec = h('div', 'section video');
             sec.append(h('h2', null, `Video Track${vTracks.length > 1 ? 's' : ''}`));
             vTracks.forEach((t, i) => {
                 const tr = h('div', 'track');
@@ -307,7 +453,7 @@
         // Audio tracks
         const aTracks = info.tracks.filter(t => t.type === 'audio');
         if (aTracks.length) {
-            const sec = h('div', 'section');
+            const sec = h('div', 'section audio');
             sec.append(h('h2', null, `Audio Track${aTracks.length > 1 ? 's' : ''}`));
             aTracks.forEach((t, i) => {
                 const tr = h('div', 'track');
@@ -342,9 +488,9 @@
 
         // Metadata tags
         if (info.tags) {
-            const sec = h('div', 'section');
+            const sec = h('div', 'section tags');
             sec.append(h('h2', null, 'Metadata Tags'));
-            const tg = h('div', 'tags');
+            const tg = h('div', 'tag-list');
             for (const [k, v] of Object.entries(info.tags)) {
                 const t = h('span', 'tag');
                 t.append(h('span', 'name', k + ': '));
@@ -355,65 +501,53 @@
         }
 
         // Export
-        const exp = h('div', 'section');
+        const exp = h('div', 'section export');
         exp.append(h('h2', null, 'Export'));
         const tabs = h('div', 'tabs');
         for (const f of ['json', 'python', 'csv']) {
             const b = h('button', 'tab' + (f === fmt ? ' on' : ''), f.toUpperCase());
             b.onclick = () => {
-                fmt = f;
-                tabs.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === b));
+                fmt = f; tabs.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t === b));
                 codeEl.textContent = getExport();
             };
             tabs.append(b);
         }
         exp.append(tabs);
-        codeEl = h('pre', 'code');
-        codeEl.textContent = getExport();
-        exp.append(codeEl);
+        codeEl = h('pre', 'code'); codeEl.textContent = getExport(); exp.append(codeEl);
 
         const row = h('div', 'row');
-        const copyBtn = h('button', 'btn', 'Copy');
-        const dlBtn = h('button', 'btn sec', 'Download');
+        const copyBtn = h('button', 'btn sm', 'Copy');
+        const dlBtn = h('button', 'btn sec sm', 'Download');
         const fb = h('span', 'feedback', 'Copied!');
         copyBtn.onclick = () => {
             navigator.clipboard.writeText(getExport()).then(() => {
-                fb.classList.add('show');
-                setTimeout(() => fb.classList.remove('show'), 2000);
+                fb.classList.add('show'); setTimeout(() => fb.classList.remove('show'), 2000);
             }).catch(() => {
                 const ta = document.createElement('textarea');
-                ta.value = getExport();
-                document.body.appendChild(ta); ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                fb.classList.add('show');
-                setTimeout(() => fb.classList.remove('show'), 2000);
+                ta.value = getExport(); document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); document.body.removeChild(ta);
+                fb.classList.add('show'); setTimeout(() => fb.classList.remove('show'), 2000);
             });
         };
         dlBtn.onclick = () => {
             const ext = { json: 'json', python: 'py', csv: 'csv' }[fmt];
             const a = h('a');
             a.href = URL.createObjectURL(new Blob([getExport()], { type: 'text/plain' }));
-            a.download = `media_info.${ext}`;
-            a.click(); URL.revokeObjectURL(a.href);
+            a.download = `media_info.${ext}`; a.click(); URL.revokeObjectURL(a.href);
         };
-        row.append(copyBtn, dlBtn, fb);
-        exp.append(row); out.append(exp);
+        row.append(copyBtn, dlBtn, fb); exp.append(row); out.append(exp);
     }
 
     function getExport() {
         if (!info) return '';
-        const obj = {
-            filename: info.filename, format: info.format, mime_type: info.mimeType,
-            duration_seconds: +info.duration.toFixed(3), file_size_bytes: info.fileSize,
-        };
+        const obj = { filename: info.filename, format: info.format, mime_type: info.mimeType,
+            duration_seconds: +info.duration.toFixed(3), file_size_bytes: info.fileSize };
         const vt = info.tracks.filter(t => t.type === 'video');
         if (vt.length) {
             obj.video_tracks = vt.map(t => {
                 const o = { codec: t.codecString || t.codec, width: t.codedWidth, height: t.codedHeight };
-                if (t.displayWidth !== t.codedWidth || t.displayHeight !== t.codedHeight) {
-                    o.display_width = t.displayWidth; o.display_height = t.displayHeight;
-                }
+                if (t.displayWidth !== t.codedWidth || t.displayHeight !== t.codedHeight)
+                    { o.display_width = t.displayWidth; o.display_height = t.displayHeight; }
                 if (t.packetRate != null) o.fps = +t.packetRate.toFixed(3);
                 if (t.packetCount != null) o.frame_count = t.packetCount;
                 if (t.bitrate != null) o.bitrate_bps = Math.round(t.bitrate);
@@ -438,16 +572,13 @@
             });
         }
         if (info.tags) obj.tags = info.tags;
-
         switch (fmt) {
             case 'json': return JSON.stringify(obj, null, 2);
             case 'python':
-                return '# Media Info\nmedia_info = ' +
-                    JSON.stringify(obj, null, 4).replace(/\bnull\b/g, 'None')
-                    .replace(/\btrue\b/g, 'True').replace(/\bfalse\b/g, 'False');
+                return '# Media Info\nmedia_info = ' + JSON.stringify(obj, null, 4)
+                    .replace(/\bnull\b/g, 'None').replace(/\btrue\b/g, 'True').replace(/\bfalse\b/g, 'False');
             case 'csv': {
-                const v = obj.video_tracks?.[0] || {};
-                const a = obj.audio_tracks?.[0] || {};
+                const v = obj.video_tracks?.[0] || {}, a = obj.audio_tracks?.[0] || {};
                 const hd = 'filename,format,duration_s,size_bytes,video_codec,width,height,fps,frames,video_bps,audio_codec,sample_rate,channels,audio_bps';
                 const rw = [info.filename, info.format, info.duration.toFixed(3), info.fileSize,
                     v.codec||'', v.width||'', v.height||'', v.fps||'', v.frame_count||'', v.bitrate_bps||'',
