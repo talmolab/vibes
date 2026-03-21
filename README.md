@@ -25,6 +25,7 @@ Self-contained HTML tools and applets for the web.
 - [CORS Check](cors-check/) - Test URL CORS status and get the right fetch code
 - [SLEAP Config Picker](sleap-config-picker/) - Interactive sleap-nn training config generator with SLP file analysis
 - [Video Info Tool](video-info-tool/) - Quick video metadata extraction (FPS, resolution, duration, frame count)
+- [SLEAP-NN Metrics](sleap-nn-metrics/) - Visualize and compare SLEAP-NN evaluation metrics with interactive charts
 
 ## About
 
