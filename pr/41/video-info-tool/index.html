@@ -4,187 +4,113 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Info Tool</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #0c0d11; --surface: #161820; --surface-2: #1e2028; --border: #252832;
-            --text: #d8d8e0; --muted: #808090; --dim: #505060;
-            --amber: #e8a84c; --amber-dim: #8a6020;
-            --teal: #2dd4a8; --teal-dim: #1a6850;
-            --rose: #e86c8a; --rose-dim: #803848;
-            --green: #34d399;
-        }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: 'Syne', system-ui, sans-serif;
-            max-width: 920px; margin: 0 auto; padding: 24px;
-            line-height: 1.5; background: var(--bg); color: var(--text);
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px; margin: 0 auto; padding: 20px;
+            line-height: 1.6; background: #1a1a2e; color: #eee;
         }
-        h1 {
-            text-align: center; font-size: 28px; font-weight: 800;
-            letter-spacing: -0.5px; margin-bottom: 4px;
-        }
-        .subtitle { text-align: center; color: var(--muted); margin-bottom: 28px; font-size: 13px; }
-        .subtitle a { color: var(--amber); text-decoration: none; }
+        h1 { text-align: center; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 25px; font-size: 14px; }
+        .subtitle a { color: #6c9fff; text-decoration: none; }
 
-        /* Drop zone */
         .drop-zone {
-            border: 2px dashed var(--border); border-radius: 10px; padding: 48px 30px;
-            text-align: center; cursor: pointer; transition: all 0.3s ease;
-            margin-bottom: 20px; background: var(--surface);
+            border: 2px dashed #444; border-radius: 12px; padding: 50px 30px;
+            text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 20px;
         }
-        .drop-zone:hover, .drop-zone.dragover {
-            border-color: var(--amber); background: rgba(232,168,76,0.04);
-        }
-        .drop-zone .icon { font-size: 36px; margin-bottom: 10px; }
-        .drop-zone .text { color: var(--muted); font-size: 16px; }
-        .drop-zone .text strong { color: var(--amber); }
+        .drop-zone:hover, .drop-zone.dragover { border-color: #6c9fff; background: rgba(108,159,255,0.05); }
+        .drop-zone .icon { font-size: 40px; margin-bottom: 10px; }
+        .drop-zone .text { color: #888; font-size: 16px; }
+        .drop-zone .text strong { color: #6c9fff; }
         .drop-zone.collapsed {
-            padding: 12px 20px; display: flex; align-items: center;
+            padding: 10px 16px; display: flex; align-items: center;
             justify-content: space-between; cursor: default; border-style: solid;
         }
         .drop-zone.collapsed .drop-full { display: none; }
         .drop-zone.collapsed .drop-mini { display: flex; align-items: center; gap: 12px; }
         .drop-mini { display: none; }
         .drop-mini .loaded-name {
-            font-family: 'JetBrains Mono', monospace; font-size: 13px;
-            color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-family: 'Monaco','Consolas',monospace; font-size: 13px;
+            color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
 
-        /* Sections */
-        .section {
-            --accent: var(--amber);
-            background: var(--surface); border-radius: 10px; padding: 22px;
-            margin-bottom: 14px; border-left: 3px solid var(--accent);
-            animation: fadeUp 0.35s ease both;
-        }
-        .section:nth-child(2) { animation-delay: 0.05s; }
-        .section:nth-child(3) { animation-delay: 0.1s; }
-        .section:nth-child(4) { animation-delay: 0.15s; }
-        .section:nth-child(5) { animation-delay: 0.2s; }
-        .section:nth-child(6) { animation-delay: 0.25s; }
-        .section.video { --accent: var(--teal); }
-        .section.audio { --accent: var(--rose); }
-        .section.tags { --accent: var(--dim); }
-        .section.export { --accent: var(--dim); border-left-color: var(--border); }
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .section { background: #252540; border-radius: 8px; padding: 16px 20px; margin-bottom: 12px; }
         .section h2 {
-            font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
-            text-transform: uppercase; color: var(--accent); letter-spacing: 1.5px; margin: 0 0 16px;
+            font-size: 13px; text-transform: uppercase; color: #888;
+            letter-spacing: 0.5px; margin: 0 0 12px;
         }
-
-        /* Grid */
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 14px; }
+        .grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 16px;
+        }
         .grid .item label {
-            display: block; font-size: 10px; font-weight: 600; color: var(--dim);
-            text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 3px;
+            display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 2px;
         }
-        .grid .item .val {
-            font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 500;
-            color: var(--accent); word-break: break-all;
-        }
-        .grid .item .val.sm { font-size: 12px; font-weight: 400; }
-
-        /* Efficiency bar */
-        .eff-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-        .eff-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-        .eff-bar .fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.4s; }
-        .eff-text {
-            font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--green);
-            white-space: nowrap;
+        .grid .item .val { font-size: 16px; font-weight: 600; color: #6c9fff; word-break: break-all; }
+        .grid .item .val.sm { font-size: 13px; font-family: 'Monaco','Consolas',monospace; font-weight: 400; }
+        .grid .item.wide { grid-column: span 2; }
+        .efficiency {
+            font-size: 12px; color: #4ade80; font-family: 'Monaco','Consolas',monospace; margin-top: 8px;
         }
 
-        /* Frame preview */
         .frame-wrap {
-            background: var(--bg); border-radius: 8px; overflow: hidden;
+            background: #1a1a2e; border-radius: 6px; overflow: hidden;
             display: flex; align-items: center; justify-content: center;
-            min-height: 180px; margin-bottom: 14px; position: relative;
+            min-height: 80px; margin-bottom: 10px; position: relative;
         }
-        .frame-wrap img { max-width: 100%; max-height: 420px; display: block; }
-        .frame-wrap .placeholder { color: var(--dim); font-size: 13px; }
-        .frame-controls {
-            display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-        }
-        .frame-controls input[type="range"] {
-            flex: 1; min-width: 120px; accent-color: var(--teal);
-        }
+        .frame-wrap img { max-width: 100%; max-height: 400px; display: block; }
+        .frame-wrap .placeholder { color: #555; font-size: 13px; padding: 20px; }
+        .frame-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .frame-controls input[type="range"] { flex: 1; min-width: 100px; accent-color: #6c9fff; }
         .frame-controls input[type="number"] {
-            width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px;
-            background: var(--bg); color: var(--text); font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
+            width: 80px; padding: 5px 6px; border: 1px solid #444; border-radius: 4px;
+            background: #1a1a2e; color: #fff; font-family: 'Monaco','Consolas',monospace; font-size: 13px;
         }
-        .frame-controls input[type="number"]:focus { outline: none; border-color: var(--teal); }
+        .frame-controls input[type="number"]:focus { outline: none; border-color: #6c9fff; }
         .frame-loading {
             position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-            background: rgba(12,13,17,0.8); color: var(--muted); font-size: 13px;
+            background: rgba(26,26,46,0.85); color: #888; font-size: 13px;
         }
 
-        /* Tracks */
-        .track { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+        .track { margin-top: 12px; padding-top: 12px; border-top: 1px solid #333; }
         .track:first-child { margin-top: 0; padding-top: 0; border-top: none; }
-        .track h3 { font-size: 12px; color: var(--text); margin: 0 0 10px; font-weight: 600; }
-
-        /* Tags */
-        .tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
-        .tag {
-            font-family: 'JetBrains Mono', monospace; font-size: 12px;
-            background: var(--bg); padding: 5px 12px; border-radius: 20px;
-            border: 1px solid var(--border);
-        }
-        .tag .name { color: var(--muted); }
-
-        /* Buttons */
+        .track h3 { font-size: 13px; color: #ccc; margin: 0 0 10px; }
+        .tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .tag { font-size: 13px; background: #1a1a2e; padding: 4px 10px; border-radius: 4px; }
+        .tag .name { color: #888; }
         .btn {
-            font-family: 'Syne', sans-serif; font-weight: 600;
-            background: var(--amber); color: var(--bg); border: none;
-            padding: 8px 18px; border-radius: 6px; cursor: pointer; font-size: 13px;
-            transition: background 0.15s;
+            background: #6c9fff; color: #fff; border: none; padding: 8px 16px;
+            border-radius: 6px; cursor: pointer; font-size: 13px;
         }
-        .btn:hover { background: #d09540; }
-        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .btn.sec { background: var(--surface-2); color: var(--text); }
-        .btn.sec:hover { background: var(--border); }
-        .btn.teal { background: var(--teal); }
-        .btn.teal:hover { background: #28b892; }
-        .btn.sm { padding: 6px 14px; font-size: 12px; }
-
-        /* Export */
-        .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+        .btn:hover { background: #5a8ae6; }
+        .btn.sec { background: #444; }
+        .btn.sec:hover { background: #555; }
+        .btn.sm { padding: 6px 12px; font-size: 12px; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
         .tab {
-            font-family: 'Syne', sans-serif; font-weight: 600;
-            background: var(--bg); border: 1px solid var(--border); color: var(--muted);
-            padding: 5px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+            background: #1a1a2e; border: 1px solid #444; color: #888;
+            padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
         }
-        .tab:hover { border-color: var(--amber); color: var(--text); }
-        .tab.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+        .tab:hover { border-color: #6c9fff; color: #fff; }
+        .tab.on { background: #6c9fff; border-color: #6c9fff; color: #fff; }
         pre.code {
-            font-family: 'JetBrains Mono', monospace;
-            background: var(--bg); padding: 14px; border-radius: 6px; font-size: 12px;
-            overflow: auto; margin: 0 0 12px; max-height: 280px; white-space: pre-wrap;
-            border: 1px solid var(--border);
+            background: #1a1a2e; padding: 12px; border-radius: 4px; font-size: 12px;
+            overflow: auto; margin: 0 0 12px; max-height: 300px; white-space: pre-wrap;
         }
         .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .feedback { color: var(--green); font-size: 12px; opacity: 0; transition: opacity 0.3s; }
+        .feedback { color: #4ade80; font-size: 13px; opacity: 0; transition: opacity 0.3s; }
         .feedback.show { opacity: 1; }
         .error {
-            background: rgba(232,108,138,0.08); border: 1px solid var(--rose); color: var(--rose);
-            padding: 12px; border-radius: 6px; margin-bottom: 14px; display: none; font-size: 13px;
+            background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444;
+            padding: 12px; border-radius: 6px; margin-bottom: 15px; display: none;
         }
-        .loading { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
-        footer {
-            text-align: center; margin-top: 36px; padding-top: 20px;
-            border-top: 1px solid var(--border); color: var(--dim); font-size: 12px;
-        }
-        footer a { color: var(--amber); text-decoration: none; }
+        .loading { text-align: center; padding: 40px; color: #888; }
+        footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
+        footer a { color: #6c9fff; text-decoration: none; }
         @media (max-width: 600px) {
-            body { padding: 16px; }
+            body { padding: 15px; }
             .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
             .drop-zone { padding: 30px 15px; }
-            h1 { font-size: 22px; }
         }
     </style>
 </head>
@@ -261,8 +187,8 @@
         if (text != null) e.textContent = text;
         return e;
     };
-    const gridItem = (label, value, small) => {
-        const d = h('div', 'item');
+    const gridItem = (label, value, small, wide) => {
+        const d = h('div', 'item' + (wide ? ' wide' : ''));
         d.append(h('label', null, label), h('div', small ? 'val sm' : 'val', String(value)));
         return d;
     };
@@ -337,7 +263,6 @@
             info = { filename: file.name, fileSize: file.size, format: format.name, mimeType, duration,
                 tracks: trackDetails, tags: Object.keys(tagObj).length ? tagObj : null, bytesRead };
 
-            // Collapse drop zone
             drop.classList.add('collapsed');
             loadedName.textContent = file.name;
             render(info);
@@ -354,14 +279,15 @@
         try {
             const sink = new mb.CanvasSink(videoTrackObj);
             const result = await sink.getCanvas(timestamp);
-            const canvas = result.canvas ?? result; // unwrap {canvas, timestamp, duration}
+            const canvas = result.canvas ?? result;
             const blob = await new Promise(r => canvas.toBlob(r));
             if (img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
             const url = URL.createObjectURL(blob);
             img.dataset.blobUrl = url;
             img.src = url;
             img.style.display = 'block';
-            img.previousElementSibling?.remove(); // remove placeholder
+            const ph = img.parentElement.querySelector('.placeholder');
+            if (ph) ph.style.display = 'none';
         } catch (e) {
             console.error('Frame extraction failed:', e);
         } finally { loadingEl.style.display = 'none'; }
@@ -371,37 +297,33 @@
         out.innerHTML = '';
         const pct = (100 * info.bytesRead / info.fileSize);
 
-        // Overview
+        // Overview — all items in one grid
         const ov = h('div', 'section');
         ov.append(h('h2', null, 'Overview'));
         const g = h('div', 'grid');
-        g.append(gridItem('Format', info.format), gridItem('Duration', fmtDur(info.duration)),
+        g.append(
+            gridItem('Format', info.format),
+            gridItem('Duration', fmtDur(info.duration)),
             gridItem('File Size', fmtBytes(info.fileSize)),
-            gridItem('Overall Bitrate', fmtBits(info.fileSize * 8 / info.duration)));
+            gridItem('Overall Bitrate', fmtBits(info.fileSize * 8 / info.duration)),
+            gridItem('MIME Type', info.mimeType, true, true),
+        );
         ov.append(g);
-        const mg = h('div', 'grid'); mg.style.marginTop = '14px';
-        mg.append(gridItem('MIME Type', info.mimeType, true));
-        ov.append(mg);
-        const effRow = h('div', 'eff-row');
-        const bar = h('div', 'eff-bar'); const fill = h('div', 'fill');
-        fill.style.width = pct.toFixed(1) + '%'; bar.append(fill);
-        effRow.append(h('span', 'eff-text', `${fmtBytes(info.bytesRead)} read`), bar,
-            h('span', 'eff-text', `${pct.toFixed(1)}% of file`));
-        ov.append(effRow);
+        ov.append(h('div', 'efficiency',
+            `Bytes read: ${fmtBytes(info.bytesRead)} / ${fmtBytes(info.fileSize)} (${pct.toFixed(1)}%)`));
         out.append(ov);
 
-        // Frame preview (if video tracks exist and extraction is supported)
+        // Frame preview
         const vTracks = info.tracks.filter(t => t.type === 'video');
         if (vTracks.length && canExtractFrames) {
-            const sec = h('div', 'section video');
+            const sec = h('div', 'section');
             sec.append(h('h2', null, 'Frame Preview'));
             const wrap = h('div', 'frame-wrap');
-            const placeholder = h('div', 'placeholder', 'Click "Extract Frame" to preview');
+            const placeholder = h('div', 'placeholder', 'Use the slider and click Extract Frame');
             const img = h('img'); img.style.display = 'none'; img.alt = 'Extracted frame';
             const loadingEl = h('div', 'frame-loading', 'Extracting...'); loadingEl.style.display = 'none';
             wrap.append(placeholder, img, loadingEl);
             sec.append(wrap);
-
             const controls = h('div', 'frame-controls');
             const slider = Object.assign(document.createElement('input'), {
                 type: 'range', min: '0', max: String(info.duration), step: '0.001', value: '0',
@@ -411,17 +333,17 @@
             });
             slider.oninput = () => { numInput.value = slider.value; };
             numInput.oninput = () => { slider.value = numInput.value; };
-            const extractBtn = h('button', 'btn teal sm', 'Extract Frame');
+            const extractBtn = h('button', 'btn sm', 'Extract Frame');
             extractBtn.onclick = () => extractFrame(parseFloat(slider.value), img, loadingEl);
-            const secLabel = h('span', null, 's'); secLabel.style.cssText = 'color:var(--muted);font-size:12px';
-            controls.append(slider, numInput, secLabel, extractBtn);
+            const sLbl = h('span', null, 's'); sLbl.style.cssText = 'color:#888;font-size:12px';
+            controls.append(slider, numInput, sLbl, extractBtn);
             sec.append(controls);
             out.append(sec);
         }
 
         // Video tracks
         if (vTracks.length) {
-            const sec = h('div', 'section video');
+            const sec = h('div', 'section');
             sec.append(h('h2', null, `Video Track${vTracks.length > 1 ? 's' : ''}`));
             vTracks.forEach((t, i) => {
                 const tr = h('div', 'track');
@@ -453,7 +375,7 @@
         // Audio tracks
         const aTracks = info.tracks.filter(t => t.type === 'audio');
         if (aTracks.length) {
-            const sec = h('div', 'section audio');
+            const sec = h('div', 'section');
             sec.append(h('h2', null, `Audio Track${aTracks.length > 1 ? 's' : ''}`));
             aTracks.forEach((t, i) => {
                 const tr = h('div', 'track');
@@ -488,9 +410,9 @@
 
         // Metadata tags
         if (info.tags) {
-            const sec = h('div', 'section tags');
+            const sec = h('div', 'section');
             sec.append(h('h2', null, 'Metadata Tags'));
-            const tg = h('div', 'tag-list');
+            const tg = h('div', 'tags');
             for (const [k, v] of Object.entries(info.tags)) {
                 const t = h('span', 'tag');
                 t.append(h('span', 'name', k + ': '));
@@ -501,7 +423,7 @@
         }
 
         // Export
-        const exp = h('div', 'section export');
+        const exp = h('div', 'section');
         exp.append(h('h2', null, 'Export'));
         const tabs = h('div', 'tabs');
         for (const f of ['json', 'python', 'csv']) {
@@ -514,7 +436,6 @@
         }
         exp.append(tabs);
         codeEl = h('pre', 'code'); codeEl.textContent = getExport(); exp.append(codeEl);
-
         const row = h('div', 'row');
         const copyBtn = h('button', 'btn sm', 'Copy');
         const dlBtn = h('button', 'btn sec sm', 'Download');
