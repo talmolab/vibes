@@ -25,6 +25,7 @@ Self-contained HTML tools and applets for the web.
 - [CORS Check](cors-check/) <a href="cors-check/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Test URL CORS status and get the right fetch code</span>
 - [SLEAP Config Picker](sleap-config-picker/)<br><span class="vibe-desc">Interactive sleap-nn training config generator with SLP file analysis</span>
 - [Video Info Tool](video-info-tool/)<br><span class="vibe-desc">Quick video metadata extraction (FPS, resolution, duration, frame count)</span>
+- [SLEAP-NN Metrics](sleap-nn-metrics/)<br><span class="vibe-desc">Visualize and compare SLEAP-NN evaluation metrics with interactive charts</span>
 
 ## About
 
