@@ -206,7 +206,8 @@
 {
     "imports": {
         "h5wasm": "https://unpkg.com/h5wasm@0.8.8/dist/esm/hdf5_hl.js",
-        "yaml": "https://esm.sh/yaml@2.6.1"
+        "yaml": "https://esm.sh/yaml@2.6.1",
+        "mediabunny": "https://esm.sh/mediabunny@1.40.0"
     }
 }
 </script>
@@ -214,7 +215,7 @@
 // ============================================================
 // Imports
 // ============================================================
-import { Sam3TrackerModel, AutoProcessor, RawImage, Tensor } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.2";
+import { Sam3TrackerModel, AutoProcessor, RawImage, Tensor } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.0.0-next.8";
 import { loadVideo, Labels, SegmentationMask, Track as SlpTrack, saveSlpToBytes } from "https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.2.3/dist/index.browser.js";
 
 // ============================================================
@@ -338,6 +339,10 @@ async function loadDemo() {
 }
 
 async function onVideoLoaded() {
+    // Initialize backend by fetching first frame (shape/fps are null until first decode)
+    canvasHint.textContent = 'Initializing video...';
+    await state.video.getFrame(0);
+
     const shape = state.video.shape;
     state.totalFrames = shape[0];
     state.videoHeight = shape[1];
@@ -350,6 +355,7 @@ async function onVideoLoaded() {
 
     canvasContainer.classList.remove('no-video');
     setupCanvas();
+    // seekToFrame fetches a fresh bitmap and renders it after canvas setup
     await seekToFrame(0);
     updateActionBar();
     canvasHint.style.opacity = '0';
@@ -380,6 +386,9 @@ function setupCanvas() {
     // Fit video in container
     fitVideoInContainer();
     updateCanvasTransform();
+
+    // Re-render the frame (setting canvas.width clears it)
+    renderFrame();
 }
 
 function fitVideoInContainer() {
