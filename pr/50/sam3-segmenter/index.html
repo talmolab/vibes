@@ -198,6 +198,7 @@
         <div class="drawer-content" style="padding-top:12px">
             <div id="trackList"></div>
             <div id="noTracksHint" style="color:#666;font-size:12px;padding:8px 0">No tracks yet. Click on the video to segment an object.</div>
+            <div id="tracksHint" style="color:#666;font-size:11px;padding:4px 0;display:none">Click a track to select it for editing. Click the video to re-segment on the current frame.</div>
         </div>
     </div>
 
@@ -887,18 +888,25 @@ function confirmMask() {
     }
     if (!track) {
         track = createTrack();
-        state.selectedTrackId = track.id;
     }
 
     state.masks.set(`${track.id}:${state.currentFrame}`, state.previewMask);
+    log(`Confirmed mask for ${track.name} on frame ${state.currentFrame}`);
     state.currentPoints = [];
     state.previewMask = null;
     state.mode = 'idle';
+    // Deselect track so next click starts a new object by default
+    state.selectedTrackId = null;
     stopPreviewAnimation();
     renderOverlay();
     renderTracksDrawer();
     updateActionBar();
     $('exportBtn').disabled = false;
+    // Auto-open tracks drawer after first track so user sees what's there
+    if (state.tracks.length === 1) {
+        $('tracksDrawer').classList.add('open');
+        $('settingsDrawer').classList.remove('open');
+    }
 }
 
 function cancelPrompting() {
@@ -1084,10 +1092,19 @@ function updateActionBar() {
     }
 
     if (state.mode === 'idle') {
-        // Hint
+        // Show context-aware hint
         const hint = document.createElement('span');
         hint.className = 'action-hint';
-        hint.textContent = state.modelReady ? 'Click on the video to segment an object' : 'Click on the video to load model and segment';
+        if (!state.modelReady) {
+            hint.textContent = 'Click on the video to load model and segment';
+        } else if (state.tracks.length === 0) {
+            hint.textContent = 'Left-click: positive point \u00b7 Right-click: negative point';
+        } else if (state.selectedTrackId !== null) {
+            const t = state.tracks.find(t => t.id === state.selectedTrackId);
+            hint.innerHTML = `Editing <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${t?.color};vertical-align:middle;margin:0 3px"></span><b>${t?.name}</b> \u2014 click to re-segment this track`;
+        } else {
+            hint.textContent = 'Click to segment a new object \u00b7 Or select a track below to edit it';
+        }
         actionBar.appendChild(hint);
 
         // Propagate controls (if tracks exist with masks)
@@ -1136,26 +1153,55 @@ function updateActionBar() {
             actionBar.appendChild(propControls);
         }
     } else if (state.mode === 'prompting') {
+        // Show which track this will go to
+        const targetTrack = state.selectedTrackId !== null
+            ? state.tracks.find(t => t.id === state.selectedTrackId)
+            : null;
+
         const confirmBtn = document.createElement('button');
-        confirmBtn.textContent = 'Confirm';
+        if (targetTrack) {
+            confirmBtn.innerHTML = `Save to <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${targetTrack.color};vertical-align:middle;margin:0 2px"></span> ${targetTrack.name}`;
+        } else {
+            confirmBtn.textContent = 'Save as new object';
+        }
+        confirmBtn.title = 'Enter or double-click to confirm';
         confirmBtn.onclick = confirmMask;
         actionBar.appendChild(confirmBtn);
+
+        // Track selector dropdown (switch which track to save to)
+        if (state.tracks.length > 0) {
+            const sel = document.createElement('select');
+            sel.style.cssText = 'font-size:12px;padding:4px 6px';
+            const newOpt = document.createElement('option');
+            newOpt.value = '';
+            newOpt.textContent = '+ New object';
+            newOpt.selected = state.selectedTrackId === null;
+            sel.appendChild(newOpt);
+            for (const t of state.tracks) {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.name;
+                opt.selected = state.selectedTrackId === t.id;
+                sel.appendChild(opt);
+            }
+            sel.onchange = () => {
+                state.selectedTrackId = sel.value ? parseInt(sel.value) : null;
+                updateActionBar();
+            };
+            actionBar.appendChild(sel);
+        }
 
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'secondary';
         cancelBtn.textContent = 'Cancel';
+        cancelBtn.title = 'Escape to cancel';
         cancelBtn.onclick = cancelPrompting;
         actionBar.appendChild(cancelBtn);
 
-        if (state.selectedTrackId !== null) {
-            const track = state.tracks.find(t => t.id === state.selectedTrackId);
-            if (track) {
-                const label = document.createElement('span');
-                label.style.cssText = 'font-size:12px;color:#aaa;margin-left:8px';
-                label.textContent = `Editing: ${track.name}`;
-                actionBar.appendChild(label);
-            }
-        }
+        const hintSpan = document.createElement('span');
+        hintSpan.style.cssText = 'font-size:11px;color:#666;margin-left:4px';
+        hintSpan.textContent = 'Enter to save \u00b7 Esc to cancel \u00b7 click to add points';
+        actionBar.appendChild(hintSpan);
     } else if (state.mode === 'propagating') {
         const stopBtn = document.createElement('button');
         stopBtn.className = 'danger';
@@ -1186,6 +1232,7 @@ function updatePropagationProgress(current, total) {
 function renderTracksDrawer() {
     trackList.innerHTML = '';
     noTracksHint.style.display = state.tracks.length === 0 ? 'block' : 'none';
+    $('tracksHint').style.display = state.tracks.length > 0 ? 'block' : 'none';
 
     for (const track of state.tracks) {
         const item = document.createElement('div');
@@ -1340,6 +1387,14 @@ overlayCanvas.addEventListener('contextmenu', (e) => {
     }
     ensureModelLoaded().then(() => runPreview());
     renderOverlay();
+});
+
+// Double-click on canvas to confirm mask
+overlayCanvas.addEventListener('dblclick', (e) => {
+    if (state.mode === 'prompting' && state.previewMask) {
+        e.preventDefault();
+        confirmMask();
+    }
 });
 
 document.addEventListener('mousemove', (e) => {
