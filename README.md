@@ -26,6 +26,7 @@ Self-contained HTML tools and applets for the web.
 - [SLEAP Config Picker](sleap-config-picker/)<br><span class="vibe-desc">Interactive sleap-nn training config generator with SLP file analysis</span>
 - [Video Info Tool](video-info-tool/)<br><span class="vibe-desc">Quick video metadata extraction (FPS, resolution, duration, frame count)</span>
 - [SLEAP-NN Metrics](sleap-nn-metrics/)<br><span class="vibe-desc">Visualize and compare SLEAP-NN evaluation metrics with interactive charts</span>
+- [SAM3 Segmenter](sam3-segmenter/) <a href="sam3-segmenter/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export</span>
 
 ## About
 
