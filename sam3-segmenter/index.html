@@ -114,6 +114,9 @@
             <input type="file" id="fileInput" accept="video/mp4,video/webm,.mp4,.webm" style="display:none">
             <button id="loadBtn">Load Video</button>
             <button id="demoBtn" class="secondary">Demo</button>
+            <span style="width:1px;height:18px;background:#444;margin:0 2px"></span>
+            <button id="loadModelBtn" class="secondary">Load Model</button>
+            <span id="modelStatus" style="font-size:11px;color:#888"></span>
         </div>
     </div>
 
@@ -158,6 +161,7 @@
     <div class="footer-bar">
         <button id="settingsToggle" class="secondary">Settings</button>
         <button id="tracksToggle" class="secondary">Tracks</button>
+        <button id="logToggle" class="secondary">Log</button>
         <button id="exportBtn" disabled>Export SLP</button>
     </div>
 
@@ -202,12 +206,13 @@
         </div>
     </div>
 
-    <div style="background:#2a2a2a;border-radius:8px;margin:8px 0;padding:10px 15px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <h3 style="margin:0;font-size:13px;color:#fff">Log</h3>
-            <button id="clearLogBtn" class="secondary" style="padding:2px 8px;font-size:11px">Clear</button>
+    <div class="drawer" id="logDrawer">
+        <div class="drawer-content" style="padding-top:12px">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:6px">
+                <button id="clearLogBtn" class="secondary" style="padding:2px 8px;font-size:11px">Clear</button>
+            </div>
+            <textarea id="logBox" readonly style="width:100%;height:120px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:4px;padding:8px;font-family:monospace;font-size:11px;resize:vertical;white-space:pre;overflow-wrap:normal;overflow-x:auto"></textarea>
         </div>
-        <textarea id="logBox" readonly style="width:100%;height:120px;background:#1a1a1a;color:#aaa;border:1px solid #333;border-radius:4px;padding:8px;font-family:monospace;font-size:11px;resize:vertical;white-space:pre;overflow-wrap:normal;overflow-x:auto"></textarea>
     </div>
 </div>
 
@@ -370,6 +375,16 @@ async function loadDemo() {
 }
 
 async function onVideoLoaded() {
+    // Clear state from any previous video
+    state.encodingCache.clear();
+    state.masks.clear();
+    state.tracks = [];
+    state.nextTrackId = 1;
+    state.currentPoints = [];
+    state.previewMask = null;
+    state.selectedTrackId = null;
+    state.mode = 'idle';
+
     // Initialize backend by fetching first frame (shape/fps are null until first decode)
     canvasHint.textContent = 'Initializing video...';
     await state.video.getFrame(0);
@@ -600,11 +615,32 @@ function stopPreviewAnimation() {
 // ============================================================
 // Model Loading
 // ============================================================
+function updateModelStatus(text, loading = false) {
+    const el = $('modelStatus');
+    const btn = $('loadModelBtn');
+    el.textContent = text;
+    if (state.modelReady) {
+        btn.textContent = 'Model Ready';
+        btn.disabled = true;
+        btn.style.background = '#2a5a2a';
+        btn.style.color = '#4ade80';
+        el.style.color = '#4ade80';
+    } else if (loading) {
+        btn.textContent = 'Loading...';
+        btn.disabled = true;
+        el.style.color = '#667eea';
+    } else {
+        btn.disabled = false;
+        el.style.color = '#888';
+    }
+}
+
 async function loadModel() {
     if (state.modelLoading || state.modelReady) return;
     state.modelLoading = true;
     modelOverlay.style.display = 'flex';
     modelOverlayText.textContent = 'Loading SAM3 model...';
+    updateModelStatus('Downloading...', true);
 
     try {
         const device = state.hasWebGPU ? 'webgpu' : 'wasm';
@@ -615,18 +651,35 @@ async function loadModel() {
         state.quantization = $('quantSelect').value;
         $('quantSelect').disabled = true;
 
+        // Progress callback for model download
+        const progress_callback = (progress) => {
+            if (progress.status === 'download') {
+                const pct = progress.progress?.toFixed(0) || '?';
+                const file = progress.file?.split('/').pop() || '';
+                modelOverlaySubtext.textContent = `${file}: ${pct}%`;
+                updateModelStatus(`${file}: ${pct}%`, true);
+            } else if (progress.status === 'init' || progress.status === 'ready') {
+                modelOverlaySubtext.textContent = progress.status === 'init' ? 'Initializing...' : 'Ready';
+                updateModelStatus(progress.status === 'init' ? 'Initializing...' : 'Ready', true);
+            }
+        };
+
         state.model = await Sam3TrackerModel.from_pretrained(MODEL_ID, {
             dtype: { vision_encoder: state.quantization, prompt_encoder_mask_decoder: 'fp32' },
             device,
+            progress_callback,
         });
         state.processor = await AutoProcessor.from_pretrained(MODEL_ID);
         state.modelReady = true;
         log(`Model loaded (${state.quantization}, ${device})`);
         modelOverlay.style.display = 'none';
+        updateModelStatus(`${state.quantization} / ${device}`);
+        updateActionBar();
     } catch (e) {
         logError('Failed to load model:', e);
         modelOverlayText.textContent = 'Failed to load model';
         modelOverlaySubtext.textContent = e.message;
+        updateModelStatus('Failed', false);
     }
     state.modelLoading = false;
 }
@@ -1101,7 +1154,14 @@ function updateActionBar() {
             hint.textContent = 'Left-click: positive point \u00b7 Right-click: negative point';
         } else if (state.selectedTrackId !== null) {
             const t = state.tracks.find(t => t.id === state.selectedTrackId);
-            hint.innerHTML = `Editing <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${t?.color};vertical-align:middle;margin:0 3px"></span><b>${t?.name}</b> \u2014 click to re-segment this track`;
+            hint.textContent = 'Editing ';
+            const swatch = document.createElement('span');
+            swatch.style.cssText = `display:inline-block;width:10px;height:10px;border-radius:2px;background:${t?.color};vertical-align:middle;margin:0 3px`;
+            hint.appendChild(swatch);
+            const nameB = document.createElement('b');
+            nameB.textContent = t?.name;
+            hint.appendChild(nameB);
+            hint.appendChild(document.createTextNode(' \u2014 click to re-segment this track'));
         } else {
             hint.textContent = 'Click to segment a new object \u00b7 Or select a track below to edit it';
         }
@@ -1357,8 +1417,9 @@ overlayCanvas.addEventListener('mousedown', (e) => {
         return;
     }
 
-    // Left-click = positive point, right-click = negative point
+    // Left-click = positive point (skip if this is the second click of a double-click)
     if (e.button === 0 && !e.shiftKey && state.mode !== 'propagating') {
+        if (e.detail >= 2) return; // part of dblclick — ignore
         const pt = screenToVideo(e.clientX, e.clientY);
         // Bounds check
         if (pt.x < 0 || pt.x >= state.videoWidth || pt.y < 0 || pt.y >= state.videoHeight) return;
@@ -1444,6 +1505,7 @@ $('fileInput').onchange = (e) => {
     if (e.target.files[0]) loadVideoFromFile(e.target.files[0]);
 };
 $('demoBtn').onclick = loadDemo;
+$('loadModelBtn').onclick = loadModel;
 $('firstBtn').onclick = () => seekToFrame(0);
 $('prevBtn').onclick = () => seekToFrame(state.currentFrame - 1);
 $('playBtn').onclick = togglePlayback;
@@ -1452,16 +1514,15 @@ $('lastBtn').onclick = () => seekToFrame(state.totalFrames - 1);
 $('exportBtn').onclick = exportToSlp;
 
 // Drawer toggles
-$('settingsToggle').onclick = () => {
-    const d = $('settingsDrawer');
-    d.classList.toggle('open');
-    $('tracksDrawer').classList.remove('open');
-};
-$('tracksToggle').onclick = () => {
-    const d = $('tracksDrawer');
-    d.classList.toggle('open');
-    $('settingsDrawer').classList.remove('open');
-};
+function toggleDrawer(id) {
+    const drawers = ['settingsDrawer', 'tracksDrawer', 'logDrawer'];
+    for (const d of drawers) {
+        $(d).classList[d === id ? 'toggle' : 'remove']('open');
+    }
+}
+$('settingsToggle').onclick = () => toggleDrawer('settingsDrawer');
+$('tracksToggle').onclick = () => toggleDrawer('tracksDrawer');
+$('logToggle').onclick = () => toggleDrawer('logDrawer');
 
 // Settings bindings
 $('opacitySlider').oninput = () => {
