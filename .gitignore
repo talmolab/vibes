@@ -211,6 +211,7 @@ sandbox/
 scratch/
 tmp/
 .DS_Store
+docs/superpowers/
 
 # Jekyll
 _site/
