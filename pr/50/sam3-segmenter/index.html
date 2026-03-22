@@ -678,9 +678,16 @@ async function decodeMask(imageEmbeddings, processed, points, boxes = null) {
     const t0 = performance.now();
     const inputs = { ...imageEmbeddings };
 
+    // Scale coordinates from original video space → reshaped model input space
+    const [resH, resW] = processed.reshaped_input_sizes.tolist()[0];
+    const [origH, origW] = processed.original_sizes.tolist()[0];
+    const scaleX = resW / origW;
+    const scaleY = resH / origH;
+    log(`Coord scaling: orig=${origW}x${origH} → reshaped=${resW}x${resH}, scale=${scaleX.toFixed(4)},${scaleY.toFixed(4)}`);
+
     if (points && points.length > 0) {
         inputs.input_points = new Tensor('float32',
-            points.flatMap(p => [p.x, p.y]),
+            points.flatMap(p => [p.x * scaleX, p.y * scaleY]),
             [1, 1, points.length, 2]
         );
         inputs.input_labels = new Tensor('int64',
@@ -691,7 +698,7 @@ async function decodeMask(imageEmbeddings, processed, points, boxes = null) {
 
     if (boxes && boxes.length > 0) {
         inputs.input_boxes = new Tensor('float32',
-            boxes.flat(),
+            boxes.flatMap(b => [b[0] * scaleX, b[1] * scaleY, b[2] * scaleX, b[3] * scaleY]),
             [1, boxes.length, 4]
         );
     }
