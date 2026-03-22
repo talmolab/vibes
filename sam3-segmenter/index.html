@@ -651,12 +651,23 @@ function bitmapToRawImage(bitmap) {
     return new RawImage(imageData.data, bitmap.width, bitmap.height, 4);
 }
 
+const _encodingInFlight = new Map(); // frameIdx → Promise
 async function getImageEmbeddings(frameIdx) {
     if (state.encodingCache.has(frameIdx)) {
         log(`Encoding cache hit for frame ${frameIdx}`);
         return state.encodingCache.get(frameIdx);
     }
+    // Deduplicate concurrent calls for the same frame
+    if (_encodingInFlight.has(frameIdx)) {
+        log(`Encoding already in flight for frame ${frameIdx}, waiting...`);
+        return _encodingInFlight.get(frameIdx);
+    }
 
+    const promise = _encodeFrame(frameIdx);
+    _encodingInFlight.set(frameIdx, promise);
+    try { return await promise; } finally { _encodingInFlight.delete(frameIdx); }
+}
+async function _encodeFrame(frameIdx) {
     log(`Encoding frame ${frameIdx}...`);
     const t0 = performance.now();
     const bitmap = await state.video.getFrame(frameIdx);
@@ -679,8 +690,21 @@ async function decodeMask(imageEmbeddings, processed, points, boxes = null) {
     const inputs = { ...imageEmbeddings };
 
     // Scale coordinates from original video space → reshaped model input space
-    const [resH, resW] = processed.reshaped_input_sizes.tolist()[0];
-    const [origH, origW] = processed.original_sizes.tolist()[0];
+    // reshaped_input_sizes/original_sizes may be Tensor, nested array, or flat array
+    function unpack(val) {
+        if (val?.tolist) return val.tolist();
+        if (val?.data) return Array.from(val.data);
+        if (Array.isArray(val)) return val.flat();
+        return val;
+    }
+    const reshaped = unpack(processed.reshaped_input_sizes);
+    const original = unpack(processed.original_sizes);
+    log('reshaped_input_sizes:', reshaped, 'original_sizes:', original);
+    // Could be [h, w] or [[h, w]] — normalize to [h, w]
+    const resH = Array.isArray(reshaped[0]) ? reshaped[0][0] : reshaped[0];
+    const resW = Array.isArray(reshaped[0]) ? reshaped[0][1] : reshaped[1];
+    const origH = Array.isArray(original[0]) ? original[0][0] : original[0];
+    const origW = Array.isArray(original[0]) ? original[0][1] : original[1];
     const scaleX = resW / origW;
     const scaleY = resH / origH;
     log(`Coord scaling: orig=${origW}x${origH} → reshaped=${resW}x${resH}, scale=${scaleX.toFixed(4)},${scaleY.toFixed(4)}`);
