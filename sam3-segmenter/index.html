@@ -666,21 +666,47 @@ async function decodeMask(imageEmbeddings, processed, points, boxes = null) {
     );
 
     // Pick best mask by predicted quality score
-    const scores = output.iou_scores.data;
+    const scores = output.iou_scores?.data || output.iou_scores;
     let bestIdx = 0;
-    for (let i = 1; i < scores.length; i++) {
-        if (scores[i] > scores[bestIdx]) bestIdx = i;
+    if (scores) {
+        for (let i = 1; i < scores.length; i++) {
+            if (scores[i] > scores[bestIdx]) bestIdx = i;
+        }
     }
+
+    console.log('Mask output:', { maskType: masks?.constructor?.name, isArray: Array.isArray(masks), dims: masks?.dims || masks?.[0]?.dims, scoresLen: scores?.length, bestIdx });
 
     return extractMask(masks, bestIdx);
 }
 
 function extractMask(masks, bestIdx) {
-    // masks.data is a flat array of shape [1, num_masks, H, W]
-    const maskData = masks.data;
-    const dims = masks.dims; // [1, num_masks, H, W]
-    const h = dims[2];
-    const w = dims[3];
+    // post_process_masks may return an array of Tensors or a single Tensor
+    // Handle both cases
+    let maskTensor;
+    if (Array.isArray(masks)) {
+        // Array of tensors, one per batch — take first batch
+        maskTensor = masks[0];
+    } else {
+        maskTensor = masks;
+    }
+
+    const maskData = maskTensor.data;
+    const dims = maskTensor.dims;
+
+    // Determine H, W from dims which could be:
+    // [num_masks, H, W] or [1, num_masks, H, W] or [1, 1, num_masks, H, W]
+    let h, w, numMasks;
+    if (dims.length === 3) {
+        [numMasks, h, w] = dims;
+    } else if (dims.length === 4) {
+        [, numMasks, h, w] = dims;
+    } else if (dims.length === 5) {
+        [, , numMasks, h, w] = dims;
+    } else {
+        console.error('Unexpected mask dims:', dims);
+        throw new Error(`Unexpected mask tensor dims: [${dims}]`);
+    }
+
     const maskSize = h * w;
     const offset = bestIdx * maskSize;
 
