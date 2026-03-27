@@ -29,6 +29,7 @@ Self-contained HTML tools and applets for the web.
 - [SLEAP-NN Metrics](sleap-nn-metrics/) - Visualize and compare SLEAP-NN evaluation metrics with interactive charts
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
+- [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
 
 ## About
 
