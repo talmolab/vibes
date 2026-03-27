@@ -1,0 +1,9 @@
+{
+    "gist_id": "YOUR_GIST_ID",
+    "github_token": "YOUR_GITHUB_TOKEN",
+    "machine_label": "CHANGE_THIS",
+    "machine_type": "workstation",
+    "interval_seconds": 30,
+    "inference_log_dir": "",
+    "inference_refresh_seconds": 3600
+}
