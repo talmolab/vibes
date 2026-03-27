@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Event Annotator</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 20px; background: #1a1a1a; color: #e0e0e0; }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; font-size: 14px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .controls { background: #2a2a2a; padding: 10px; border-radius: 8px; margin: 15px 0; text-align: center; }
+        button { background: #667eea; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; margin: 3px; }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #444; cursor: not-allowed; }
+        .canvas-container { position: relative; background: #000; border-radius: 8px 8px 0 0; overflow: hidden; margin: 15px 0 0 0; height: 45vh; min-height: 200px; cursor: grab; }
+        .canvas-container:active { cursor: grabbing; }
+        canvas { display: block; width: 100%; height: 100%; image-rendering: crisp-edges; }
+        .resize-handle { height: 8px; background: #2a2a2a; border-radius: 0 0 8px 8px; cursor: ns-resize; display: flex; justify-content: center; align-items: center; margin-bottom: 10px; }
+        .resize-handle:hover { background: #3a3a3a; }
+        .resize-handle::after { content: ''; width: 40px; height: 3px; background: #555; border-radius: 2px; }
+        .seekbar-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; }
+        .seekbar { width: 100%; height: 6px; background: #444; border-radius: 3px; position: relative; cursor: pointer; margin: 8px 0; }
+        .seekbar-progress { height: 100%; background: #667eea; border-radius: 3px; width: 0%; pointer-events: none; }
+        .seekbar-thumb { position: absolute; width: 14px; height: 14px; background: white; border-radius: 50%; top: 50%; transform: translate(-50%, -50%); left: 0%; pointer-events: none; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .playback-controls { display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+        .playback-controls button { width: 28px; height: 28px; padding: 0; font-size: 11px; }
+        .control-separator { width: 1px; height: 18px; background: #444; margin: 0 6px; }
+        .timeline-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; }
+        .timeline-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px; flex-wrap: wrap; }
+        .timeline-header h3 { margin: 0; font-size: 13px; color: #fff; }
+        .timeline-header-right { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+        .timeline-header-right label { display: flex; align-items: center; gap: 4px; color: #888; cursor: pointer; }
+        .timeline-track { position: relative; height: 28px; background: #333; border-radius: 4px; margin: 6px 0; cursor: crosshair; border-left: 3px solid transparent; transition: opacity 0.15s, background 0.15s; }
+        .timeline-track.deemphasized { opacity: 0.4; background: #2a2a2a; }
+        .timeline-track.deemphasized:hover { opacity: 0.7; }
+        .timeline-track-label { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); font-size: 10px; color: #888; z-index: 10; pointer-events: none; white-space: nowrap; overflow: hidden; max-width: 150px; text-overflow: ellipsis; }
+        .timeline-playhead { position: absolute; width: 2px; height: 100%; background: #fff; top: 0; pointer-events: none; z-index: 20; }
+        .timeline-segment { position: absolute; height: 100%; border-radius: 4px; opacity: 0.8; cursor: pointer; transition: opacity 0.15s; }
+        .timeline-segment:hover { opacity: 1; }
+        .timeline-segment.selected { opacity: 1; box-shadow: 0 0 0 2px #fff; }
+        .timeline-segment.active { opacity: 1; animation: marquee-pulse 0.4s infinite; border: 2px dashed rgba(255,255,255,0.8); }
+        @keyframes marquee-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .annotation-status { background: #2a2a2a; padding: 8px 15px; border-radius: 8px; margin: 10px 0; display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap; }
+        .status-label { color: #888; }
+        .status-value { font-weight: bold; }
+        .status-idle { color: #888; }
+        .status-painting { color: #4ade80; }
+        .panels-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+        .track-panel { flex: 1; min-width: 180px; background: #2a2a2a; padding: 12px 15px; border-radius: 8px; }
+        .track-panel h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 6px; }
+        .track-panel .hint { font-size: 10px; color: #666; font-weight: normal; }
+        .track-list { max-height: 120px; overflow-y: auto; }
+        .track-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; margin: 2px 0; font-size: 12px; transition: background 0.15s; }
+        .track-item:hover { background: #3a3a3a; }
+        .track-item.selected { background: #444; box-shadow: inset 0 0 0 2px #667eea; }
+        .track-color { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .track-name { color: #ccc; flex: 1; }
+        .track-key { font-family: monospace; font-size: 10px; color: #667eea; background: #333; padding: 2px 5px; border-radius: 3px; }
+        .event-types { flex: 2; min-width: 250px; background: #2a2a2a; padding: 12px 15px; border-radius: 8px; }
+        .event-types-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .event-types-header h3 { margin: 0; font-size: 13px; color: #fff; }
+        .event-type-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal { background: #2a2a2a; border-radius: 12px; padding: 20px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal h2 { margin: 0 0 15px 0; font-size: 18px; color: #fff; }
+        .modal-close { float: right; background: none; border: none; color: #888; font-size: 20px; cursor: pointer; padding: 0; margin: -5px -5px 0 0; }
+        .modal-close:hover { color: #fff; }
+        .event-type-row { display: flex; gap: 8px; align-items: center; padding: 8px; background: #1a1a1a; border-radius: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+        .event-type-row input[type="text"] { flex: 1; min-width: 100px; background: #333; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; color: #e0e0e0; font-size: 13px; }
+        .event-type-row input[type="text"]:focus { outline: none; border-color: #667eea; }
+        .event-type-row .hotkey-btn { width: 40px; min-width: 40px; flex: 0; text-align: center; background: #333; border: 1px solid #444; border-radius: 4px; padding: 6px 8px; color: #e0e0e0; font-size: 13px; font-family: monospace; cursor: pointer; text-transform: uppercase; }
+        .event-type-row .hotkey-btn:hover { border-color: #667eea; }
+        .event-type-row .hotkey-btn.listening { background: #667eea; border-color: #667eea; color: #fff; animation: pulse-hotkey 1s infinite; }
+        @keyframes pulse-hotkey { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .event-type-row input[type="color"] { width: 36px; height: 30px; border: none; border-radius: 4px; cursor: pointer; padding: 0; }
+        .event-type-row .delete-btn { background: #4a2020; color: #ff6b6b; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        .event-type-row .delete-btn:hover { background: #5a2525; }
+        .event-type-row .delete-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .modal-actions { display: flex; justify-content: space-between; margin-top: 15px; gap: 10px; }
+        .add-event-btn { background: #333; border: 1px dashed #555; }
+        .add-event-btn:hover { background: #3a3a3a; border-color: #667eea; }
+        .event-type-btn { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+        .event-type-btn:hover { transform: translateY(-1px); }
+        .event-type-btn .hotkey { background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 3px; font-size: 10px; font-family: monospace; }
+        .info-row { display: flex; gap: 10px; margin: 10px 0; }
+        .metrics { flex: 1; background: #2a2a2a; padding: 10px 15px; border-radius: 8px; font-family: monospace; font-size: 11px; }
+        .metrics h3 { margin: 0 0 6px 0; font-size: 12px; color: #ccc; font-family: system-ui; }
+        .metric { margin: 3px 0; }
+        .metric-label { color: #667eea; }
+        .hotkeys { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 15px 0; font-size: 12px; }
+        .hotkeys h3 { margin: 0 0 8px 0; color: #fff; font-size: 13px; }
+        .hotkeys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 4px 12px; }
+        .hotkey { display: flex; gap: 6px; }
+        .hotkey-key { color: #667eea; font-family: monospace; min-width: 65px; }
+        .hotkey-desc { color: #aaa; }
+        .error-msg { background: #4a2020; border: 1px solid #ff6b6b; color: #ff6b6b; padding: 10px 15px; border-radius: 8px; margin: 10px 0; display: none; font-size: 13px; }
+        .url-input-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .url-input-container input[type="text"] { flex: 1; min-width: 200px; background: #1a1a1a; border: 1px solid #444; border-radius: 6px; padding: 8px 12px; color: #e0e0e0; font-size: 13px; }
+        .url-input-container input[type="text"]:focus { outline: none; border-color: #667eea; }
+        .url-hint { width: 100%; color: #888; font-size: 11px; margin-top: 4px; }
+        .log-container { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 15px 0; }
+        .log-container h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; }
+        .overlay-controls { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+        .overlay-controls label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #aaa; cursor: pointer; }
+        @media (max-width: 600px) { body { padding: 10px; } .info-row { flex-direction: column; } .panels-row { flex-direction: column; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Video Event Annotator</h1>
+        <p class="description">Frame-accurate event annotation with track-level support. Load SLP files for multi-animal tracking.</p>
+        <div class="controls">
+            <input type="file" id="fileInput" accept="video/mp4,video/webm,.mp4,.webm,.slp" style="display: none;">
+            <input type="file" id="slpInput" accept=".slp" style="display: none;">
+            <input type="file" id="importInput" accept=".json" style="display: none;">
+            <button id="loadBtn">Load Video</button>
+            <button id="loadSlpBtn">Load SLP</button>
+            <button id="loadUrlBtn">Load from URL</button>
+            <button id="demoBtn">Load Demo</button>
+            <button id="importBtn" disabled>Import</button>
+            <button id="exportBtn" disabled>Export</button>
+            <button id="clearBtn" disabled>Clear</button>
+        </div>
+        <div class="url-input-container" id="urlInputContainer" style="display: none;">
+            <input type="text" id="urlInput" placeholder="Enter video URL (must support CORS)">
+            <button id="urlLoadBtn">Load</button>
+            <button id="urlCancelBtn">Cancel</button>
+            <small class="url-hint">URL must support CORS. Range requests enable streaming without downloading the full file.</small>
+        </div>
+        <div class="error-msg" id="errorMsg"></div>
+        <div class="canvas-container" id="canvasContainer" style="display: none;"><canvas id="canvas"></canvas></div>
+        <div class="resize-handle" id="resizeHandle" style="display: none;"></div>
+        <div class="seekbar-container" id="seekbarContainer" style="display: none;">
+            <div class="seekbar" id="seekbar"><div class="seekbar-progress" id="seekbarProgress"></div><div class="seekbar-thumb" id="seekbarThumb"></div></div>
+            <div class="playback-controls">
+                <button id="firstFrameBtn" title="First frame">|&#10094;</button>
+                <button id="prevFrameBtn" title="Previous frame">&#10094;</button>
+                <button id="playBtn">&#9654;</button>
+                <button id="nextFrameBtn" title="Next frame">&#10095;</button>
+                <button id="lastFrameBtn" title="Last frame">&#10095;|</button>
+                <span class="control-separator"></span>
+                <button id="zoomOutBtn" title="Zoom out">&#8722;</button>
+                <button id="zoomInBtn" title="Zoom in">+</button>
+                <button id="resetZoomBtn" title="Reset view">&#8634;</button>
+                <span class="control-separator"></span>
+                <div class="overlay-controls">
+                    <label title="Show pose skeletons on video"><input type="checkbox" id="showPosesCheck" checked> Poses</label>
+                </div>
+            </div>
+        </div>
+        <div class="annotation-status" id="annotationStatus" style="display: none;">
+            <span class="status-label">Mode:</span><span class="status-value status-idle" id="modeDisplay">IDLE</span>
+            <span class="status-label">Frame:</span><span class="status-value" id="frameDisplay">0 / 0</span>
+            <span class="status-label">Track:</span><span class="status-value" id="trackDisplay" style="color: #888;">(none)</span>
+            <span id="paintingInfo" style="display: none;"><span class="status-label">Painting:</span><span class="status-value status-painting" id="paintingDisplay"></span></span>
+        </div>
+        <div class="timeline-container" id="timelineContainer" style="display: none;">
+            <div class="timeline-header">
+                <h3>Event Timeline</h3>
+                <div class="timeline-header-right">
+                    <label title="Show only segments for selected track"><input type="checkbox" id="focusTrackToggle"> Focus track</label>
+                    <span id="selectedSegmentInfo" style="color: #888;"></span>
+                </div>
+            </div>
+            <div id="timelineTracks"></div>
+        </div>
+        <div class="panels-row" id="panelsRow" style="display: none;">
+            <div class="track-panel" id="trackPanel">
+                <h3>Tracks <span class="hint">(click or 0-9)</span></h3>
+                <div class="track-list" id="trackList"></div>
+            </div>
+            <div class="event-types" id="eventTypesContainer">
+                <div class="event-types-header">
+                    <h3>Event Types (press hotkey)</h3>
+                    <button id="manageEventTypesBtn" style="padding: 4px 10px; font-size: 11px;">Manage</button>
+                </div>
+                <div class="event-type-buttons" id="eventTypeButtons"></div>
+            </div>
+        </div>
+        <div class="modal-overlay" id="eventTypeModal" style="display: none;">
+            <div class="modal">
+                <button class="modal-close" id="modalCloseBtn">&times;</button>
+                <h2>Manage Event Types</h2>
+                <div id="eventTypeList"></div>
+                <div class="modal-actions">
+                    <button class="add-event-btn" id="addEventTypeBtn">+ Add Event Type</button>
+                    <div>
+                        <button id="modalCancelBtn">Cancel</button>
+                        <button id="modalSaveBtn">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="info-row" id="infoRow" style="display: none;">
+            <div class="metrics"><h3>Video</h3><div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div><div class="metric"><span class="metric-label">Size:</span> <span id="metricRes">-</span></div><div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div></div>
+            <div class="metrics"><h3>Tracking</h3><div class="metric"><span class="metric-label">SLP:</span> <span id="metricSlp">-</span></div><div class="metric"><span class="metric-label">Tracks:</span> <span id="metricTracks">-</span></div></div>
+            <div class="metrics"><h3>Annotations</h3><div class="metric"><span class="metric-label">Segments:</span> <span id="metricSegments">0</span></div><div class="metric"><span class="metric-label">Event Types:</span> <span id="metricEventTypes">0</span></div></div>
+        </div>
+        <div class="hotkeys">
+            <h3>Keyboard Shortcuts</h3>
+            <div class="hotkeys-grid">
+                <div class="hotkey"><span class="hotkey-key">&#8592;/&#8594;</span><span class="hotkey-desc">&#177;1 frame</span></div>
+                <div class="hotkey"><span class="hotkey-key">Ctrl+&#8592;/&#8594;</span><span class="hotkey-desc">&#177;30 frames</span></div>
+                <div class="hotkey"><span class="hotkey-key">Home/End</span><span class="hotkey-desc">First/Last</span></div>
+                <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                <div class="hotkey"><span class="hotkey-key">+/-</span><span class="hotkey-desc">Zoom</span></div>
+                <div class="hotkey"><span class="hotkey-key">&#8593;/&#8595;</span><span class="hotkey-desc">Cycle rows</span></div>
+                <div class="hotkey"><span class="hotkey-key">Tab</span><span class="hotkey-desc">Cycle tracks</span></div>
+                <div class="hotkey"><span class="hotkey-key">0-9</span><span class="hotkey-desc">Select track</span></div>
+                <div class="hotkey"><span class="hotkey-key">F</span><span class="hotkey-desc">Focus track</span></div>
+                <div class="hotkey"><span class="hotkey-key">W R E</span><span class="hotkey-desc">Events</span></div>
+                <div class="hotkey"><span class="hotkey-key">Z</span><span class="hotkey-desc">Paint row</span></div>
+                <div class="hotkey"><span class="hotkey-key">X</span><span class="hotkey-desc">Erase row</span></div>
+                <div class="hotkey"><span class="hotkey-key">Escape</span><span class="hotkey-desc">Cancel</span></div>
+                <div class="hotkey"><span class="hotkey-key">Delete</span><span class="hotkey-desc">Remove</span></div>
+            </div>
+        </div>
+        <div class="log-container">
+            <h3>Log <button id="clearLogBtn" style="float: right; padding: 2px 8px; font-size: 11px;">Clear</button></h3>
+            <textarea id="logBox" readonly rows="6" style="width: 100%; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 11px; resize: vertical; padding: 8px;"></textarea>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+    <script>
+        // ============================================
+        // Track Colors (same as slp-viewer)
+        // ============================================
+        const TRACK_COLORS = ['#667eea', '#4ade80', '#fbbf24', '#f472b6', '#06b6d4', '#f97316', '#a855f7', '#ef4444'];
+        function getTrackColor(trackIdx) { return trackIdx >= 0 ? TRACK_COLORS[trackIdx % TRACK_COLORS.length] : '#888888'; }
+
+        // ============================================
+        // State
+        // ============================================
+        const state = {
+            videoDecoder: null, currentFrame: 0, totalFrames: 0, fps: 0, fileName: '', videoInfo: null, isPlaying: false, playInterval: null,
+            mode: 'idle', activeAnnotation: null, selectedSegmentId: null,
+            // Pose data from SLP
+            poseData: null, hasPoseData: false, slpFileName: '',
+            tracks: [], selectedTrackIdx: null, // null = frame-level, 0+ = specific track
+            selectedEventTypeId: null, // Which event type is selected for targeted erasing
+            showPoses: true, showAllTracks: true, // UI toggles
+            eventTypes: [
+                { id: '_none', name: 'None', hotkey: 'x', color: '#666666', isEraser: true },
+                { id: 'walking', name: 'Walking', hotkey: 'w', color: '#4ade80' },
+                { id: 'running', name: 'Running', hotkey: 'r', color: '#60a5fa' },
+                { id: 'eating', name: 'Eating', hotkey: 'e', color: '#f472b6' },
+            ],
+            segments: [], // { id, eventTypeId, startFrame, endFrame, trackIdx }
+        };
+
+        // ============================================
+        // Logging
+        // ============================================
+        const logBox = document.getElementById('logBox');
+        function log(msg) { const ts = new Date().toLocaleTimeString('en-US', { hour12: false }); logBox.value += `[${ts}] ${msg}\n`; logBox.scrollTop = logBox.scrollHeight; }
+        document.getElementById('clearLogBtn').addEventListener('click', () => { logBox.value = ''; });
+        log('Video Event Annotator initialized');
+
+        // ============================================
+        // Zoom/Pan state
+        // ============================================
+        let scale = 1, offsetX = 0, offsetY = 0, isDragging = false, dragStartX = 0, dragStartY = 0, currentBitmap = null;
+        let lastContainerWidth = 0, lastContainerHeight = 0;
+
+        // ============================================
+        // Video Decoder
+        // ============================================
+        class VideoDecoder {
+            constructor(opts = {}) { this.cacheSize = opts.cacheSize || 60; this.lookahead = opts.lookahead || 30; this.cache = new Map(); this.samples = []; this.keyframeIndices = []; this.decoder = null; this.config = null; this.videoTrack = null; this.mp4boxFile = null; this.file = null; this.fileSize = 0; this.isDecoding = false; }
+            async init(file) {
+                this.file = file; this.fileSize = file.size; this.mp4boxFile = MP4Box.createFile();
+                const ready = new Promise((res, rej) => { this.mp4boxFile.onError = rej; this.mp4boxFile.onReady = res; });
+                let offset = 0, resolved = false; ready.then(() => resolved = true);
+                while (offset < this.fileSize && !resolved) { const buf = await this.readChunk(offset, 1024 * 1024); buf.fileStart = offset; const next = this.mp4boxFile.appendBuffer(buf); offset = next === undefined ? offset + buf.byteLength : next; await new Promise(r => setTimeout(r, 0)); }
+                const info = await ready; if (!info.videoTracks.length) throw new Error('No video tracks');
+                this.videoTrack = info.videoTracks[0]; const trak = this.mp4boxFile.getTrackById(this.videoTrack.id); const desc = this.getCodecDesc(trak);
+                const codec = this.videoTrack.codec.startsWith('vp08') ? 'vp8' : this.videoTrack.codec;
+                this.config = { codec, codedWidth: this.videoTrack.video.width, codedHeight: this.videoTrack.video.height }; if (desc) this.config.description = desc;
+                const support = await window.VideoDecoder.isConfigSupported(this.config); if (!support.supported) throw new Error(`Codec ${codec} not supported`);
+                this.extractSamples(); const dur = this.videoTrack.duration / this.videoTrack.timescale; this.fps = this.samples.length / dur;
+                return { codec, width: this.videoTrack.video.width, height: this.videoTrack.video.height, totalFrames: this.samples.length, fps: this.fps };
+            }
+            async readChunk(off, size) { return await this.file.slice(off, Math.min(off + size, this.fileSize)).arrayBuffer(); }
+            getCodecDesc(trak) { for (const e of trak.mdia.minf.stbl.stsd.entries) { const box = e.avcC || e.hvcC || e.vpcC || e.av1C; if (box) { const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN); box.write(s); return new Uint8Array(s.buffer, 8); } } return null; }
+            extractSamples() { const info = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id); if (!info?.length) throw new Error('No samples'); const ts = this.videoTrack.timescale; this.samples = info.map((s, i) => ({ offset: s.offset, size: s.size, timestamp: s.cts * 1e6 / ts, duration: s.duration * 1e6 / ts, isKeyframe: s.is_sync, cts: s.cts, decodeIndex: i })).sort((a, b) => a.cts - b.cts); this.samples.forEach((s, i) => { if (s.isKeyframe) this.keyframeIndices.push(i); }); }
+            findKeyframeBefore(idx) { let r = 0; for (const k of this.keyframeIndices) { if (k <= idx) r = k; else break; } return r; }
+            async getFrame(idx) { if (idx < 0 || idx >= this.samples.length) return null; if (this.cache.has(idx)) { const bmp = this.cache.get(idx); this.cache.delete(idx); this.cache.set(idx, bmp); return { bitmap: bmp, fromCache: true }; } if (this.isDecoding) { await new Promise(r => { const c = () => this.isDecoding ? setTimeout(c, 10) : r(); c(); }); if (this.cache.has(idx)) return { bitmap: this.cache.get(idx), fromCache: true }; } const kf = this.findKeyframeBefore(idx); const end = Math.min(idx + this.lookahead, this.samples.length - 1); await this.decodeRange(kf, end, idx); const bmp = this.cache.get(idx); return bmp ? { bitmap: bmp, fromCache: false } : null; }
+            async decodeRange(start, end, target) { this.isDecoding = true; try { if (this.decoder) try { this.decoder.close(); } catch (e) {} let minDI = Infinity, maxDI = -Infinity; for (let i = start; i <= end; i++) { minDI = Math.min(minDI, this.samples[i].decodeIndex); maxDI = Math.max(maxDI, this.samples[i].decodeIndex); } const toFeed = []; for (let i = 0; i < this.samples.length; i++) { const s = this.samples[i]; if (s.decodeIndex >= minDI && s.decodeIndex <= maxDI) toFeed.push({ pi: i, s }); } toFeed.sort((a, b) => a.s.decodeIndex - b.s.decodeIndex); const dataMap = new Map(); for (const { s } of toFeed) dataMap.set(s.decodeIndex, new Uint8Array(await this.readChunk(s.offset, s.size))); const tsMap = new Map(); for (const { pi, s } of toFeed) tsMap.set(Math.round(s.timestamp), pi); const halfC = Math.floor(this.cacheSize / 2), cStart = Math.max(start, target - halfC), cEnd = Math.min(end, target + halfC); await new Promise((res, rej) => { let cnt = 0; this.decoder = new window.VideoDecoder({ output: f => { let fi = tsMap.get(Math.round(f.timestamp)); if (fi === undefined) { let best = Infinity; for (const [t, i] of tsMap) { const d = Math.abs(t - f.timestamp); if (d < best) { best = d; fi = i; } } } if (fi !== undefined && fi >= cStart && fi <= cEnd) { createImageBitmap(f).then(b => { this.addToCache(fi, b); f.close(); if (++cnt >= toFeed.length) res(); }).catch(() => { f.close(); if (++cnt >= toFeed.length) res(); }); } else { f.close(); if (++cnt >= toFeed.length) res(); } }, error: e => e.name === 'AbortError' ? res() : rej(e) }); this.decoder.configure(this.config); for (const { s } of toFeed) { this.decoder.decode(new EncodedVideoChunk({ type: s.isKeyframe ? 'key' : 'delta', timestamp: s.timestamp, duration: s.duration, data: dataMap.get(s.decodeIndex) })); } this.decoder.flush(); }); } finally { this.isDecoding = false; } }
+            addToCache(idx, bmp) { if (this.cache.size >= this.cacheSize) { const first = this.cache.keys().next().value; this.cache.get(first).close(); this.cache.delete(first); } this.cache.set(idx, bmp); }
+            close() { if (this.decoder) this.decoder.close(); for (const b of this.cache.values()) b.close(); this.cache.clear(); }
+        }
+
+        // ============================================
+        // SLP Worker (same pattern as slp-viewer)
+        // ============================================
+        let slpWorker = null;
+
+        function initSlpWorker() {
+            if (slpWorker) slpWorker.terminate();
+            slpWorker = new Worker('./slp-worker.js');
+            slpWorker.onmessage = (e) => {
+                const { type, data } = e.data;
+                if (type === 'log') {
+                    log(data.message);
+                } else if (type === 'loading') {
+                    showError(data.message);
+                } else if (type === 'result') {
+                    hideError();
+                    handleSlpLoaded(data);
+                } else if (type === 'error') {
+                    hideError();
+                    showError('SLP Error: ' + data.message);
+                    log('SLP error: ' + data.message);
+                }
+            };
+            slpWorker.onerror = (e) => {
+                hideError();
+                showError('Worker error: ' + e.message);
+                log('Worker error: ' + e.message);
+            };
+        }
+
+        function handleSlpLoaded(data) {
+            state.poseData = data;
+            state.hasPoseData = true;
+            state.slpFileName = data.filename;
+            state.tracks = data.tracks;
+            state.selectedTrackIdx = data.tracks.length > 0 ? 0 : null;
+            renderTrackList();
+            renderTimelineTracks();
+            updateMetrics();
+            updateStatusDisplay();
+            if (currentBitmap) renderFrame();
+            log(`SLP loaded: ${data.tracks.length} tracks, ${data.frames.length} frames`);
+        }
+
+        // ============================================
+        // DOM Elements
+        // ============================================
+        const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d'), canvasContainer = document.getElementById('canvasContainer');
+        const seekbar = document.getElementById('seekbar'), seekbarProgress = document.getElementById('seekbarProgress'), seekbarThumb = document.getElementById('seekbarThumb');
+        const playBtn = document.getElementById('playBtn'), errorMsg = document.getElementById('errorMsg'), resizeHandle = document.getElementById('resizeHandle');
+        const getEventType = id => state.eventTypes.find(e => e.id === id);
+        const getEventTypeByHotkey = k => state.eventTypes.find(e => e.hotkey.toLowerCase() === k.toLowerCase());
+        const showError = m => { errorMsg.textContent = m; errorMsg.style.display = 'block'; };
+        const hideError = () => { errorMsg.style.display = 'none'; };
+
+        // ============================================
+        // Video Geometry
+        // ============================================
+        function getVideoGeometry() { if (!currentBitmap) return { baseScale: 1, drawX: 0, drawY: 0 }; const cw = canvasContainer.clientWidth, ch = canvasContainer.clientHeight, va = currentBitmap.width / currentBitmap.height, ca = cw / ch; let baseScale, drawX, drawY; if (va > ca) { baseScale = cw / currentBitmap.width; drawX = 0; drawY = (ch - currentBitmap.height * baseScale) / 2; } else { baseScale = ch / currentBitmap.height; drawX = (cw - currentBitmap.width * baseScale) / 2; drawY = 0; } return { baseScale, drawX, drawY }; }
+        function constrainOffset() { if (!currentBitmap) return; const cw = canvasContainer.clientWidth, ch = canvasContainer.clientHeight, { baseScale, drawX, drawY } = getVideoGeometry(); const sw = currentBitmap.width * baseScale * scale, sh = currentBitmap.height * baseScale * scale, minV = 0.25, minVX = sw * minV, minVY = sh * minV; offsetX = Math.max(minVX - sw - drawX, Math.min(cw - minVX - drawX, offsetX)); offsetY = Math.max(minVY - sh - drawY, Math.min(ch - minVY - drawY, offsetY)); }
+        function zoomToPoint(px, py, newScale) { const { baseScale, drawX, drawY } = getVideoGeometry(), es = baseScale * scale; const vx = (px - offsetX - drawX) / es, vy = (py - offsetY - drawY) / es; const nes = baseScale * newScale; offsetX = px - drawX - vx * nes; offsetY = py - drawY - vy * nes; scale = newScale; constrainOffset(); }
+
+        // ============================================
+        // Video Loading
+        // ============================================
+        async function loadVideo(file) {
+            hideError(); try {
+                state.fileName = file.name; if (state.videoDecoder) state.videoDecoder.close();
+                state.videoDecoder = new VideoDecoder({ cacheSize: 60, lookahead: 30 });
+                state.videoInfo = await state.videoDecoder.init(file); state.totalFrames = state.videoInfo.totalFrames; state.fps = state.videoInfo.fps;
+                state.currentFrame = 0; state.segments = []; state.mode = 'idle'; state.activeAnnotation = null; state.selectedSegmentId = null;
+                scale = 1; offsetX = 0; offsetY = 0;
+                log(`Loaded: ${file.name} (${state.videoInfo.width}x${state.videoInfo.height}, ${state.totalFrames} frames @ ${state.fps.toFixed(1)} fps)`);
+                canvasContainer.style.display = 'block'; resizeHandle.style.display = 'flex';
+                document.getElementById('seekbarContainer').style.display = 'block'; document.getElementById('annotationStatus').style.display = 'flex';
+                document.getElementById('timelineContainer').style.display = 'block'; document.getElementById('panelsRow').style.display = 'flex';
+                document.getElementById('infoRow').style.display = 'flex'; document.getElementById('exportBtn').disabled = false;
+                document.getElementById('importBtn').disabled = false; document.getElementById('clearBtn').disabled = false;
+                lastContainerWidth = canvasContainer.clientWidth; lastContainerHeight = canvasContainer.clientHeight;
+                renderTrackList(); renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); updateStatusDisplay(); await seekToFrame(0);
+            } catch (err) { console.error(err); showError('Error: ' + err.message); }
+        }
+
+        // ============================================
+        // SLP Loading (via Web Worker)
+        // ============================================
+        function loadSlp(file) {
+            hideError();
+            initSlpWorker();
+            showError('Loading SLP...');
+            log(`Loading SLP: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+            slpWorker.postMessage({ type: 'loadLocal', file: file });
+        }
+
+        function loadSlpFromUrl(url) {
+            hideError();
+            initSlpWorker();
+            showError('Loading SLP from URL...');
+            log(`Loading SLP from URL: ${url}`);
+            slpWorker.postMessage({ type: 'loadUrl', url: url });
+        }
+
+        // ============================================
+        // Load Buttons
+        // ============================================
+        document.getElementById('loadBtn').addEventListener('click', async () => {
+            if ('showOpenFilePicker' in window) {
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{ description: 'Video files', accept: { 'video/mp4': ['.mp4'], 'video/webm': ['.webm'] } }],
+                        multiple: false
+                    });
+                    const file = await handle.getFile();
+                    await loadVideo(file);
+                } catch (err) { if (err.name !== 'AbortError') document.getElementById('fileInput').click(); }
+            } else { document.getElementById('fileInput').click(); }
+        });
+        document.getElementById('fileInput').addEventListener('change', e => { if (e.target.files[0]) loadVideo(e.target.files[0]); });
+
+        document.getElementById('loadSlpBtn').addEventListener('click', async () => {
+            if ('showOpenFilePicker' in window) {
+                try {
+                    const [handle] = await window.showOpenFilePicker({
+                        types: [{ description: 'SLEAP files', accept: { 'application/x-hdf5': ['.slp'] } }],
+                        multiple: false
+                    });
+                    const file = await handle.getFile();
+                    await loadSlp(file);
+                } catch (err) { if (err.name !== 'AbortError') document.getElementById('slpInput').click(); }
+            } else { document.getElementById('slpInput').click(); }
+        });
+        document.getElementById('slpInput').addEventListener('change', e => { if (e.target.files[0]) loadSlp(e.target.files[0]); });
+
+        // URL loading
+        const urlInputContainer = document.getElementById('urlInputContainer'), urlInput = document.getElementById('urlInput');
+        urlInput.value = `${window.location.origin}/video-player/mice.mp4`;
+        document.getElementById('loadUrlBtn').addEventListener('click', () => { urlInputContainer.style.display = 'flex'; urlInput.focus(); });
+        document.getElementById('urlCancelBtn').addEventListener('click', () => { urlInputContainer.style.display = 'none'; });
+        document.getElementById('urlLoadBtn').addEventListener('click', async () => {
+            const url = urlInput.value.trim(); if (!url) return;
+            urlInputContainer.style.display = 'none';
+            try {
+                showError('Loading from URL...');
+                const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const b = await r.blob();
+                const name = url.split('/').pop().split('?')[0] || 'video.mp4';
+                hideError(); await loadVideo(new File([b], name, { type: b.type || 'video/mp4' }));
+            } catch (e) { showError('URL error: ' + e.message); log(`URL load error: ${e.message}`); }
+        });
+        urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('urlLoadBtn').click(); });
+
+        // Check for URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlParam = urlParams.get('url');
+        const slpParam = urlParams.get('slp');
+        if (urlParam) { urlInput.value = urlParam; document.getElementById('urlLoadBtn').click(); }
+        if (slpParam) { setTimeout(() => loadSlpFromUrl(slpParam), 500); } // Delay to let video load first
+
+        document.getElementById('demoBtn').addEventListener('click', async () => {
+            try {
+                showError('Loading demo...');
+                // Load video
+                const vr = await fetch('/slp-viewer/mice.mp4');
+                if (!vr.ok) throw new Error('Video not found');
+                const vb = await vr.blob();
+                await loadVideo(new File([vb], 'mice.mp4', { type: 'video/mp4' }));
+                // Load SLP
+                loadSlpFromUrl(window.location.origin + '/slp-viewer/mice.tracked.slp');
+            } catch (e) { showError('Demo error: ' + e.message); log(`Demo error: ${e.message}`); }
+        });
+
+        // ============================================
+        // Frame Navigation
+        // ============================================
+        async function seekToFrame(idx) { if (!state.videoDecoder) return; idx = ((idx % state.totalFrames) + state.totalFrames) % state.totalFrames; const r = await state.videoDecoder.getFrame(idx); if (r?.bitmap) { state.currentFrame = idx; currentBitmap = r.bitmap; renderFrame(); updateSeekbar(); updateStatusDisplay(); renderTimelineTracks(); } }
+
+        function renderFrame() {
+            if (!currentBitmap) return;
+            const dpr = window.devicePixelRatio || 1, cw = canvasContainer.clientWidth, ch = canvasContainer.clientHeight;
+            if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) { canvas.width = cw * dpr; canvas.height = ch * dpr; }
+            const { baseScale, drawX, drawY } = getVideoGeometry(), es = baseScale * scale;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save(); ctx.scale(dpr, dpr);
+            ctx.imageSmoothingEnabled = es < 2; ctx.translate(offsetX, offsetY); ctx.translate(drawX, drawY); ctx.scale(es, es);
+            ctx.drawImage(currentBitmap, 0, 0);
+
+            // Draw pose overlay
+            if (state.showPoses && state.hasPoseData) {
+                const frameData = getFrameData(state.currentFrame);
+                if (frameData) {
+                    for (const inst of frameData.instances) {
+                        const color = getTrackColor(inst.trackIdx);
+                        const isSelected = inst.trackIdx === state.selectedTrackIdx;
+                        drawPose(ctx, inst, state.poseData.skeleton, color, isSelected);
+                    }
+                }
+            }
+            ctx.restore();
+
+            // UI Overlays
+            ctx.save(); ctx.scale(dpr, dpr);
+            const txt = `Frame ${state.currentFrame + 1} / ${state.totalFrames}`; ctx.font = 'bold 12px monospace'; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(8, 8, ctx.measureText(txt).width + 10, 18); ctx.fillStyle = '#fff'; ctx.fillText(txt, 13, 21);
+            if (Math.abs(scale - 1) > 0.01) { const zt = `${scale.toFixed(1)}x`; ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(8, 30, ctx.measureText(zt).width + 10, 18); ctx.fillStyle = '#fff'; ctx.fillText(zt, 13, 43); }
+            if (state.mode === 'painting' && state.activeAnnotation) {
+                const et = getEventType(state.activeAnnotation.eventTypeId);
+                const trackLabel = state.activeAnnotation.trackIdx !== null ? ` (${state.tracks[state.activeAnnotation.trackIdx]})` : '';
+                const y = Math.abs(scale - 1) > 0.01 ? 52 : 30;
+                if (et.isEraser) {
+                    const targetEt = state.activeAnnotation.eraseEventTypeId ? getEventType(state.activeAnnotation.eraseEventTypeId) : null;
+                    const lbl = `ERASE ${targetEt ? targetEt.name : 'all'}${trackLabel}: ${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1}`;
+                    ctx.fillStyle = 'rgba(50, 0, 0, 0.85)'; ctx.fillRect(8, y, ctx.measureText(lbl).width + 10, 18);
+                    ctx.fillStyle = '#ff6b6b'; ctx.fillText(lbl, 13, y + 13);
+                } else {
+                    const lbl = `${et.name}${trackLabel}: ${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1}`;
+                    ctx.fillStyle = et.color; ctx.fillRect(8, y, ctx.measureText(lbl).width + 10, 18); ctx.fillStyle = '#000'; ctx.fillText(lbl, 13, y + 13);
+                }
+            }
+            ctx.restore();
+        }
+
+        function getFrameData(frameIdx) {
+            if (!state.poseData) return null;
+            return state.poseData.frames.find(f => f.frameIdx === frameIdx && (f.videoIdx ?? 0) === 0);
+        }
+
+        function drawPose(ctx, instance, skeleton, color, isSelected) {
+            const points = instance.points;
+            const lineWidth = isSelected ? 3 : 1.5;
+            const alpha = isSelected ? 1 : 0.6;
+            ctx.globalAlpha = alpha;
+
+            // Draw edges
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            for (const [i, j] of skeleton.edges) {
+                const p1 = points[i], p2 = points[j];
+                if (p1 && p2) {
+                    ctx.beginPath();
+                    ctx.moveTo(p1[0], p1[1]);
+                    ctx.lineTo(p2[0], p2[1]);
+                    ctx.stroke();
+                }
+            }
+
+            // Draw nodes
+            const nodeRadius = isSelected ? 4 : 2.5;
+            ctx.fillStyle = color;
+            for (const p of points) {
+                if (p) {
+                    ctx.beginPath();
+                    ctx.arc(p[0], p[1], nodeRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function updateSeekbar() { if (isScrubbing) return; const p = state.totalFrames > 1 ? (state.currentFrame / (state.totalFrames - 1)) * 100 : 0; seekbarProgress.style.width = p + '%'; seekbarThumb.style.left = p + '%'; }
+
+        // Seekbar with debounced scrubbing
+        let isScrubbing = false, pendingSeekFrame = null, isSeekingFrame = false;
+        function updateSeekbarVisual(frame) { const p = state.totalFrames > 1 ? (frame / (state.totalFrames - 1)) * 100 : 0; seekbarProgress.style.width = p + '%'; seekbarThumb.style.left = p + '%'; }
+        async function handleSeekbar(e) {
+            const r = seekbar.getBoundingClientRect(), x = Math.max(0, Math.min(e.clientX - r.left, r.width));
+            const frame = Math.round((x / r.width) * (state.totalFrames - 1));
+            updateSeekbarVisual(frame); pendingSeekFrame = frame;
+            if (isSeekingFrame) return;
+            isSeekingFrame = true;
+            while (pendingSeekFrame !== null) { const targetFrame = pendingSeekFrame; pendingSeekFrame = null; await seekToFrame(targetFrame); }
+            isSeekingFrame = false;
+        }
+        seekbar.addEventListener('mousedown', e => { isScrubbing = true; document.body.style.userSelect = 'none'; handleSeekbar(e); });
+        document.addEventListener('mousemove', e => { if (isScrubbing) handleSeekbar(e); });
+        document.addEventListener('mouseup', () => { if (isScrubbing) { document.body.style.userSelect = ''; isScrubbing = false; updateSeekbar(); } });
+
+        // Playback
+        function togglePlayback() { if (state.isPlaying) { state.isPlaying = false; playBtn.textContent = '\u25B6'; if (state.playInterval) clearInterval(state.playInterval); } else { state.isPlaying = true; playBtn.textContent = '\u23F8'; state.playInterval = setInterval(() => seekToFrame(state.currentFrame + 1), 1000 / state.fps); } }
+        playBtn.addEventListener('click', togglePlayback);
+        document.getElementById('firstFrameBtn').addEventListener('click', () => seekToFrame(0));
+        document.getElementById('prevFrameBtn').addEventListener('click', () => seekToFrame(state.currentFrame - 1));
+        document.getElementById('nextFrameBtn').addEventListener('click', () => seekToFrame(state.currentFrame + 1));
+        document.getElementById('lastFrameBtn').addEventListener('click', () => seekToFrame(state.totalFrames - 1));
+        document.getElementById('zoomInBtn').addEventListener('click', () => { zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * 1.25)); renderFrame(); });
+        document.getElementById('zoomOutBtn').addEventListener('click', () => { zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * 0.8)); renderFrame(); });
+        document.getElementById('resetZoomBtn').addEventListener('click', () => { scale = 1; offsetX = 0; offsetY = 0; renderFrame(); });
+
+        // Show poses toggle
+        document.getElementById('showPosesCheck').addEventListener('change', e => { state.showPoses = e.target.checked; renderFrame(); });
+
+        // Mouse wheel zoom
+        canvasContainer.addEventListener('wheel', e => { e.preventDefault(); const rect = canvasContainer.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top; let d = Math.max(-100, Math.min(100, e.deltaY)); const zf = Math.exp(-d * 0.001), ns = Math.max(0.1, Math.min(50, scale * zf)); zoomToPoint(mx, my, ns); renderFrame(); });
+
+        // Mouse drag pan
+        canvasContainer.addEventListener('mousedown', e => { isDragging = true; dragStartX = e.clientX - offsetX; dragStartY = e.clientY - offsetY; });
+        document.addEventListener('mousemove', e => { if (isDragging) { offsetX = e.clientX - dragStartX; offsetY = e.clientY - dragStartY; constrainOffset(); renderFrame(); } });
+        document.addEventListener('mouseup', () => { isDragging = false; });
+
+        // Click to select track from video
+        canvasContainer.addEventListener('click', e => {
+            if (!state.hasPoseData || isDragging) return;
+            const frameData = getFrameData(state.currentFrame);
+            if (!frameData) return;
+            const rect = canvasContainer.getBoundingClientRect();
+            const { baseScale, drawX, drawY } = getVideoGeometry();
+            const es = baseScale * scale;
+            const clickX = (e.clientX - rect.left - offsetX - drawX) / es;
+            const clickY = (e.clientY - rect.top - offsetY - drawY) / es;
+            // Find nearest instance centroid
+            let nearest = null, nearestDist = Infinity;
+            for (const inst of frameData.instances) {
+                const pts = inst.points.filter(p => p !== null);
+                if (pts.length === 0) continue;
+                const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+                const cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+                const dist = Math.sqrt((clickX - cx) ** 2 + (clickY - cy) ** 2);
+                if (dist < nearestDist) { nearestDist = dist; nearest = inst; }
+            }
+            if (nearest && nearestDist < 100) { // Within 100px of centroid
+                selectTrack(nearest.trackIdx);
+            }
+        });
+
+        // Touch gestures
+        let pinchDist = null, pinchScale = null, pinchCX = null, pinchCY = null, touchX = null, touchY = null, touchOX = null, touchOY = null;
+        const touchDist = t => Math.sqrt((t[0].clientX - t[1].clientX) ** 2 + (t[0].clientY - t[1].clientY) ** 2);
+        const touchCenter = (t, r) => ({ x: (t[0].clientX + t[1].clientX) / 2 - r.left, y: (t[0].clientY + t[1].clientY) / 2 - r.top });
+        canvasContainer.addEventListener('touchstart', e => { if (e.touches.length === 2) { e.preventDefault(); pinchDist = touchDist(e.touches); pinchScale = scale; const r = canvasContainer.getBoundingClientRect(), c = touchCenter(e.touches, r); pinchCX = c.x; pinchCY = c.y; touchX = touchY = touchOX = touchOY = null; } else if (e.touches.length === 1) { touchX = e.touches[0].clientX; touchY = e.touches[0].clientY; touchOX = offsetX; touchOY = offsetY; } }, { passive: false });
+        canvasContainer.addEventListener('touchmove', e => { if (e.touches.length === 2 && pinchDist !== null) { e.preventDefault(); const r = canvasContainer.getBoundingClientRect(), cc = touchCenter(e.touches, r), cd = touchDist(e.touches), pr = cd / pinchDist, ns = Math.max(0.1, Math.min(50, pinchScale * pr)); const { baseScale, drawX, drawY } = getVideoGeometry(), es = baseScale * scale, vx = (pinchCX - offsetX - drawX) / es, vy = (pinchCY - offsetY - drawY) / es, nes = baseScale * ns; offsetX = pinchCX - drawX - vx * nes + cc.x - pinchCX; offsetY = pinchCY - drawY - vy * nes + cc.y - pinchCY; pinchCX = cc.x; pinchCY = cc.y; scale = ns; constrainOffset(); renderFrame(); } else if (e.touches.length === 1 && touchX !== null) { e.preventDefault(); offsetX = touchOX + e.touches[0].clientX - touchX; offsetY = touchOY + e.touches[0].clientY - touchY; constrainOffset(); renderFrame(); } }, { passive: false });
+        canvasContainer.addEventListener('touchend', e => { if (e.touches.length < 2) { pinchDist = pinchScale = pinchCX = pinchCY = null; } if (e.touches.length === 0) { touchX = touchY = touchOX = touchOY = null; } });
+
+        // Resize handle
+        let isResizing = false, resizeStartY = 0, resizeStartH = 0;
+        resizeHandle.addEventListener('mousedown', e => { e.preventDefault(); isResizing = true; resizeStartY = e.clientY; resizeStartH = canvasContainer.clientHeight; document.body.style.userSelect = 'none'; document.body.style.cursor = 'ns-resize'; });
+        document.addEventListener('mousemove', e => { if (isResizing) { const oh = canvasContainer.clientHeight, ow = canvasContainer.clientWidth, nh = Math.max(150, Math.min(window.innerHeight * 0.9, resizeStartH + e.clientY - resizeStartY)); canvasContainer.style.height = nh + 'px'; handleContainerResize(ow, oh, canvasContainer.clientWidth, canvasContainer.clientHeight); renderFrame(); } });
+        document.addEventListener('mouseup', () => { if (isResizing) { isResizing = false; document.body.style.userSelect = ''; document.body.style.cursor = ''; lastContainerWidth = canvasContainer.clientWidth; lastContainerHeight = canvasContainer.clientHeight; } });
+        function handleContainerResize(ow, oh, nw, nh) { if (!currentBitmap || ow === 0 || oh === 0) return; const va = currentBitmap.width / currentBitmap.height; let obs, odx, ody; if (va > ow / oh) { obs = ow / currentBitmap.width; odx = 0; ody = (oh - currentBitmap.height * obs) / 2; } else { obs = oh / currentBitmap.height; odx = (ow - currentBitmap.width * obs) / 2; ody = 0; } let nbs, ndx, ndy; if (va > nw / nh) { nbs = nw / currentBitmap.width; ndx = 0; ndy = (nh - currentBitmap.height * nbs) / 2; } else { nbs = nh / currentBitmap.height; ndx = (nw - currentBitmap.width * nbs) / 2; ndy = 0; } const oes = obs * scale, vx = (ow / 2 - offsetX - odx) / oes, vy = (oh / 2 - offsetY - ody) / oes, nes = nbs * scale; offsetX = nw / 2 - ndx - vx * nes; offsetY = nh / 2 - ndy - vy * nes; constrainOffset(); }
+        const resizeObs = new ResizeObserver(entries => { for (const e of entries) { if (isResizing) continue; const nw = e.contentRect.width, nh = e.contentRect.height; if (lastContainerWidth === 0 || (nw === lastContainerWidth && nh === lastContainerHeight)) { lastContainerWidth = nw; lastContainerHeight = nh; continue; } handleContainerResize(lastContainerWidth, lastContainerHeight, nw, nh); lastContainerWidth = nw; lastContainerHeight = nh; renderFrame(); } }); resizeObs.observe(canvasContainer);
+
+        // ============================================
+        // Track Selection
+        // ============================================
+        function selectTrack(trackIdx) {
+            state.selectedTrackIdx = trackIdx;
+            renderTrackList();
+            updateStatusDisplay();
+            renderTimelineTracks();
+            renderFrame();
+            const trackName = trackIdx !== null && trackIdx >= 0 ? state.tracks[trackIdx] : '(frame-level)';
+            log(`Selected track: ${trackName}`);
+        }
+
+        // Select both track and event type (for timeline row selection)
+        function selectRow(eventTypeId, trackIdx) {
+            state.selectedTrackIdx = trackIdx;
+            state.selectedEventTypeId = eventTypeId;
+            renderTrackList();
+            updateStatusDisplay();
+            renderTimelineTracks();
+            renderFrame();
+            const trackName = trackIdx !== null && trackIdx >= 0 ? state.tracks[trackIdx] : '(frame-level)';
+            const et = getEventType(eventTypeId);
+            log(`Selected row: ${et ? et.name : 'None'} on ${trackName}`);
+        }
+
+        function cycleRow(direction) {
+            // Get visible timeline rows - same logic as getTimelineRows but simplified
+            const rows = getTimelineRows();
+            if (rows.length === 0) return;
+
+            // Find current row index
+            let currentIdx = rows.findIndex(r =>
+                r.eventType.id === state.selectedEventTypeId && r.trackIdx === state.selectedTrackIdx
+            );
+
+            // If no match, start at first row
+            if (currentIdx === -1) currentIdx = direction > 0 ? -1 : rows.length;
+
+            // Calculate new index with wrapping
+            let newIdx = currentIdx + direction;
+            if (newIdx < 0) newIdx = rows.length - 1;
+            if (newIdx >= rows.length) newIdx = 0;
+
+            // Select the new row
+            const row = rows[newIdx];
+            selectRow(row.eventType.id, row.trackIdx);
+        }
+
+        // Cycle through tracks while keeping the same event type (for Tab key)
+        function cycleTrackKeepEventType(direction) {
+            // Build list of available tracks: null (frame-level), then 0, 1, 2, ...
+            const availableTracks = [null];
+            for (let i = 0; i < state.tracks.length; i++) availableTracks.push(i);
+
+            // Find current track index in the list
+            let currentIdx = state.selectedTrackIdx === null ? 0 : availableTracks.indexOf(state.selectedTrackIdx);
+            if (currentIdx === -1) currentIdx = 0;
+
+            // Calculate new index with wrapping
+            let newIdx = currentIdx + direction;
+            if (newIdx < 0) newIdx = availableTracks.length - 1;
+            if (newIdx >= availableTracks.length) newIdx = 0;
+
+            const newTrackIdx = availableTracks[newIdx];
+
+            // Keep the same event type, just change the track
+            selectRow(state.selectedEventTypeId, newTrackIdx);
+        }
+
+        function renderTrackList() {
+            const container = document.getElementById('trackList');
+            container.innerHTML = '';
+            // Frame-level option (key 0)
+            const frameLevel = document.createElement('div');
+            frameLevel.className = 'track-item' + (state.selectedTrackIdx === null ? ' selected' : '');
+            frameLevel.innerHTML = `<span class="track-color" style="background: #888;"></span><span class="track-name">(frame-level)</span><span class="track-key">0</span>`;
+            frameLevel.addEventListener('click', () => selectTrack(null));
+            container.appendChild(frameLevel);
+            // Tracks from SLP
+            for (let i = 0; i < state.tracks.length && i < 9; i++) {
+                const item = document.createElement('div');
+                item.className = 'track-item' + (state.selectedTrackIdx === i ? ' selected' : '');
+                item.innerHTML = `<span class="track-color" style="background: ${getTrackColor(i)};"></span><span class="track-name">${state.tracks[i]}</span><span class="track-key">${i + 1}</span>`;
+                item.addEventListener('click', () => selectTrack(i));
+                container.appendChild(item);
+            }
+        }
+
+        // ============================================
+        // Annotation
+        // ============================================
+        function startPainting(etId) {
+            const et = getEventType(etId);
+            state.mode = 'painting';
+            // For eraser, remember which event type to erase (the previously selected one)
+            const eraseEventTypeId = et.isEraser ? state.selectedEventTypeId : null;
+            state.activeAnnotation = {
+                eventTypeId: etId,
+                startFrame: state.currentFrame,
+                trackIdx: state.selectedTrackIdx,
+                eraseEventTypeId: eraseEventTypeId // Only set for eraser
+            };
+            // Select this event type (unless it's the eraser - keep current selection)
+            if (!et.isEraser) {
+                state.selectedEventTypeId = etId;
+            }
+            state.selectedSegmentId = null;
+            const trackName = state.selectedTrackIdx !== null ? state.tracks[state.selectedTrackIdx] : '(frame-level)';
+            const targetEvent = et.isEraser && eraseEventTypeId ? getEventType(eraseEventTypeId)?.name : null;
+            const modeText = et.isEraser ? `Erasing${targetEvent ? ` ${targetEvent}` : ''}` : et.name;
+            log(`Start painting: ${modeText} on ${trackName} @ frame ${state.currentFrame + 1}`);
+            updateStatusDisplay(); renderTimelineTracks(); renderFrame();
+        }
+
+        function commitAnnotation() {
+            if (!state.activeAnnotation) return;
+            const { eventTypeId, startFrame, trackIdx, eraseEventTypeId } = state.activeAnnotation;
+            const endFrame = state.currentFrame;
+            const et = getEventType(eventTypeId);
+            const ss = Math.min(startFrame, endFrame), se = Math.max(startFrame, endFrame);
+            const trackName = trackIdx !== null ? state.tracks[trackIdx] : '(frame-level)';
+
+            if (et.isEraser) {
+                // Eraser mode - remove/trim overlapping segments of the targeted event type
+                const targetEt = eraseEventTypeId ? getEventType(eraseEventTypeId) : null;
+                const targetName = targetEt ? targetEt.name : 'all events';
+                const erased = eraseSegments(ss, se, trackIdx, eraseEventTypeId);
+                log(`Erased: ${erased} ${targetName} segment(s) on ${trackName} [${ss + 1}-${se + 1}]`);
+            } else {
+                // Normal mode - add segment
+                addSegment(eventTypeId, ss, se, trackIdx);
+                log(`Committed: ${et.name} on ${trackName} [${ss + 1}-${se + 1}]`);
+            }
+
+            state.mode = 'idle'; state.activeAnnotation = null;
+            updateStatusDisplay(); renderTimelineTracks(); renderFrame(); updateMetrics();
+        }
+
+        function cancelPainting() {
+            if (state.activeAnnotation) {
+                const et = getEventType(state.activeAnnotation.eventTypeId);
+                log(`Cancelled: ${et.name}`);
+            }
+            state.mode = 'idle'; state.activeAnnotation = null;
+            updateStatusDisplay(); renderTimelineTracks(); renderFrame();
+        }
+
+        function addSegment(etId, s, e, trackIdx = null) {
+            // Find overlapping segments of the SAME event type AND SAME track and merge them
+            const ovs = state.segments.filter(sg => sg.eventTypeId === etId && sg.trackIdx === trackIdx && !(sg.endFrame < s || sg.startFrame > e));
+            for (const o of ovs) { state.segments.splice(state.segments.indexOf(o), 1); s = Math.min(s, o.startFrame); e = Math.max(e, o.endFrame); }
+            state.segments.push({ id: crypto.randomUUID(), eventTypeId: etId, startFrame: s, endFrame: e, trackIdx });
+        }
+
+        function eraseSegments(s, e, trackIdx = null, eventTypeId = null) {
+            // Find all overlapping segments on the same track and event type, and erase/trim them
+            const toRemove = [];
+            const toAdd = [];
+            for (const seg of state.segments) {
+                if (seg.trackIdx !== trackIdx) continue;
+                // If eventTypeId specified, only erase that event type
+                if (eventTypeId !== null && seg.eventTypeId !== eventTypeId) continue;
+                // Check if segment overlaps with erase range [s, e]
+                if (seg.endFrame < s || seg.startFrame > e) continue; // No overlap
+
+                if (seg.startFrame >= s && seg.endFrame <= e) {
+                    // Fully contained - delete entire segment
+                    toRemove.push(seg);
+                } else if (seg.startFrame < s && seg.endFrame > e) {
+                    // Erase range is in the middle - split into two segments
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: seg.startFrame, endFrame: s - 1, trackIdx });
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: e + 1, endFrame: seg.endFrame, trackIdx });
+                } else if (seg.startFrame < s) {
+                    // Overlaps on the left - trim the right side
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: seg.startFrame, endFrame: s - 1, trackIdx });
+                } else {
+                    // Overlaps on the right - trim the left side
+                    toRemove.push(seg);
+                    toAdd.push({ id: crypto.randomUUID(), eventTypeId: seg.eventTypeId, startFrame: e + 1, endFrame: seg.endFrame, trackIdx });
+                }
+            }
+            // Apply changes
+            for (const seg of toRemove) {
+                const i = state.segments.indexOf(seg);
+                if (i !== -1) state.segments.splice(i, 1);
+            }
+            for (const seg of toAdd) {
+                state.segments.push(seg);
+            }
+            return toRemove.length;
+        }
+
+        function deleteSelectedSegment() {
+            if (!state.selectedSegmentId) return;
+            const seg = state.segments.find(s => s.id === state.selectedSegmentId);
+            if (seg) {
+                const et = getEventType(seg.eventTypeId);
+                const trackName = seg.trackIdx !== null ? state.tracks[seg.trackIdx] : '(frame-level)';
+                log(`Deleted: ${et.name} on ${trackName} [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
+            }
+            const i = state.segments.findIndex(s => s.id === state.selectedSegmentId);
+            if (i !== -1) state.segments.splice(i, 1);
+            state.selectedSegmentId = null;
+            renderTimelineTracks(); updateMetrics();
+            document.getElementById('selectedSegmentInfo').textContent = '';
+        }
+
+        function handleEventTypeClick(etId) {
+            if (state.mode === 'painting') {
+                if (state.activeAnnotation.eventTypeId === etId) commitAnnotation();
+                else { commitAnnotation(); startPainting(etId); }
+            } else startPainting(etId);
+        }
+
+        function renderEventTypeButtons() {
+            const c = document.getElementById('eventTypeButtons'); c.innerHTML = '';
+            for (const et of state.eventTypes) {
+                const b = document.createElement('button');
+                b.className = 'event-type-btn'; b.style.background = et.color; b.style.color = '#000';
+                b.innerHTML = `${et.name} <span class="hotkey">${et.hotkey.toUpperCase()}</span>`;
+                b.addEventListener('click', () => handleEventTypeClick(et.id));
+                c.appendChild(b);
+            }
+        }
+
+        // ============================================
+        // Event Type Management Modal
+        // ============================================
+        const eventTypeModal = document.getElementById('eventTypeModal');
+        const eventTypeList = document.getElementById('eventTypeList');
+        let editingEventTypes = [];
+
+        function openEventTypeModal() { editingEventTypes = state.eventTypes.map(et => ({ ...et })); renderEventTypeList(); eventTypeModal.style.display = 'flex'; }
+        function closeEventTypeModal() { stopListeningForHotkey(); eventTypeModal.style.display = 'none'; editingEventTypes = []; }
+        function getSegmentCountForEventType(etId) { return state.segments.filter(s => s.eventTypeId === etId).length; }
+        function generateEventTypeId(name) { return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'event_' + Date.now(); }
+        function getNextAvailableHotkey() { const usedKeys = new Set(editingEventTypes.map(et => et.hotkey.toLowerCase())); const preferred = 'qwertasdfgzxcvb'; for (const k of preferred) { if (!usedKeys.has(k)) return k; } return ''; }
+        function getRandomColor() { const colors = ['#4ade80', '#60a5fa', '#f472b6', '#facc15', '#a78bfa', '#fb923c', '#22d3d8', '#f87171', '#34d399', '#818cf8']; const usedColors = new Set(editingEventTypes.map(et => et.color.toLowerCase())); for (const c of colors) { if (!usedColors.has(c)) return c; } return colors[Math.floor(Math.random() * colors.length)]; }
+
+        let listeningForHotkey = null;
+        function stopListeningForHotkey() { if (listeningForHotkey) { listeningForHotkey.btn.classList.remove('listening'); listeningForHotkey.btn.textContent = editingEventTypes[listeningForHotkey.idx].hotkey.toUpperCase() || '?'; document.removeEventListener('keydown', listeningForHotkey.handler); listeningForHotkey = null; } }
+        function startListeningForHotkey(idx, btn) {
+            stopListeningForHotkey(); btn.classList.add('listening'); btn.textContent = '...';
+            const handler = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                if (e.key === 'Escape') { stopListeningForHotkey(); return; }
+                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    const newKey = e.key.toLowerCase(), oldKey = editingEventTypes[idx].hotkey;
+                    const otherIdx = editingEventTypes.findIndex((et, i) => i !== idx && et.hotkey.toLowerCase() === newKey);
+                    if (otherIdx !== -1) editingEventTypes[otherIdx].hotkey = oldKey;
+                    editingEventTypes[idx].hotkey = newKey;
+                    stopListeningForHotkey(); renderEventTypeList();
+                }
+            };
+            listeningForHotkey = { idx, btn, handler }; document.addEventListener('keydown', handler);
+        }
+
+        function renderEventTypeList() {
+            stopListeningForHotkey(); eventTypeList.innerHTML = '';
+            for (let i = 0; i < editingEventTypes.length; i++) {
+                const et = editingEventTypes[i], segCount = getSegmentCountForEventType(et.id);
+                const row = document.createElement('div'); row.className = 'event-type-row';
+                row.innerHTML = `<input type="color" value="${et.color}" data-idx="${i}" class="color-input" title="Color"><input type="text" value="${et.name}" data-idx="${i}" class="name-input" placeholder="Name"><button class="hotkey-btn" data-idx="${i}" title="Click to change hotkey">${et.hotkey.toUpperCase() || '?'}</button><button class="delete-btn" data-idx="${i}" ${segCount > 0 ? 'disabled title="Has ' + segCount + ' segment(s)"' : 'title="Delete"'}>&times;</button>`;
+                eventTypeList.appendChild(row);
+            }
+            eventTypeList.querySelectorAll('.name-input').forEach(input => { input.addEventListener('input', e => { editingEventTypes[parseInt(e.target.dataset.idx)].name = e.target.value; }); });
+            eventTypeList.querySelectorAll('.hotkey-btn').forEach(btn => { btn.addEventListener('click', e => { startListeningForHotkey(parseInt(e.target.dataset.idx), e.target); }); });
+            eventTypeList.querySelectorAll('.color-input').forEach(input => { input.addEventListener('input', e => { editingEventTypes[parseInt(e.target.dataset.idx)].color = e.target.value; }); });
+            eventTypeList.querySelectorAll('.delete-btn').forEach(btn => { btn.addEventListener('click', e => { const idx = parseInt(e.target.dataset.idx); if (getSegmentCountForEventType(editingEventTypes[idx].id) === 0) { editingEventTypes.splice(idx, 1); renderEventTypeList(); } }); });
+        }
+
+        function addNewEventType() {
+            editingEventTypes.push({ id: 'event_' + Date.now(), name: 'New Event', hotkey: getNextAvailableHotkey(), color: getRandomColor() });
+            renderEventTypeList();
+            const inputs = eventTypeList.querySelectorAll('.name-input');
+            if (inputs.length > 0) { const lastInput = inputs[inputs.length - 1]; lastInput.focus(); lastInput.select(); }
+        }
+
+        function saveEventTypes() {
+            const errors = [], names = new Set(), hotkeys = new Set();
+            for (const et of editingEventTypes) {
+                if (!et.name.trim()) { errors.push('All event types must have a name'); break; }
+                if (names.has(et.name.toLowerCase())) { errors.push(`Duplicate name: "${et.name}"`); break; }
+                names.add(et.name.toLowerCase());
+                if (!et.hotkey) { errors.push(`"${et.name}" needs a hotkey`); break; }
+                if (hotkeys.has(et.hotkey.toLowerCase())) { errors.push(`Duplicate hotkey: "${et.hotkey.toUpperCase()}"`); break; }
+                hotkeys.add(et.hotkey.toLowerCase());
+            }
+            if (errors.length > 0) { alert(errors[0]); return; }
+            for (const et of editingEventTypes) { if (et.id.startsWith('event_') && !state.eventTypes.find(e => e.id === et.id)) et.id = generateEventTypeId(et.name); }
+            state.eventTypes = editingEventTypes;
+            log(`Updated event types: ${state.eventTypes.map(et => et.name).join(', ')}`);
+            renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); closeEventTypeModal();
+        }
+
+        document.getElementById('manageEventTypesBtn').addEventListener('click', openEventTypeModal);
+        document.getElementById('modalCloseBtn').addEventListener('click', closeEventTypeModal);
+        document.getElementById('modalCancelBtn').addEventListener('click', closeEventTypeModal);
+        document.getElementById('modalSaveBtn').addEventListener('click', saveEventTypes);
+        document.getElementById('addEventTypeBtn').addEventListener('click', addNewEventType);
+        eventTypeModal.addEventListener('click', e => { if (e.target === eventTypeModal) closeEventTypeModal(); });
+
+        // ============================================
+        // Timeline (Track-Aware)
+        // ============================================
+        function getTimelineRows() {
+            const rows = [];
+            const showAll = state.showAllTracks;
+            for (const et of state.eventTypes) {
+                // Skip eraser types - they don't get timeline rows
+                if (et.isEraser) continue;
+                if (!state.hasPoseData || state.tracks.length === 0) {
+                    // No tracking data - single row per event type
+                    rows.push({ eventType: et, trackIdx: null, label: et.name, segments: state.segments.filter(s => s.eventTypeId === et.id) });
+                } else {
+                    // With tracking - row per event type × track
+                    // Frame-level events
+                    const frameLevelSegs = state.segments.filter(s => s.eventTypeId === et.id && s.trackIdx === null);
+                    // Show if: has segments, showing all, or frame-level is the focused selection
+                    if (frameLevelSegs.length > 0 || showAll || state.selectedTrackIdx === null) {
+                        rows.push({ eventType: et, trackIdx: null, label: `${et.name} (frame-level)`, segments: frameLevelSegs });
+                    }
+                    // Per-track events
+                    for (let i = 0; i < state.tracks.length; i++) {
+                        if (!showAll && state.selectedTrackIdx !== i) continue;
+                        const trackSegs = state.segments.filter(s => s.eventTypeId === et.id && s.trackIdx === i);
+                        // Always show row - either showing all tracks, or this is the focused track
+                        rows.push({ eventType: et, trackIdx: i, label: `${et.name} - ${state.tracks[i]}`, segments: trackSegs, trackColor: getTrackColor(i) });
+                    }
+                }
+            }
+            return rows;
+        }
+
+        function renderTimelineTracks() {
+            const c = document.getElementById('timelineTracks'); c.innerHTML = '';
+            const rows = getTimelineRows();
+            for (const row of rows) {
+                const t = document.createElement('div');
+                // Highlight the selected row (matching both event type and track)
+                const isSelectedRow = row.eventType.id === state.selectedEventTypeId && row.trackIdx === state.selectedTrackIdx;
+                const isSelectedTrack = row.trackIdx === state.selectedTrackIdx;
+                // Deemphasize rows that don't match the selected row
+                t.className = 'timeline-track' + (!isSelectedRow && state.selectedEventTypeId ? ' deemphasized' : '');
+                if (isSelectedRow) t.style.boxShadow = 'inset 0 0 0 2px #667eea';
+                if (row.trackColor) t.style.borderLeftColor = row.trackColor;
+                t.innerHTML = `<span class="timeline-track-label">${row.label}</span>`;
+                // Render segments
+                for (const seg of row.segments) {
+                    const l = (seg.startFrame / state.totalFrames) * 100, w = ((seg.endFrame - seg.startFrame + 1) / state.totalFrames) * 100;
+                    const s = document.createElement('div'); s.className = 'timeline-segment' + (seg.id === state.selectedSegmentId ? ' selected' : '');
+                    s.style.cssText = `left:${l}%;width:${w}%;background:${row.eventType.color};`;
+                    s.title = `${row.label}: ${seg.startFrame + 1}-${seg.endFrame + 1}`;
+                    s.addEventListener('click', ev => {
+                        ev.stopPropagation();
+                        state.selectedSegmentId = seg.id;
+                        // Also select this row when clicking a segment
+                        state.selectedEventTypeId = row.eventType.id;
+                        state.selectedTrackIdx = row.trackIdx;
+                        const trackName = seg.trackIdx !== null ? state.tracks[seg.trackIdx] : '(frame-level)';
+                        document.getElementById('selectedSegmentInfo').textContent = `${row.eventType.name} on ${trackName} (${seg.startFrame + 1}-${seg.endFrame + 1}) - Delete to remove`;
+                        log(`Selected: ${row.eventType.name} on ${trackName} [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
+                        renderTrackList();
+                        renderTimelineTracks();
+                    });
+                    t.appendChild(s);
+                }
+                // Show active painting on matching row (for eraser, show on the target event type's row)
+                const activeAnn = state.activeAnnotation;
+                const isEraserRow = activeAnn && getEventType(activeAnn.eventTypeId)?.isEraser &&
+                    activeAnn.eraseEventTypeId === row.eventType.id && activeAnn.trackIdx === row.trackIdx;
+                const isPaintingRow = activeAnn && !getEventType(activeAnn.eventTypeId)?.isEraser &&
+                    activeAnn.eventTypeId === row.eventType.id && activeAnn.trackIdx === row.trackIdx;
+
+                if (state.mode === 'painting' && (isPaintingRow || isEraserRow)) {
+                    const ss = Math.min(activeAnn.startFrame, state.currentFrame), se = Math.max(activeAnn.startFrame, state.currentFrame);
+                    const l = (ss / state.totalFrames) * 100, w = ((se - ss + 1) / state.totalFrames) * 100;
+                    const isErasing = getEventType(activeAnn.eventTypeId)?.isEraser;
+                    const p = document.createElement('div');
+                    p.className = 'timeline-segment active';
+                    // Eraser uses dark semi-transparent background, regular painting uses event color
+                    const bgColor = isErasing ? 'rgba(0, 0, 0, 0.6)' : row.eventType.color;
+                    const borderStyle = isErasing ? '2px dashed rgba(255,100,100,0.8)' : '2px dashed rgba(255,255,255,0.8)';
+                    p.style.cssText = `left:${l}%;width:${w}%;background:${bgColor};border:${borderStyle};`;
+                    t.appendChild(p);
+                }
+                const ph = document.createElement('div'); ph.className = 'timeline-playhead'; ph.style.left = (state.currentFrame / state.totalFrames) * 100 + '%'; t.appendChild(ph);
+                // Click on timeline track to select that row (track + event type)
+                t.addEventListener('click', () => {
+                    state.selectedSegmentId = null;
+                    document.getElementById('selectedSegmentInfo').textContent = '';
+                    // Select the row (both track and event type)
+                    selectRow(row.eventType.id, row.trackIdx);
+                });
+                c.appendChild(t);
+            }
+        }
+
+        // Focus track toggle
+        document.getElementById('focusTrackToggle').addEventListener('change', e => { state.showAllTracks = !e.target.checked; renderTimelineTracks(); });
+
+        // ============================================
+        // Status Display
+        // ============================================
+        function updateStatusDisplay() {
+            const m = document.getElementById('modeDisplay'), f = document.getElementById('frameDisplay'), td = document.getElementById('trackDisplay');
+            const pi = document.getElementById('paintingInfo'), pd = document.getElementById('paintingDisplay');
+            f.textContent = `${state.currentFrame + 1} / ${state.totalFrames}`;
+            // Track + event type display
+            const trackName = state.selectedTrackIdx !== null && state.tracks.length > 0
+                ? state.tracks[state.selectedTrackIdx]
+                : (state.hasPoseData ? '(frame-level)' : '(none)');
+            const trackColor = state.selectedTrackIdx !== null ? getTrackColor(state.selectedTrackIdx) : '#888';
+            const selectedEt = state.selectedEventTypeId ? getEventType(state.selectedEventTypeId) : null;
+            const eventLabel = selectedEt ? ` / ${selectedEt.name}` : '';
+            td.innerHTML = `<span style="color:${trackColor}">${trackName}</span>${selectedEt ? `<span style="color:${selectedEt.color}">${eventLabel}</span>` : ''}`;
+
+            if (state.mode === 'painting' && state.activeAnnotation) {
+                const et = getEventType(state.activeAnnotation.eventTypeId);
+                const annTrackName = state.activeAnnotation.trackIdx !== null ? state.tracks[state.activeAnnotation.trackIdx] : '(frame-level)';
+                if (et.isEraser) {
+                    const targetEt = state.activeAnnotation.eraseEventTypeId ? getEventType(state.activeAnnotation.eraseEventTypeId) : null;
+                    m.textContent = 'ERASING'; m.className = 'status-value'; m.style.color = '#ff6b6b';
+                    pi.style.display = 'inline';
+                    pd.textContent = `${targetEt ? targetEt.name : 'all'} on ${annTrackName} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`;
+                    pd.style.color = targetEt ? targetEt.color : '#888';
+                } else {
+                    m.textContent = 'PAINTING'; m.className = 'status-value status-painting'; m.style.color = '';
+                    pi.style.display = 'inline'; pd.textContent = `${et.name} on ${annTrackName} (${state.activeAnnotation.startFrame + 1}-${state.currentFrame + 1})`; pd.style.color = et.color;
+                }
+            } else { m.textContent = 'IDLE'; m.className = 'status-value status-idle'; m.style.color = ''; pi.style.display = 'none'; }
+        }
+
+        function updateMetrics() {
+            document.getElementById('metricFile').textContent = state.fileName || '-';
+            document.getElementById('metricRes').textContent = state.videoInfo ? `${state.videoInfo.width}x${state.videoInfo.height}` : '-';
+            document.getElementById('metricFps').textContent = state.fps ? state.fps.toFixed(2) : '-';
+            document.getElementById('metricSlp').textContent = state.slpFileName || '-';
+            document.getElementById('metricTracks').textContent = state.hasPoseData ? state.tracks.length : '-';
+            document.getElementById('metricSegments').textContent = state.segments.length;
+            document.getElementById('metricEventTypes').textContent = state.eventTypes.length;
+        }
+
+        // ============================================
+        // Keyboard
+        // ============================================
+        document.addEventListener('keydown', e => {
+            if (!state.videoDecoder || eventTypeModal.style.display === 'flex') return;
+            if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); }
+            // Zoom with +/- keys
+            else if ((e.key === '+' || e.key === '=') && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.min(50, scale * 1.25)); renderFrame(); }
+            else if (e.key === '-' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); zoomToPoint(canvasContainer.clientWidth / 2, canvasContainer.clientHeight / 2, Math.max(0.1, scale * 0.8)); renderFrame(); }
+            // Cycle through timeline rows with Up/Down arrows
+            else if (e.key === 'ArrowUp') { e.preventDefault(); cycleRow(-1); }
+            else if (e.key === 'ArrowDown') { e.preventDefault(); cycleRow(1); }
+            // Cycle through tracks with Tab (keeps same event type, useful for Focus Track mode)
+            else if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); cycleTrackKeepEventType(e.shiftKey ? -1 : 1); }
+            else if (e.key === 'Home') { e.preventDefault(); seekToFrame(0); }
+            else if (e.key === 'End') { e.preventDefault(); seekToFrame(state.totalFrames - 1); }
+            else if (e.key === ' ') { e.preventDefault(); togglePlayback(); }
+            else if (e.key === 'Escape') { e.preventDefault(); cancelPainting(); }
+            else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedSegment(); }
+            // Track selection with number keys (0 = frame-level, 1-9 = tracks)
+            else if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey && state.hasPoseData) {
+                e.preventDefault();
+                const num = parseInt(e.key);
+                if (num === 0) selectTrack(null);
+                else if (num - 1 < state.tracks.length) selectTrack(num - 1);
+            }
+            // Focus track toggle (F key)
+            else if (e.key.toLowerCase() === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && state.hasPoseData) {
+                e.preventDefault();
+                const checkbox = document.getElementById('focusTrackToggle');
+                checkbox.checked = !checkbox.checked;
+                state.showAllTracks = !checkbox.checked;
+                renderTimelineTracks();
+            }
+            // Paint selected row (Z key) - opposite of X (erase)
+            else if (e.key.toLowerCase() === 'z' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                if (state.selectedEventTypeId) {
+                    const selectedEt = getEventType(state.selectedEventTypeId);
+                    if (selectedEt && !selectedEt.isEraser) {
+                        handleEventTypeClick(state.selectedEventTypeId);
+                    }
+                } else {
+                    log('No event type selected - use ↑/↓ or click a timeline row first');
+                }
+            }
+            // Event type hotkeys
+            const et = getEventTypeByHotkey(e.key);
+            if (et && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); handleEventTypeClick(et.id); }
+        });
+
+        // ============================================
+        // Export/Import
+        // ============================================
+        document.getElementById('exportBtn').addEventListener('click', () => {
+            const d = {
+                videoFile: state.fileName,
+                totalFrames: state.totalFrames,
+                fps: state.fps,
+                // Track data
+                tracks: state.tracks,
+                hasPoseData: state.hasPoseData,
+                slpFile: state.slpFileName,
+                // Event types and segments
+                eventTypes: state.eventTypes,
+                segments: state.segments.map(s => ({ id: s.id, eventTypeId: s.eventTypeId, startFrame: s.startFrame, endFrame: s.endFrame, trackIdx: s.trackIdx })),
+                exportedAt: new Date().toISOString()
+            };
+            const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+            a.download = state.fileName.replace(/\.[^.]+$/, '') + '_annotations.json';
+            a.click(); URL.revokeObjectURL(a.href);
+            log(`Exported: ${state.segments.length} segments to JSON`);
+        });
+
+        document.getElementById('importBtn').addEventListener('click', () => document.getElementById('importInput').click());
+        document.getElementById('importInput').addEventListener('change', async e => {
+            const f = e.target.files[0]; if (!f) return;
+            try {
+                const t = await f.text(), d = JSON.parse(t);
+                if (d.segments && Array.isArray(d.segments)) {
+                    // Load tracks if present
+                    if (d.tracks) { state.tracks = d.tracks; state.hasPoseData = true; }
+                    if (d.slpFile) state.slpFileName = d.slpFile;
+                    // Load segments, handling both old (subjectId) and new (trackIdx)
+                    state.segments = d.segments.map(s => ({
+                        ...s,
+                        trackIdx: s.trackIdx !== undefined ? s.trackIdx : (s.subjectId ? state.tracks.indexOf(s.subjectId) : null)
+                    }));
+                    if (d.eventTypes) state.eventTypes = d.eventTypes;
+                    renderTrackList(); renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); hideError();
+                    log(`Imported: ${state.segments.length} segments from ${f.name}`);
+                } else throw new Error('Invalid file');
+            } catch (er) { showError('Import error: ' + er.message); log(`Import error: ${er.message}`); }
+            e.target.value = '';
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            if (confirm('Clear all annotations?')) {
+                const count = state.segments.length;
+                state.segments = []; state.selectedSegmentId = null;
+                document.getElementById('selectedSegmentInfo').textContent = '';
+                renderTimelineTracks(); updateMetrics();
+                log(`Cleared: ${count} segments`);
+            }
+        });
+
+        window.addEventListener('resize', () => { if (currentBitmap) renderFrame(); renderTimelineTracks(); });
+
+        // Initial render
+        renderTrackList();
+    </script>
+</body>
+</html>
