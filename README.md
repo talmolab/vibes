@@ -27,6 +27,7 @@ Self-contained HTML tools and applets for the web.
 - [Video Info Tool](video-info-tool/) - Quick video metadata extraction (FPS, resolution, duration, frame count)
 - [SLEAP-NN Metrics](sleap-nn-metrics/) - Visualize and compare SLEAP-NN evaluation metrics with interactive charts
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
+- [Camera Comparison](camera-comparison/) - Compare lab cameras (DJI/GoPro/Basler) with interactive FOV calculator, setup wizard, and multi-cam planner
 
 ## About
 
