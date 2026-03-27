@@ -20,6 +20,7 @@ Self-contained HTML tools and applets for the web.
 - [SLP Viewer](slp-viewer/) - SLEAP pose visualization with video overlay, embedded pkg.slp support, track colors, and shareable links
 - [Pixel Scale Tool](pixel-scale-tool/) - Convert pixel measurements to real-world units using reference points
 - [SLP Skeleton](slp-skeleton/) - Interactive skeleton structure viewer for SLEAP .slp files with node/edge inspection
+- [Quality Review](quality-review-tool/) - Batch pose quality scanner results viewer with embedded SLP proofreading
 - [GitHub Stats](gh-stats/) - Contribution stats dashboard with commits, LOC, PRs, and activity heatmap
 - [PyPI Name Checker](pypi-name-checker/) - Check Python package name availability with suggestions
 - [CORS Check](cors-check/) - Test URL CORS status and get the right fetch code

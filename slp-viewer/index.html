@@ -426,6 +426,37 @@
         .mark-both {
             background: linear-gradient(to bottom, #4ade80 50%, #667eea 50%);
         }
+        .mark-flagged {
+            background: #f87171;
+            width: 3px;
+            z-index: 2;
+            opacity: 0.85;
+        }
+        .flagged-nav {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 8px;
+            padding: 2px 8px;
+            background: rgba(248,113,113,0.12);
+            border: 1px solid rgba(248,113,113,0.3);
+            border-radius: 6px;
+        }
+        .flagged-nav button {
+            background: rgba(248,113,113,0.15);
+            color: #f87171;
+            border: none;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .flagged-nav button:hover { background: rgba(248,113,113,0.3); }
+        .flagged-nav .flagged-label {
+            color: #f87171;
+            font-size: 11px;
+            white-space: nowrap;
+        }
         .fallback-indicator {
             position: absolute;
             bottom: 10px;
@@ -595,6 +626,11 @@
                 <button id="zoomOutBtn" title="Zoom out">−</button>
                 <button id="zoomInBtn" title="Zoom in">+</button>
                 <button id="resetZoomBtn" title="Reset view">⟲</button>
+                <span id="flaggedNav" class="flagged-nav" style="display:none">
+                    <button id="prevFlaggedBtn" title="Previous flagged frame (Shift+←)">❮</button>
+                    <span class="flagged-label" id="flaggedLabel">0 flagged</span>
+                    <button id="nextFlaggedBtn" title="Next flagged frame (Shift+→)">❯</button>
+                </span>
             </div>
         </div>
 
@@ -2809,6 +2845,19 @@
 
         // Keyboard
         document.addEventListener('keydown', (e) => {
+            // Shift+Arrow: navigate between flagged frames (quality review)
+            if (e.shiftKey && qualityFlaggedFrames.length > 0) {
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    seekToFlaggedFrame(-1);
+                    return;
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    seekToFlaggedFrame(1);
+                    return;
+                }
+            }
+
             // Handle fallback mode navigation
             if (fallbackMode) {
                 if (e.key === 'ArrowLeft') {
@@ -2910,6 +2959,170 @@
             if (isResizing) {
                 isResizing = false;
                 document.body.style.cursor = '';
+            }
+        });
+
+        // ============================================
+        // Quality review: flagged frame integration
+        // ============================================
+        var qualityFlaggedFrames = [];  // sorted array of flagged frame indices
+
+        function loadFlaggedFramesFromStorage() {
+            try {
+                const raw = localStorage.getItem('slp_quality_flagged');
+                if (!raw) return;
+                const data = JSON.parse(raw);
+                if (!data.flagged_frames || !data.flagged_frames.any) return;
+                qualityFlaggedFrames = data.flagged_frames.any
+                    .filter(v => typeof v === 'number')
+                    .sort((a, b) => a - b);
+                // Deduplicate
+                qualityFlaggedFrames = [...new Set(qualityFlaggedFrames)];
+                if (qualityFlaggedFrames.length > 0) {
+                    const nav = document.getElementById('flaggedNav');
+                    const label = document.getElementById('flaggedLabel');
+                    nav.style.display = 'inline-flex';
+                    label.textContent = qualityFlaggedFrames.length + ' flagged';
+                    log(`Loaded ${qualityFlaggedFrames.length} flagged frames from quality review`, 'info');
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        }
+
+        function renderFlaggedMarks(totalFrames) {
+            if (qualityFlaggedFrames.length === 0 || totalFrames === 0) return;
+            const container = document.getElementById('seekbarMarks');
+            if (!container) return;
+            // Append flagged marks (don't clear — existing marks are already there)
+            const frag = document.createDocumentFragment();
+            for (const frameIdx of qualityFlaggedFrames) {
+                if (frameIdx >= totalFrames) continue;
+                const left = (frameIdx / totalFrames) * 100;
+                const el = document.createElement('div');
+                el.className = 'seekbar-mark mark-flagged';
+                el.style.left = left + '%';
+                frag.appendChild(el);
+            }
+            container.appendChild(frag);
+        }
+
+        function seekToFlaggedFrame(direction) {
+            if (qualityFlaggedFrames.length === 0) return;
+            let currentFrame = 0;
+            if (player) {
+                currentFrame = player.frame || 0;
+            } else if (embeddedMode && currentBackend) {
+                currentFrame = embeddedFrameIndex || 0;
+            } else if (fallbackMode) {
+                currentFrame = sortedLabeledFrames[fallbackFrameIndex] || 0;
+            }
+
+            let targetFrame = null;
+            if (direction > 0) {
+                // Next: find first flagged frame > currentFrame
+                for (let i = 0; i < qualityFlaggedFrames.length; i++) {
+                    if (qualityFlaggedFrames[i] > currentFrame) {
+                        targetFrame = qualityFlaggedFrames[i];
+                        break;
+                    }
+                }
+                // Wrap around
+                if (targetFrame === null) targetFrame = qualityFlaggedFrames[0];
+            } else {
+                // Prev: find last flagged frame < currentFrame
+                for (let i = qualityFlaggedFrames.length - 1; i >= 0; i--) {
+                    if (qualityFlaggedFrames[i] < currentFrame) {
+                        targetFrame = qualityFlaggedFrames[i];
+                        break;
+                    }
+                }
+                // Wrap around
+                if (targetFrame === null) targetFrame = qualityFlaggedFrames[qualityFlaggedFrames.length - 1];
+            }
+
+            if (targetFrame === null) return;
+
+            if (player) {
+                player.seek(targetFrame);
+            } else if (embeddedMode) {
+                embeddedSeek(targetFrame);
+            } else if (fallbackMode) {
+                fallbackSeekByFrameIdx(targetFrame);
+            }
+        }
+
+        document.getElementById('prevFlaggedBtn').addEventListener('click', () => seekToFlaggedFrame(-1));
+        document.getElementById('nextFlaggedBtn').addEventListener('click', () => seekToFlaggedFrame(1));
+
+        // Hook into timeline mark rendering to also render flagged marks
+        const _origRenderTimelineMarks = renderTimelineMarks;
+        renderTimelineMarks = function() {
+            _origRenderTimelineMarks();
+            const totalFrames = player?.frames || 0;
+            renderFlaggedMarks(totalFrames);
+        };
+
+        const _origRenderEmbeddedTimelineMarks = renderEmbeddedTimelineMarks;
+        renderEmbeddedTimelineMarks = function() {
+            _origRenderEmbeddedTimelineMarks();
+            const totalFrames = currentBackend?.frameCount || 0;
+            renderFlaggedMarks(totalFrames);
+        };
+
+        const _origRenderFallbackTimelineMarks = renderFallbackTimelineMarks;
+        renderFallbackTimelineMarks = function() {
+            _origRenderFallbackTimelineMarks();
+            const totalFrames = sortedLabeledFrames.length;
+            renderFlaggedMarks(totalFrames);
+        };
+
+        // Load flagged frames on startup
+        loadFlaggedFramesFromStorage();
+
+        // ============================================
+        // Parent frame integration (quality review tool)
+        // ============================================
+        // Signal readiness to parent frame
+        if (window.parent !== window) {
+            window.parent.postMessage({ type: 'slp-viewer-ready' }, '*');
+        }
+
+        // Listen for file loading requests from parent frame
+        var _parentLoadSeq = 0; // sequence counter to avoid stale video loads
+        window.addEventListener('message', function(event) {
+            if (!event.data || event.data.type !== 'loadFiles') return;
+
+            const { slpFile, videoFile, frame } = event.data;
+            if (!slpFile) return;
+
+            // Increment sequence so any previous waitForPoseData loop stops
+            var mySeq = ++_parentLoadSeq;
+
+            // Reload flagged frames from localStorage (parent stores them before sending)
+            loadFlaggedFramesFromStorage();
+
+            // Clear poseData so we can detect when the NEW file finishes loading
+            poseData = null;
+            loadSlpFile(slpFile);
+
+            // After SLP finishes loading, auto-load the external video
+            if (videoFile) {
+                (function waitForPoseData() {
+                    if (_parentLoadSeq !== mySeq) return; // superseded by newer load
+                    if (poseData) {
+                        currentVideoUrl = null;
+                        videoSources.set(currentVideoIdx, { type: 'file', file: videoFile });
+                        document.getElementById('videoResolutionPanel').style.display = 'none';
+                        initVideoPlayer(videoFile, videoFile.name).then(function() {
+                            if (frame && player) {
+                                setTimeout(function() { player.seek(frame); }, 300);
+                            }
+                        });
+                    } else {
+                        setTimeout(waitForPoseData, 150);
+                    }
+                })();
             }
         });
 
