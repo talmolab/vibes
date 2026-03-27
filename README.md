@@ -27,6 +27,7 @@ Self-contained HTML tools and applets for the web.
 - [Video Info Tool](video-info-tool/)<br><span class="vibe-desc">Quick video metadata extraction (FPS, resolution, duration, frame count)</span>
 - [SLEAP-NN Metrics](sleap-nn-metrics/)<br><span class="vibe-desc">Visualize and compare SLEAP-NN evaluation metrics with interactive charts</span>
 - [SAM3 Segmenter](sam3-segmenter/) <a href="sam3-segmenter/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export</span>
+- [GPU Dashboard](gpu-dashboard/) <a href="gpu-dashboard/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Monitor GPUs across multiple workstations with real-time stats and inference progress tracking</span>
 
 ## About
 
