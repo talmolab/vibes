@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU Dashboard - vibing</title>
+<style>
+  /* ── Reset & base ────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f0f0f;
+    color: #e0e0e0;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  button { cursor: pointer; }
+
+  /* ── Header ──────────────────────────────────────────────────── */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+  }
+  .status-dot.connected { background: #4ade80; box-shadow: 0 0 6px #4ade8066; }
+  .status-dot.disconnected { background: #f87171; }
+  .status-text { font-size: 12px; color: #888; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; border: none; border-radius: 6px;
+    font-size: 12px; font-weight: 500; transition: background 0.15s;
+  }
+  .btn-primary { background: #667eea; color: #fff; }
+  .btn-primary:hover { background: #5a6fd6; }
+  .btn-secondary { background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a; }
+  .btn-secondary:hover { background: #333; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+
+  /* ── Container ───────────────────────────────────────────────── */
+  .container { max-width: 1600px; margin: 0 auto; padding: 20px 24px; }
+
+  /* ── Welcome / Setup ─────────────────────────────────────────── */
+  .welcome { text-align: center; padding: 100px 20px; color: #888; }
+  .welcome h2 { font-size: 22px; color: #aaa; margin-bottom: 8px; }
+  .welcome p { font-size: 14px; margin-bottom: 24px; max-width: 500px; margin-left: auto; margin-right: auto; }
+  .setup-form { display: inline-flex; flex-direction: column; gap: 10px; text-align: left; min-width: 360px; }
+  .setup-form label { font-size: 12px; color: #999; display: flex; flex-direction: column; gap: 4px; }
+  .setup-form input {
+    background: #1a1a1a; color: #e0e0e0; border: 1px solid #3a3a3a;
+    border-radius: 6px; padding: 8px 12px; font-size: 14px; outline: none;
+    font-family: inherit;
+  }
+  .setup-form input:focus { border-color: #667eea; }
+  .setup-form input::placeholder { color: #555; }
+
+  /* ── Summary bar ─────────────────────────────────────────────── */
+  .summary-bar {
+    display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .summary-card {
+    flex: 1; min-width: 120px; padding: 12px 16px;
+    background: #1a1a1a; border-radius: 8px; border: 1px solid #2a2a2a;
+    text-align: center;
+  }
+  .summary-card .val { font-size: 28px; font-weight: 700; line-height: 1.2; }
+  .summary-card .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #666; margin-top: 2px; }
+
+  /* ── Machine cards ───────────────────────────────────────────── */
+  .machines { display: flex; flex-direction: column; gap: 16px; }
+  .machine-card {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px;
+    overflow: hidden; transition: border-color 0.2s;
+  }
+  .machine-card:hover { border-color: #3a3a3a; }
+  .machine-card.stale { border-color: #f8717133; }
+  .machine-card.offline { opacity: 0.6; }
+
+  .machine-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; background: #151515; border-bottom: 1px solid #2a2a2a;
+  }
+  .machine-title { display: flex; align-items: center; gap: 10px; }
+  .machine-title h2 { font-size: 15px; font-weight: 600; color: #fff; }
+  .machine-type {
+    font-size: 10px; padding: 2px 8px; border-radius: 4px;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;
+  }
+  .machine-type.workstation { background: #667eea22; color: #667eea; }
+  .machine-type.runai { background: #a78bfa22; color: #a78bfa; }
+  .machine-meta { display: flex; gap: 16px; align-items: center; font-size: 12px; color: #666; }
+  .freshness { font-weight: 500; }
+  .freshness.fresh { color: #4ade80; }
+  .freshness.warm { color: #facc15; }
+  .freshness.stale { color: #f87171; }
+
+  /* ── System stats row ────────────────────────────────────────── */
+  .sys-stats {
+    display: flex; gap: 16px; padding: 10px 18px;
+    border-bottom: 1px solid #2a2a2a; flex-wrap: wrap;
+  }
+  .sys-stat { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .sys-stat .label { color: #666; }
+  .sys-stat .value { color: #ccc; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  /* ── GPU rows ────────────────────────────────────────────────── */
+  .gpu-list { padding: 6px 0; }
+  .gpu-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 1fr auto;
+    gap: 12px; align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid #1f1f1f;
+    font-size: 13px;
+  }
+  .gpu-row:last-child { border-bottom: none; }
+  .gpu-name { color: #aaa; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gpu-idx { color: #555; font-size: 11px; }
+
+  /* ── Progress bars ───────────────────────────────────────────── */
+  .bar-group { display: flex; flex-direction: column; gap: 3px; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 11px; color: #666; }
+  .bar-label .val { color: #ccc; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .bar-track {
+    height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 3px; transition: width 0.5s ease;
+  }
+  .bar-fill.green { background: #4ade80; }
+  .bar-fill.yellow { background: #facc15; }
+  .bar-fill.red { background: #f87171; }
+
+  .gpu-temp { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gpu-temp.cool { color: #4ade80; }
+  .gpu-temp.warm { color: #facc15; }
+  .gpu-temp.hot { color: #f87171; }
+
+  /* ── Process list ────────────────────────────────────────────── */
+  .processes { padding: 0 18px 10px 18px; }
+  .processes-header {
+    font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.05em;
+    padding: 6px 0; border-top: 1px solid #2a2a2a; margin-top: 4px;
+  }
+  .proc-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto auto;
+    gap: 12px; align-items: center;
+    padding: 5px 0; font-size: 12px; border-bottom: 1px solid #1a1a1a;
+  }
+  .proc-row:last-child { border-bottom: none; }
+  .proc-gpu-badge {
+    font-size: 10px; font-weight: 600; padding: 1px 6px;
+    border-radius: 3px; background: #2a2a2a; color: #888;
+  }
+  .proc-cmd { color: #ccc; font-family: "SF Mono", "Fira Code", "Consolas", monospace; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proc-mem { color: #888; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .proc-user { color: #667eea; font-size: 11px; }
+  .proc-runtime { color: #666; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .no-processes { color: #444; font-size: 12px; font-style: italic; padding: 8px 0; }
+
+  /* ── No GPU notice ───────────────────────────────────────────── */
+  .no-gpus { color: #555; font-size: 13px; padding: 16px 18px; font-style: italic; }
+
+  /* ── Inference progress ─────────────────────────────────── */
+  .inference-section {
+    padding: 10px 18px 14px;
+    border-top: 1px solid #2a2a2a;
+  }
+  .inference-header {
+    font-size: 11px; color: #555; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 6px 0; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .inference-header .inference-eta {
+    color: #a78bfa; font-weight: 500; text-transform: none;
+    letter-spacing: 0; font-size: 12px;
+  }
+  .inference-totals {
+    display: flex; gap: 16px; margin-bottom: 10px; flex-wrap: wrap;
+    font-size: 12px;
+  }
+  .inference-totals .inf-stat {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .inference-totals .inf-stat .label { color: #666; }
+  .inference-totals .inf-stat .value { color: #ccc; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .inference-totals .inf-stat .value.failed { color: #f87171; }
+  .inference-overall-bar { margin-bottom: 12px; }
+  .inference-cam-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+  }
+  .inference-cam-card {
+    background: #151515; border: 1px solid #252525; border-radius: 6px;
+    padding: 10px 12px;
+  }
+  .inference-cam-card .cam-name {
+    font-size: 12px; font-weight: 600; color: #ccc; margin-bottom: 6px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .inference-cam-card .cam-name .cam-gpu {
+    font-size: 10px; color: #555; font-weight: 400;
+  }
+  .inference-cam-card .cam-stats {
+    display: flex; gap: 10px; font-size: 11px; color: #666; margin-top: 6px;
+    flex-wrap: wrap;
+  }
+  .inference-cam-card .cam-stats .val { color: #aaa; font-weight: 500; }
+
+  /* ── Settings modal ──────────────────────────────────────────── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: #000a; z-index: 200;
+    justify-content: center; align-items: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1a1a1a; border: 1px solid #3a3a3a; border-radius: 10px;
+    padding: 24px; width: 400px; max-width: 90vw;
+  }
+  .modal h3 { font-size: 16px; color: #fff; margin-bottom: 16px; }
+  .modal label { font-size: 12px; color: #999; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  .modal input {
+    background: #0f0f0f; color: #e0e0e0; border: 1px solid #3a3a3a;
+    border-radius: 6px; padding: 8px 12px; font-size: 13px; outline: none;
+    font-family: inherit; width: 100%;
+  }
+  .modal input:focus { border-color: #667eea; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .danger-zone { margin-top: 16px; padding-top: 12px; border-top: 1px solid #2a2a2a; }
+  .danger-zone .btn { color: #f87171; border-color: #f8717133; }
+  .danger-zone .btn:hover { background: #f8717111; }
+
+  /* ── Responsive ──────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .gpu-row { grid-template-columns: 1fr; gap: 6px; }
+    .machine-meta { flex-direction: column; gap: 4px; }
+    .proc-row { grid-template-columns: 1fr; gap: 2px; }
+    .header { flex-direction: column; gap: 8px; }
+    .container { padding: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<div class="header">
+  <div class="header-left">
+    <h1>GPU Dashboard</h1>
+    <span class="status-dot" id="statusDot"></span>
+    <span class="status-text" id="statusText"></span>
+  </div>
+  <div class="header-actions">
+    <span class="status-text" id="refreshText"></span>
+    <button class="btn btn-secondary btn-sm" onclick="fetchData()" title="Refresh now">Refresh</button>
+    <button class="btn btn-secondary btn-sm" onclick="openSettings()">Settings</button>
+  </div>
+</div>
+
+<!-- ── Main content ────────────────────────────────────────────────────────── -->
+<div class="container">
+  <!-- Welcome / setup screen -->
+  <div id="welcomeScreen" class="welcome" style="display:none;">
+    <h2>GPU Dashboard</h2>
+    <p>Monitor GPUs across all your workstations from one page. Enter your Gist ID to get started.</p>
+    <div class="setup-form">
+      <label>
+        GitHub Gist ID
+        <input type="text" id="setupGistId" placeholder="e.g. a1b2c3d4e5f6..." autocomplete="off">
+      </label>
+      <label>
+        GitHub Token <span style="color:#555">(optional, increases rate limit)</span>
+        <input type="password" id="setupToken" placeholder="ghp_..." autocomplete="off">
+      </label>
+      <button class="btn btn-primary" onclick="saveSetup()" style="margin-top:6px;">Connect</button>
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dashboard" style="display:none;">
+    <div class="summary-bar" id="summaryBar"></div>
+    <div class="machines" id="machinesList"></div>
+  </div>
+</div>
+
+<!-- ── Settings modal ──────────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>Settings</h3>
+    <label>
+      GitHub Gist ID
+      <input type="text" id="settingsGistId" autocomplete="off">
+    </label>
+    <label>
+      GitHub Token <span style="color:#555">(optional)</span>
+      <input type="password" id="settingsToken" autocomplete="off">
+    </label>
+    <label>
+      Refresh interval (seconds)
+      <input type="number" id="settingsInterval" min="10" max="300" value="30">
+    </label>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeSettings()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+    </div>
+    <div class="danger-zone">
+      <button class="btn btn-secondary btn-sm" onclick="resetConfig()">Reset all settings</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+
+let config = {
+  gistId: localStorage.getItem('gpu_dash_gist_id') || '',
+  token: localStorage.getItem('gpu_dash_token') || '',
+  interval: parseInt(localStorage.getItem('gpu_dash_interval') || '30', 10),
+};
+let machines = {};
+let timer = null;
+let lastFetchOk = false;
+
+// ── Init ───────────────────────────────────────────────────────────────────
+
+function init() {
+  if (!config.gistId) {
+    showWelcome();
+  } else {
+    showDashboard();
+    fetchData();
+    startPolling();
+  }
+
+  // Pause polling when tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPolling();
+    } else {
+      fetchData();
+      startPolling();
+    }
+  });
+}
+
+function showWelcome() {
+  document.getElementById('welcomeScreen').style.display = '';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('statusDot').className = 'status-dot';
+  document.getElementById('statusText').textContent = '';
+  document.getElementById('refreshText').textContent = '';
+}
+
+function showDashboard() {
+  document.getElementById('welcomeScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = '';
+}
+
+function saveSetup() {
+  const gistId = document.getElementById('setupGistId').value.trim();
+  const token = document.getElementById('setupToken').value.trim();
+  if (!gistId) return;
+  config.gistId = gistId;
+  config.token = token;
+  localStorage.setItem('gpu_dash_gist_id', gistId);
+  if (token) localStorage.setItem('gpu_dash_token', token);
+  showDashboard();
+  fetchData();
+  startPolling();
+}
+
+// ── Polling ────────────────────────────────────────────────────────────────
+
+function startPolling() {
+  stopPolling();
+  timer = setInterval(fetchData, config.interval * 1000);
+}
+
+function stopPolling() {
+  if (timer) { clearInterval(timer); timer = null; }
+}
+
+// ── Fetch from Gist ────────────────────────────────────────────────────────
+
+async function fetchData() {
+  if (!config.gistId) return;
+
+  const dot = document.getElementById('statusDot');
+  const statusEl = document.getElementById('statusText');
+  const refreshEl = document.getElementById('refreshText');
+
+  try {
+    const headers = { 'Accept': 'application/vnd.github.v3+json' };
+    if (config.token) headers['Authorization'] = `token ${config.token}`;
+
+    const resp = await fetch(`https://api.github.com/gists/${config.gistId}`, { headers });
+
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+
+    const gist = await resp.json();
+    machines = {};
+
+    for (const [filename, file] of Object.entries(gist.files)) {
+      if (!filename.startsWith('gpu-status-')) continue;
+      try {
+        const data = JSON.parse(file.content);
+        const key = data.machine?.hostname || filename;
+        machines[key] = data;
+      } catch (e) {
+        console.warn(`Failed to parse ${filename}:`, e);
+      }
+    }
+
+    lastFetchOk = true;
+    dot.className = 'status-dot connected';
+    statusEl.textContent = `${Object.keys(machines).length} machine${Object.keys(machines).length !== 1 ? 's' : ''}`;
+    refreshEl.textContent = `every ${config.interval}s`;
+
+    renderDashboard();
+  } catch (e) {
+    lastFetchOk = false;
+    dot.className = 'status-dot disconnected';
+    statusEl.textContent = `Error: ${e.message}`;
+    console.error('Fetch error:', e);
+  }
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+
+function renderDashboard() {
+  renderSummary();
+  renderMachines();
+}
+
+function renderSummary() {
+  const bar = document.getElementById('summaryBar');
+  const all = Object.values(machines);
+
+  const totalGpus = all.reduce((s, m) => s + (m.gpus?.length || 0), 0);
+  const totalProcesses = all.reduce((s, m) => {
+    return s + (m.gpus || []).reduce((ps, g) => ps + (g.processes?.length || 0), 0);
+  }, 0);
+  const avgGpuUtil = totalGpus > 0
+    ? Math.round(all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.utilization_percent || 0), 0), 0) / totalGpus)
+    : 0;
+  const totalVramUsed = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_used_mb || 0), 0), 0);
+  const totalVramTotal = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_total_mb || 0), 0), 0);
+
+  // Inference totals across all machines
+  const infMachines = all.filter(m => m.inference?.totals);
+  let infHtml = '';
+  if (infMachines.length > 0) {
+    const infDone = infMachines.reduce((s, m) => s + (m.inference.totals.videos_done || 0), 0);
+    const infTotal = infMachines.reduce((s, m) => s + (m.inference.totals.videos_total || 0), 0);
+    const infPct = infTotal > 0 ? (infDone / infTotal * 100).toFixed(1) : '0.0';
+    infHtml = `
+      <div class="summary-card">
+        <div class="val" style="color:#a78bfa;">${infPct}%</div>
+        <div class="lbl">Inference</div>
+      </div>
+    `;
+  }
+
+  bar.innerHTML = `
+    <div class="summary-card">
+      <div class="val" style="color:#fff;">${all.length}</div>
+      <div class="lbl">Machines</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:#667eea;">${totalGpus}</div>
+      <div class="lbl">GPUs</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:${barColor(avgGpuUtil)};">${avgGpuUtil}%</div>
+      <div class="lbl">Avg GPU Util</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:#ccc;">${formatGB(totalVramUsed)} / ${formatGB(totalVramTotal)}</div>
+      <div class="lbl">VRAM Used</div>
+    </div>
+    <div class="summary-card">
+      <div class="val" style="color:${totalProcesses > 0 ? '#4ade80' : '#555'};">${totalProcesses}</div>
+      <div class="lbl">Running Jobs</div>
+    </div>
+    ${infHtml}
+  `;
+}
+
+function renderMachines() {
+  const list = document.getElementById('machinesList');
+  // Sort: most recently updated first
+  const sorted = Object.values(machines).sort((a, b) => {
+    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
+  });
+
+  list.innerHTML = sorted.map(m => renderMachineCard(m)).join('');
+}
+
+function renderMachineCard(m) {
+  const age = machineAge(m.timestamp);
+  const freshnessClass = age.seconds < 120 ? 'fresh' : age.seconds < 600 ? 'warm' : 'stale';
+  const cardClass = age.seconds > 600 ? 'stale' : age.seconds > 1800 ? 'offline' : '';
+  const machineType = m.machine?.type || 'workstation';
+  const label = m.machine?.label || m.machine?.hostname || '?';
+  const hostname = m.machine?.hostname || '';
+
+  const gpus = m.gpus || [];
+  const allProcesses = gpus.flatMap(g => (g.processes || []).map(p => ({ ...p, gpu_index: g.index })));
+
+  return `
+    <div class="machine-card ${cardClass}">
+      <div class="machine-header">
+        <div class="machine-title">
+          <h2>${esc(label)}</h2>
+          <span class="machine-type ${machineType}">${machineType}</span>
+          ${hostname !== label ? `<span style="color:#555;font-size:12px;">${esc(hostname)}</span>` : ''}
+        </div>
+        <div class="machine-meta">
+          <span class="freshness ${freshnessClass}">${age.text}</span>
+          ${m.uptime_seconds ? `<span>uptime ${formatDuration(m.uptime_seconds)}</span>` : ''}
+        </div>
+      </div>
+
+      <div class="sys-stats">
+        <div class="sys-stat">
+          <span class="label">CPU</span>
+          <span class="value">${m.cpu?.percent ?? '?'}%</span>
+          <span style="color:#555;font-size:11px;">(${m.cpu?.cores_physical ?? '?'}C/${m.cpu?.cores_logical ?? '?'}T)</span>
+        </div>
+        <div class="sys-stat">
+          <span class="label">RAM</span>
+          <span class="value">${m.ram?.used_gb ?? '?'} / ${m.ram?.total_gb ?? '?'} GB</span>
+          <span style="color:#555;font-size:11px;">(${m.ram?.percent ?? '?'}%)</span>
+        </div>
+      </div>
+
+      ${gpus.length > 0 ? `
+        <div class="gpu-list">
+          ${gpus.map(g => renderGpuRow(g)).join('')}
+        </div>
+      ` : '<div class="no-gpus">No GPUs detected</div>'}
+
+      ${m.inference ? renderInference(m.inference) : ''}
+
+      ${allProcesses.length > 0 ? `
+        <div class="processes">
+          <div class="processes-header">Running Jobs (${allProcesses.length})</div>
+          ${allProcesses.map(p => renderProcess(p)).join('')}
+        </div>
+      ` : `
+        <div class="processes">
+          <div class="no-processes">No GPU processes running</div>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function renderGpuRow(g) {
+  const util = g.utilization_percent || 0;
+  const memUsed = g.memory_used_mb || 0;
+  const memTotal = g.memory_total_mb || 1;
+  const memPct = Math.round(memUsed / memTotal * 100);
+  const temp = g.temperature_c;
+  const name = shortenGpuName(g.name || 'Unknown');
+
+  let powerStr = '';
+  if (g.power_draw_w != null && g.power_limit_w != null) {
+    powerStr = `${Math.round(g.power_draw_w)}/${Math.round(g.power_limit_w)}W`;
+  }
+
+  return `
+    <div class="gpu-row">
+      <div>
+        <span class="gpu-idx">GPU ${g.index}</span>
+        <div class="gpu-name" title="${esc(g.name || '')}">${esc(name)}</div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>Util</span><span class="val">${util}%</span></div>
+        <div class="bar-track"><div class="bar-fill ${barColorClass(util)}" style="width:${util}%"></div></div>
+      </div>
+      <div class="bar-group">
+        <div class="bar-label"><span>VRAM</span><span class="val">${formatMB(memUsed)} / ${formatMB(memTotal)}</span></div>
+        <div class="bar-track"><div class="bar-fill ${barColorClass(memPct)}" style="width:${memPct}%"></div></div>
+      </div>
+      <div>
+        ${temp != null ? `<span class="gpu-temp ${tempClass(temp)}">${temp}&deg;C</span>` : ''}
+        ${powerStr ? `<span style="color:#555;font-size:11px;margin-left:8px;">${powerStr}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderProcess(p) {
+  return `
+    <div class="proc-row">
+      <span class="proc-gpu-badge">GPU ${p.gpu_index ?? '?'}</span>
+      <span class="proc-cmd" title="${esc(p.command || '?')}">${esc(p.command || '?')}</span>
+      <span class="proc-mem">${formatMB(p.gpu_memory_mb || 0)}</span>
+      <span class="proc-user">${esc(p.user || '?')}</span>
+      <span class="proc-runtime">${esc(p.runtime_human || '?')}</span>
+    </div>
+  `;
+}
+
+// ── Inference rendering ─────────────────────────────────────────────────────
+
+function renderInference(inf) {
+  if (!inf || !inf.totals) return '';
+
+  const t = inf.totals;
+  const pct = t.videos_total > 0 ? (t.videos_done / t.videos_total * 100) : 0;
+  const pctStr = pct.toFixed(1);
+  const etaStr = inf.wall_eta_hours != null
+    ? (inf.wall_eta_hours < 24
+        ? `${inf.wall_eta_hours.toFixed(1)}h remaining`
+        : `${(inf.wall_eta_hours / 24).toFixed(1)} days remaining`)
+    : '';
+
+  const cameras = inf.cameras || {};
+  const camKeys = Object.keys(cameras).sort();
+
+  return `
+    <div class="inference-section">
+      <div class="inference-header">
+        <span>Inference Progress</span>
+        ${etaStr ? `<span class="inference-eta">${esc(etaStr)}</span>` : ''}
+      </div>
+
+      <div class="inference-totals">
+        <div class="inf-stat">
+          <span class="label">Videos</span>
+          <span class="value">${t.videos_done.toLocaleString()} / ${t.videos_total.toLocaleString()}</span>
+        </div>
+        <div class="inf-stat">
+          <span class="label">Progress</span>
+          <span class="value">${pctStr}%</span>
+        </div>
+        <div class="inf-stat">
+          <span class="label">Avg FPS</span>
+          <span class="value">${t.avg_fps?.toFixed(1) ?? '?'}</span>
+        </div>
+        ${t.failed > 0 ? `
+          <div class="inf-stat">
+            <span class="label">Failed</span>
+            <span class="value failed">${t.failed}</span>
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="inference-overall-bar">
+        <div class="bar-group">
+          <div class="bar-label"><span>Overall</span><span class="val">${pctStr}%</span></div>
+          <div class="bar-track"><div class="bar-fill ${barColorInference(pct)}" style="width:${Math.min(pct, 100)}%"></div></div>
+        </div>
+      </div>
+
+      <div class="inference-cam-grid">
+        ${camKeys.map(cam => renderInferenceCam(cam, cameras[cam])).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderInferenceCam(name, cam) {
+  const pct = cam.videos_total > 0 ? (cam.videos_done / cam.videos_total * 100) : 0;
+  const etaStr = cam.eta_hours != null
+    ? (cam.eta_hours < 24 ? `${cam.eta_hours.toFixed(1)}h` : `${(cam.eta_hours / 24).toFixed(1)}d`)
+    : '';
+  return `
+    <div class="inference-cam-card">
+      <div class="cam-name">
+        <span>${esc(name)}${cam.gpu != null ? ` <span class="cam-gpu">GPU ${cam.gpu}</span>` : ''}</span>
+        <span style="color:#888;font-size:11px;">${pct.toFixed(1)}%</span>
+      </div>
+      <div class="bar-group">
+        <div class="bar-track"><div class="bar-fill ${barColorInference(pct)}" style="width:${Math.min(pct, 100)}%"></div></div>
+      </div>
+      <div class="cam-stats">
+        <span><span class="val">${cam.videos_done.toLocaleString()}</span> / ${cam.videos_total.toLocaleString()}</span>
+        ${cam.avg_fps ? `<span><span class="val">${cam.avg_fps.toFixed(1)}</span> fps</span>` : ''}
+        ${cam.failed > 0 ? `<span style="color:#f87171;">${cam.failed} failed</span>` : ''}
+        ${etaStr ? `<span>${etaStr}</span>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function barColorInference(pct) {
+  if (pct >= 80) return 'green';
+  if (pct >= 40) return 'yellow';
+  return 'red';
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function machineAge(timestamp) {
+  if (!timestamp) return { seconds: Infinity, text: 'never' };
+  const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
+  if (seconds < 0) return { seconds: 0, text: 'just now' };
+  if (seconds < 60) return { seconds, text: `${seconds}s ago` };
+  if (seconds < 3600) return { seconds, text: `${Math.floor(seconds / 60)}m ago` };
+  if (seconds < 86400) return { seconds, text: `${Math.floor(seconds / 3600)}h ago` };
+  return { seconds, text: `${Math.floor(seconds / 86400)}d ago` };
+}
+
+function formatDuration(s) {
+  s = Math.floor(s);
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  const h = Math.floor(s / 3600);
+  if (h < 24) return `${h}h ${Math.floor((s % 3600) / 60)}m`;
+  const d = Math.floor(h / 24);
+  return `${d}d ${h % 24}h`;
+}
+
+function formatMB(mb) {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  return `${Math.round(mb)} MB`;
+}
+
+function formatGB(mb) {
+  return `${(mb / 1024).toFixed(0)} GB`;
+}
+
+function barColor(pct) {
+  if (pct < 50) return '#4ade80';
+  if (pct < 80) return '#facc15';
+  return '#f87171';
+}
+
+function barColorClass(pct) {
+  if (pct < 50) return 'green';
+  if (pct < 80) return 'yellow';
+  return 'red';
+}
+
+function tempClass(t) {
+  if (t < 60) return 'cool';
+  if (t < 80) return 'warm';
+  return 'hot';
+}
+
+function shortenGpuName(name) {
+  // "NVIDIA RTX PRO 6000 Blackwell" → "RTX PRO 6000"
+  return name
+    .replace(/^NVIDIA\s+/i, '')
+    .replace(/\s+(Max-Q|Laptop|Desktop|Mobile)$/i, '')
+    .replace(/\s+Blackwell$/i, '')
+    .replace(/\s+Ada$/i, '')
+    .replace(/\s+Ampere$/i, '')
+    .replace(/\s+Hopper$/i, '');
+}
+
+function esc(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+function openSettings() {
+  document.getElementById('settingsGistId').value = config.gistId;
+  document.getElementById('settingsToken').value = config.token;
+  document.getElementById('settingsInterval').value = config.interval;
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
+}
+
+function saveSettings() {
+  const gistId = document.getElementById('settingsGistId').value.trim();
+  const token = document.getElementById('settingsToken').value.trim();
+  const interval = parseInt(document.getElementById('settingsInterval').value, 10) || 30;
+
+  if (!gistId) return;
+
+  config.gistId = gistId;
+  config.token = token;
+  config.interval = Math.max(10, Math.min(300, interval));
+
+  localStorage.setItem('gpu_dash_gist_id', config.gistId);
+  localStorage.setItem('gpu_dash_token', config.token);
+  localStorage.setItem('gpu_dash_interval', String(config.interval));
+
+  closeSettings();
+  fetchData();
+  startPolling();
+}
+
+function resetConfig() {
+  if (!confirm('Reset all settings? You will need to re-enter your Gist ID.')) return;
+  localStorage.removeItem('gpu_dash_gist_id');
+  localStorage.removeItem('gpu_dash_token');
+  localStorage.removeItem('gpu_dash_interval');
+  config = { gistId: '', token: '', interval: 30 };
+  machines = {};
+  stopPolling();
+  closeSettings();
+  showWelcome();
+}
+
+// Close modal on overlay click
+document.getElementById('settingsModal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeSettings();
+});
+
+// ── Start ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

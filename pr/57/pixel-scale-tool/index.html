@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Scale Tool - vibes</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .subtitle a {
+            color: #6c9fff;
+            text-decoration: none;
+        }
+
+        .instructions {
+            background: #252540;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin: 5px 0;
+            color: #bbb;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .file-input-wrapper {
+            position: relative;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .btn {
+            background: #6c9fff;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #5a8ae6;
+        }
+
+        .btn:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #444;
+        }
+
+        .btn-secondary:hover {
+            background: #555;
+        }
+
+        .canvas-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        #canvas {
+            display: block;
+            max-width: 100%;
+            cursor: crosshair;
+        }
+
+        .canvas-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 400px;
+            color: #666;
+            font-size: 18px;
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .result-card {
+            background: #252540;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .result-card label {
+            display: block;
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .result-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #6c9fff;
+        }
+
+        .result-card input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 16px;
+        }
+
+        .result-card input:focus {
+            outline: none;
+            border-color: #6c9fff;
+        }
+
+        .result-card select {
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 16px;
+            margin-left: 10px;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+        }
+
+        .input-row input {
+            flex: 1;
+        }
+
+        .export-section {
+            background: #252540;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .export-section h3 {
+            margin-bottom: 15px;
+            color: #fff;
+        }
+
+        .code-block {
+            background: #1a1a2e;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            margin-bottom: 15px;
+        }
+
+        .code-block .comment {
+            color: #666;
+        }
+
+        .code-block .keyword {
+            color: #c678dd;
+        }
+
+        .code-block .string {
+            color: #98c379;
+        }
+
+        .code-block .number {
+            color: #d19a66;
+        }
+
+        .copy-feedback {
+            color: #4ade80;
+            font-size: 14px;
+            margin-left: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .copy-feedback.show {
+            opacity: 1;
+        }
+
+        .point-marker {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            border: 2px solid #fff;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        .point-marker.second {
+            background: #4ecdc4;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        footer a {
+            color: #6c9fff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pixel Scale Tool</h1>
+        <p class="subtitle">Convert pixel measurements to real-world units | <a href="https://github.com/talmolab/vibes">vibes</a></p>
+
+        <div class="instructions">
+            <ol>
+                <li><strong>Load</strong> a video or image file</li>
+                <li><strong>Click two points</strong> on a known reference (ruler, cage edge, etc.)</li>
+                <li><strong>Enter the real distance</strong> between those points</li>
+                <li><strong>Copy</strong> the Python code to use in your analysis</li>
+            </ol>
+        </div>
+
+        <div class="controls">
+            <div class="file-input-wrapper">
+                <button class="btn">Load Video/Image</button>
+                <input type="file" id="fileInput" accept="video/*,image/*">
+            </div>
+            <button class="btn btn-secondary" id="resetBtn" disabled>Reset Points</button>
+            <button class="btn btn-secondary" id="prevFrame" disabled>Previous Frame</button>
+            <button class="btn btn-secondary" id="nextFrame" disabled>Next Frame</button>
+            <span id="frameInfo" style="color: #888;"></span>
+        </div>
+
+        <div class="canvas-container" id="canvasContainer">
+            <div class="canvas-placeholder" id="placeholder">
+                Load a video or image to get started
+            </div>
+            <canvas id="canvas" style="display: none;"></canvas>
+        </div>
+
+        <div class="results">
+            <div class="result-card">
+                <label>Point 1 (pixels)</label>
+                <div class="value" id="point1">-</div>
+            </div>
+            <div class="result-card">
+                <label>Point 2 (pixels)</label>
+                <div class="value" id="point2">-</div>
+            </div>
+            <div class="result-card">
+                <label>Pixel Distance</label>
+                <div class="value" id="pixelDistance">-</div>
+            </div>
+            <div class="result-card">
+                <label>Real Distance</label>
+                <div class="input-row">
+                    <input type="number" id="realDistance" placeholder="Enter distance" step="any">
+                    <select id="unit">
+                        <option value="cm">cm</option>
+                        <option value="mm">mm</option>
+                        <option value="m">m</option>
+                        <option value="in">in</option>
+                    </select>
+                </div>
+            </div>
+            <div class="result-card">
+                <label>Scale Factor</label>
+                <div class="value" id="scaleFactor">-</div>
+            </div>
+            <div class="result-card">
+                <label>To convert: multiply px by</label>
+                <div class="value" id="conversionFactor">-</div>
+            </div>
+        </div>
+
+        <div class="export-section">
+            <h3>Python Code</h3>
+            <div class="code-block" id="codeBlock">
+                <span class="comment"># Click two points and enter real distance to generate code</span>
+            </div>
+            <button class="btn" id="copyBtn" disabled>Copy Code</button>
+            <span class="copy-feedback" id="copyFeedback">Copied!</span>
+        </div>
+
+        <footer>
+            <p>Part of <a href="https://github.com/talmolab/vibes">vibes</a> - Tools for behavioral neuroscience</p>
+        </footer>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const placeholder = document.getElementById('placeholder');
+        const fileInput = document.getElementById('fileInput');
+        const resetBtn = document.getElementById('resetBtn');
+        const prevFrameBtn = document.getElementById('prevFrame');
+        const nextFrameBtn = document.getElementById('nextFrame');
+        const frameInfo = document.getElementById('frameInfo');
+        const realDistanceInput = document.getElementById('realDistance');
+        const unitSelect = document.getElementById('unit');
+        const copyBtn = document.getElementById('copyBtn');
+        const copyFeedback = document.getElementById('copyFeedback');
+
+        let points = [];
+        let currentImage = null;
+        let video = null;
+        let currentFrame = 0;
+        let totalFrames = 0;
+        let displayScale = 1;
+
+        // File loading
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            resetPoints();
+
+            if (file.type.startsWith('video/')) {
+                loadVideo(file);
+            } else if (file.type.startsWith('image/')) {
+                loadImage(file);
+            }
+        });
+
+        function loadImage(file) {
+            const img = new Image();
+            img.onload = () => {
+                currentImage = img;
+                video = null;
+                setupCanvas(img.width, img.height);
+                drawFrame();
+                prevFrameBtn.disabled = true;
+                nextFrameBtn.disabled = true;
+                frameInfo.textContent = '';
+            };
+            img.src = URL.createObjectURL(file);
+        }
+
+        function loadVideo(file) {
+            video = document.createElement('video');
+            video.src = URL.createObjectURL(file);
+            video.muted = true;
+
+            video.onloadedmetadata = () => {
+                setupCanvas(video.videoWidth, video.videoHeight);
+                // Estimate total frames (approximate)
+                totalFrames = Math.floor(video.duration * 30); // Assume 30fps
+                currentFrame = 0;
+                seekToFrame(0);
+                prevFrameBtn.disabled = false;
+                nextFrameBtn.disabled = false;
+            };
+        }
+
+        function setupCanvas(width, height) {
+            // Scale down if too large
+            const maxWidth = canvasContainer.clientWidth;
+            displayScale = Math.min(1, maxWidth / width);
+
+            canvas.width = width;
+            canvas.height = height;
+            canvas.style.width = (width * displayScale) + 'px';
+            canvas.style.height = (height * displayScale) + 'px';
+
+            placeholder.style.display = 'none';
+            canvas.style.display = 'block';
+            resetBtn.disabled = false;
+        }
+
+        function seekToFrame(frameNum) {
+            if (!video) return;
+            currentFrame = Math.max(0, Math.min(frameNum, totalFrames - 1));
+            // Approximate: assume 30fps
+            video.currentTime = currentFrame / 30;
+            video.onseeked = () => {
+                currentImage = video;
+                drawFrame();
+                frameInfo.textContent = `Frame: ${currentFrame}`;
+            };
+        }
+
+        prevFrameBtn.addEventListener('click', () => seekToFrame(currentFrame - 1));
+        nextFrameBtn.addEventListener('click', () => seekToFrame(currentFrame + 1));
+
+        function drawFrame() {
+            if (!currentImage) return;
+
+            if (currentImage === video) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(currentImage, 0, 0);
+            }
+
+            // Draw points and line
+            if (points.length >= 1) {
+                drawPoint(points[0], '#ff6b6b');
+            }
+            if (points.length >= 2) {
+                drawPoint(points[1], '#4ecdc4');
+                drawLine(points[0], points[1]);
+            }
+        }
+
+        function drawPoint(pt, color) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        function drawLine(p1, p2) {
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw distance label at midpoint
+            const midX = (p1.x + p2.x) / 2;
+            const midY = (p1.y + p2.y) / 2;
+            const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(midX - 40, midY - 12, 80, 24);
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(`${dist.toFixed(1)} px`, midX, midY);
+        }
+
+        // Canvas click handling
+        canvas.addEventListener('click', (e) => {
+            if (!currentImage) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / displayScale;
+            const y = (e.clientY - rect.top) / displayScale;
+
+            if (points.length < 2) {
+                points.push({ x, y });
+                drawFrame();
+                updateResults();
+            }
+        });
+
+        function resetPoints() {
+            points = [];
+            drawFrame();
+            updateResults();
+        }
+
+        resetBtn.addEventListener('click', resetPoints);
+
+        function updateResults() {
+            document.getElementById('point1').textContent =
+                points.length >= 1 ? `(${points[0].x.toFixed(1)}, ${points[0].y.toFixed(1)})` : '-';
+
+            document.getElementById('point2').textContent =
+                points.length >= 2 ? `(${points[1].x.toFixed(1)}, ${points[1].y.toFixed(1)})` : '-';
+
+            if (points.length >= 2) {
+                const pixelDist = Math.sqrt(
+                    (points[1].x - points[0].x) ** 2 +
+                    (points[1].y - points[0].y) ** 2
+                );
+                document.getElementById('pixelDistance').textContent = pixelDist.toFixed(2) + ' px';
+
+                updateScale(pixelDist);
+            } else {
+                document.getElementById('pixelDistance').textContent = '-';
+                document.getElementById('scaleFactor').textContent = '-';
+                document.getElementById('conversionFactor').textContent = '-';
+                updateCodeBlock(null);
+            }
+        }
+
+        function updateScale(pixelDist) {
+            const realDist = parseFloat(realDistanceInput.value);
+            const unit = unitSelect.value;
+
+            if (realDist && realDist > 0) {
+                const pxPerUnit = pixelDist / realDist;
+                const unitPerPx = realDist / pixelDist;
+
+                document.getElementById('scaleFactor').textContent =
+                    `${pxPerUnit.toFixed(2)} px/${unit}`;
+                document.getElementById('conversionFactor').textContent =
+                    `${unitPerPx.toFixed(6)} ${unit}/px`;
+
+                updateCodeBlock({
+                    point1: points[0],
+                    point2: points[1],
+                    pixelDist,
+                    realDist,
+                    unit,
+                    pxPerUnit
+                });
+                copyBtn.disabled = false;
+            } else {
+                document.getElementById('scaleFactor').textContent = '-';
+                document.getElementById('conversionFactor').textContent = '-';
+                updateCodeBlock(null);
+                copyBtn.disabled = true;
+            }
+        }
+
+        realDistanceInput.addEventListener('input', () => {
+            if (points.length >= 2) {
+                const pixelDist = Math.sqrt(
+                    (points[1].x - points[0].x) ** 2 +
+                    (points[1].y - points[0].y) ** 2
+                );
+                updateScale(pixelDist);
+            }
+        });
+
+        unitSelect.addEventListener('change', () => {
+            if (points.length >= 2) {
+                const pixelDist = Math.sqrt(
+                    (points[1].x - points[0].x) ** 2 +
+                    (points[1].y - points[0].y) ** 2
+                );
+                updateScale(pixelDist);
+            }
+        });
+
+        function updateCodeBlock(data) {
+            const codeBlock = document.getElementById('codeBlock');
+
+            if (!data) {
+                codeBlock.innerHTML = '<span class="comment"># Click two points and enter real distance to generate code</span>';
+                return;
+            }
+
+            const code = `<span class="comment"># Pixel Scale Calibration</span>
+<span class="comment"># Reference: ${data.realDist} ${data.unit} = ${data.pixelDist.toFixed(1)} pixels</span>
+<span class="comment"># Points: (${data.point1.x.toFixed(1)}, ${data.point1.y.toFixed(1)}) to (${data.point2.x.toFixed(1)}, ${data.point2.y.toFixed(1)})</span>
+
+px_per_${data.unit} = <span class="number">${data.pxPerUnit.toFixed(4)}</span>
+${data.unit}_per_px = <span class="number">${(1/data.pxPerUnit).toFixed(6)}</span>
+
+<span class="keyword">def</span> <span class="function">px_to_${data.unit}</span>(pixels):
+    <span class="keyword">return</span> pixels / px_per_${data.unit}
+
+<span class="keyword">def</span> <span class="function">${data.unit}_to_px</span>(${data.unit}):
+    <span class="keyword">return</span> ${data.unit} * px_per_${data.unit}
+
+<span class="comment"># Example usage</span>
+px_to_${data.unit}(<span class="number">100</span>)  <span class="comment"># ${(100 / data.pxPerUnit).toFixed(2)} ${data.unit}</span>`;
+
+            codeBlock.innerHTML = code;
+        }
+
+        copyBtn.addEventListener('click', () => {
+            if (points.length < 2) return;
+
+            const pixelDist = Math.sqrt(
+                (points[1].x - points[0].x) ** 2 +
+                (points[1].y - points[0].y) ** 2
+            );
+            const realDist = parseFloat(realDistanceInput.value);
+            const unit = unitSelect.value;
+            const pxPerUnit = pixelDist / realDist;
+
+            const code = `# Pixel Scale Calibration
+# Reference: ${realDist} ${unit} = ${pixelDist.toFixed(1)} pixels
+# Points: (${points[0].x.toFixed(1)}, ${points[0].y.toFixed(1)}) to (${points[1].x.toFixed(1)}, ${points[1].y.toFixed(1)})
+
+px_per_${unit} = ${pxPerUnit.toFixed(4)}
+${unit}_per_px = ${(1/pxPerUnit).toFixed(6)}
+
+def px_to_${unit}(pixels):
+    return pixels / px_per_${unit}
+
+def ${unit}_to_px(${unit}):
+    return ${unit} * px_per_${unit}
+
+# Example usage
+px_to_${unit}(100)  # ${(100 / pxPerUnit).toFixed(2)} ${unit}`;
+
+            navigator.clipboard.writeText(code).then(() => {
+                copyFeedback.classList.add('show');
+                setTimeout(() => copyFeedback.classList.remove('show'), 2000);
+            });
+        });
+    </script>
+</body>
+</html>
