@@ -20,9 +20,15 @@
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            max-width: 1600px;
-            margin: 0 auto;
+            width: 100%;
         }
+        .container.stacked { grid-template-columns: 1fr; }
+        .layout-toggle {
+            float: right;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .layout-toggle input { margin-right: 4px; }
         .panel {
             background: #0f0f23;
             border-radius: 12px;
@@ -170,7 +176,12 @@
 </head>
 <body>
     <h1>Pose Subspace Analysis</h1>
-    <p class="description">Interactive construction of keypoint subspaces using PCA.</p>
+    <p class="description">
+        Interactive construction of keypoint subspaces using PCA.
+        <label class="layout-toggle">
+            <input type="checkbox" id="stackLayout"> Stack panels (full-width video)
+        </label>
+    </p>
 
     <div class="container">
         <div class="panel">
@@ -212,6 +223,18 @@
                         <option value="angles">Pairwise Angles</option>
                         <option value="normalized">Normalized Keypoints</option>
                     </select>
+                </label>
+            </div>
+
+            <div class="controls">
+                <label>Display:
+                    <select id="displayModeSelect">
+                        <option value="video">Video + Keypoints</option>
+                        <option value="point_light">Point Light</option>
+                    </select>
+                </label>
+                <label id="showConnectionsLabel" style="display:none;">
+                    <input type="checkbox" id="showConnections" checked> Show connections
                 </label>
             </div>
 
@@ -262,6 +285,38 @@
         const keypointSelect = document.getElementById('keypointSelect');
         const modelSelect = document.getElementById('modelSelect');
         const featureSelect = document.getElementById('featureSelect');
+        const displayModeSelect = document.getElementById('displayModeSelect');
+        const showConnections = document.getElementById('showConnections');
+        const showConnectionsLabel = document.getElementById('showConnectionsLabel');
+        const stackLayout = document.getElementById('stackLayout');
+        const container = document.querySelector('.container');
+
+        const POSE_CONNECTIONS = [
+            [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+            [11, 23], [12, 24], [23, 24],
+            [23, 25], [25, 27], [24, 26], [26, 28]
+        ];
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [5, 9], [9, 10], [10, 11], [11, 12],
+            [9, 13], [13, 14], [14, 15], [15, 16],
+            [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]
+        ];
+
+        function getConnections() {
+            const mode = keypointSelect.value;
+            if (mode === 'pose') return POSE_CONNECTIONS;
+            if (mode === 'left_hand' || mode === 'right_hand') return HAND_CONNECTIONS;
+            if (mode === 'both_hands') {
+                // Hand 0 is offset 0, hand 1 is offset 21
+                return [
+                    ...HAND_CONNECTIONS,
+                    ...HAND_CONNECTIONS.map(([i, j]) => [i + 21, j + 21])
+                ];
+            }
+            return [];
+        }
 
         let poseLandmarker = null;
         let handLandmarker = null;
@@ -277,6 +332,59 @@
         function generateFrameColor(index) {
             const hue = (index * 137.508) % 360; // Golden angle for good separation
             return `hsl(${hue}, 70%, 60%)`;
+        }
+
+        // Pre-rendered Gaussian sprite — blit per-keypoint instead of recreating gradients.
+        const GAUSSIAN_SIZE = 64;
+        const gaussianSprite = (() => {
+            const c = document.createElement('canvas');
+            c.width = c.height = GAUSSIAN_SIZE;
+            const g = c.getContext('2d');
+            const r = GAUSSIAN_SIZE / 2;
+            const grad = g.createRadialGradient(r, r, 0, r, r, r);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.135, 'rgba(255,255,255,0.6)');
+            grad.addColorStop(0.32, 'rgba(255,255,255,0.135)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = grad;
+            g.fillRect(0, 0, GAUSSIAN_SIZE, GAUSSIAN_SIZE);
+            return c;
+        })();
+
+        function drawPointLight(context, landmarks, width, height) {
+            context.save();
+            // 1. Black background
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, width, height);
+
+            // 2. Connections first (under default source-over) so additive glow doesn't brighten them
+            if (showConnections.checked) {
+                context.strokeStyle = 'rgba(255,255,255,0.35)';
+                context.lineWidth = Math.max(1, Math.min(width, height) / 400);
+                for (const [i, j] of getConnections()) {
+                    if (landmarks[i] && landmarks[j]) {
+                        context.beginPath();
+                        context.moveTo(landmarks[i].x * width, landmarks[i].y * height);
+                        context.lineTo(landmarks[j].x * width, landmarks[j].y * height);
+                        context.stroke();
+                    }
+                }
+            }
+
+            // 3. Glow points with additive blending
+            context.globalCompositeOperation = 'lighter';
+            const glowSize = Math.max(24, Math.min(width, height) / 12);
+            const half = glowSize / 2;
+            for (const point of landmarks) {
+                context.drawImage(
+                    gaussianSprite,
+                    point.x * width - half,
+                    point.y * height - half,
+                    glowSize,
+                    glowSize
+                );
+            }
+            context.restore();
         }
 
         // Initialize MediaPipe
@@ -366,7 +474,13 @@
             if (!stream) return;
             const now = performance.now();
 
-            ctx.drawImage(video, 0, 0);
+            const mode = displayModeSelect.value;
+            if (mode === 'point_light') {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(video, 0, 0);
+            }
 
             const poseResults = poseLandmarker.detectForVideo(video, now);
             const handResults = handLandmarker.detectForVideo(video, now);
@@ -374,7 +488,11 @@
             currentLandmarks = getLandmarks(poseResults, handResults);
 
             if (currentLandmarks) {
-                drawLandmarks(currentLandmarks);
+                if (mode === 'point_light') {
+                    drawPointLight(ctx, currentLandmarks, canvas.width, canvas.height);
+                } else {
+                    drawLandmarks(currentLandmarks);
+                }
             }
 
             // Project current pose onto PCA if available
@@ -400,15 +518,8 @@
             ctx.fillStyle = '#ff6b9d';
             ctx.lineWidth = 2;
 
-            // Draw connections based on mode
-            const mode = keypointSelect.value;
-            if (mode === 'pose') {
-                const POSE_CONNECTIONS = [
-                    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-                    [11, 23], [12, 24], [23, 24],
-                    [23, 25], [25, 27], [24, 26], [26, 28]
-                ];
-                for (const [i, j] of POSE_CONNECTIONS) {
+            if (showConnections.checked) {
+                for (const [i, j] of getConnections()) {
                     if (landmarks[i] && landmarks[j]) {
                         ctx.beginPath();
                         ctx.moveTo(landmarks[i].x * canvas.width, landmarks[i].y * canvas.height);
@@ -418,7 +529,6 @@
                 }
             }
 
-            // Draw points
             for (const point of landmarks) {
                 ctx.beginPath();
                 ctx.arc(point.x * canvas.width, point.y * canvas.height, 4, 0, 2 * Math.PI);
@@ -717,14 +827,21 @@
         function displayClosestFrame(idx) {
             const frame = capturedFrames[idx];
 
-            // Create a temporary image to get dimensions
+            if (displayModeSelect.value === 'point_light') {
+                const w = canvas.width || 640;
+                const h = canvas.height || 480;
+                closestCanvas.width = w;
+                closestCanvas.height = h;
+                drawPointLight(closestCtx, frame.landmarks, w, h);
+                closestStatus.textContent = `Frame ${idx + 1} (closest match)`;
+                return;
+            }
+
             const img = new Image();
             img.onload = () => {
                 closestCanvas.width = img.width;
                 closestCanvas.height = img.height;
                 closestCtx.drawImage(img, 0, 0);
-
-                // Draw landmarks on top
                 drawLandmarksOnCanvas(closestCtx, frame.landmarks, img.width, img.height);
                 closestStatus.textContent = `Frame ${idx + 1} (closest match)`;
             };
@@ -736,15 +853,8 @@
             context.fillStyle = '#ff6b9d';
             context.lineWidth = 2;
 
-            // Draw connections based on mode
-            const mode = keypointSelect.value;
-            if (mode === 'pose') {
-                const POSE_CONNECTIONS = [
-                    [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
-                    [11, 23], [12, 24], [23, 24],
-                    [23, 25], [25, 27], [24, 26], [26, 28]
-                ];
-                for (const [i, j] of POSE_CONNECTIONS) {
+            if (showConnections.checked) {
+                for (const [i, j] of getConnections()) {
                     if (landmarks[i] && landmarks[j]) {
                         context.beginPath();
                         context.moveTo(landmarks[i].x * width, landmarks[i].y * height);
@@ -754,7 +864,6 @@
                 }
             }
 
-            // Draw points
             for (const point of landmarks) {
                 context.beginPath();
                 context.arc(point.x * width, point.y * height, 4, 0, 2 * Math.PI);
@@ -777,6 +886,15 @@
             handLandmarker = null;
             if (wasRunning) await startCamera();
             else await initLandmarkers();
+        });
+
+        displayModeSelect.addEventListener('change', () => {
+            showConnectionsLabel.style.display =
+                displayModeSelect.value === 'point_light' ? '' : 'none';
+        });
+
+        stackLayout.addEventListener('change', () => {
+            container.classList.toggle('stacked', stackLayout.checked);
         });
 
         // Set up plot hover handlers once (not in draw loop to prevent memory leak)
