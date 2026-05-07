@@ -21,6 +21,7 @@ Monitor GPUs across multiple workstations from a single web page. Lightweight ag
 - Auto-pause when tab is hidden, configurable refresh interval
 - Filter/sort/collapse state persists in localStorage
 - Works with Ubuntu workstations and RunAI pods
+- Slack bot (`/gpu-status`) with personal dashboards and team sharing
 - Dark theme, responsive layout
 
 ## How It Works
@@ -88,6 +89,42 @@ tmux new -d -s gpu-agent "python3 ~/.local/bin/gpu-agent"
 ```
 
 > RunAI workspace restarts wipe everything. Re-run the installer after a restart.
+
+## Slack Integration
+
+Get GPU status directly in Slack with the `/gpu-status` slash command. Uses [Slack Bolt](https://slack.dev/bolt-python/) in Socket Mode — no public URL needed.
+
+![GPU Monitor Slack App](slack-app.png)
+
+### Commands
+
+![Slack Commands](slack-commands.png)
+
+| Command | Description |
+|---------|-------------|
+| `/gpu-status` | Show the shared lab dashboard (all machines) |
+| `/gpu-status mine` | Show your personal dashboard |
+| `/gpu-status register GIST_ID` | Link your Gist ID (public gists) |
+| `/gpu-status register GIST_ID TOKEN` | Link with a GitHub token (private gists) |
+| `/gpu-status unregister` | Remove your linked Gist |
+| `/gpu-status help` | Show all commands |
+
+### Example Output
+
+![Slack Status Report](slack-status.png)
+
+### Setup
+
+1. Create a Slack App with Socket Mode enabled and a `/gpu-status` slash command
+2. Install the bot to your workspace
+3. Run the bot on a machine with access to your Gist:
+   ```bash
+   pip install slack-bolt
+   python3 slack_bot.py
+   ```
+4. Each team member can register their own Gist with `/gpu-status register GIST_ID`
+
+The bot reads GPU data from the same Gist the dashboard uses — no additional infrastructure needed.
 
 ## Agent Usage
 
