@@ -61,15 +61,78 @@
 
   /* ── Summary bar ─────────────────────────────────────────────── */
   .summary-bar {
-    display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+    display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
   }
   .summary-card {
-    flex: 1; min-width: 120px; padding: 12px 16px;
+    flex: 1; min-width: 130px; padding: 12px 16px;
     background: #1a1a1a; border-radius: 8px; border: 1px solid #2a2a2a;
     text-align: center;
   }
   .summary-card .val { font-size: 28px; font-weight: 700; line-height: 1.2; }
   .summary-card .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #666; margin-top: 2px; }
+  .summary-sub {
+    font-size: 11px; color: #555; margin-top: 4px;
+    display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+  }
+  .summary-sub .st-active { color: #4ade80; }
+  .summary-sub .st-idle { color: #888; }
+  .summary-sub .st-offline { color: #f87171; }
+  .summary-sub .st-ws { color: #667eea; }
+  .summary-sub .st-runai { color: #a78bfa; }
+  .summary-sub .dot { color: #444; }
+
+  /* ── Detail bar (fleet + users) ──────────────────────────────── */
+  .detail-bar {
+    display: flex; gap: 20px; margin-bottom: 12px; flex-wrap: wrap;
+    padding: 14px 18px;
+    background: #1a1a1a; border-radius: 8px; border: 1px solid #2a2a2a;
+  }
+  .detail-section { flex: 1; min-width: 200px; }
+  .detail-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #555; margin-bottom: 8px; display: block;
+  }
+  .fleet-chips, .user-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .fleet-chip {
+    font-size: 11px; padding: 3px 10px; border-radius: 4px;
+    background: #252525; color: #aaa; border: 1px solid #333;
+    font-variant-numeric: tabular-nums;
+  }
+  .no-data-text { font-size: 11px; color: #444; font-style: italic; }
+
+  /* ── Filter bar ──────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;
+  }
+  .filter-pills {
+    display: flex; gap: 2px; background: #1a1a1a; border-radius: 6px;
+    border: 1px solid #2a2a2a; padding: 2px;
+  }
+  .filter-pill {
+    padding: 5px 14px; border: none; border-radius: 4px;
+    font-size: 11px; font-weight: 500; background: transparent;
+    color: #888; cursor: pointer; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .filter-pill:hover { color: #ccc; }
+  .filter-pill.active { background: #667eea; color: #fff; }
+  .pill-count { font-size: 10px; opacity: 0.6; }
+  .sort-select {
+    background: #1a1a1a; color: #888; border: 1px solid #2a2a2a;
+    border-radius: 6px; padding: 5px 12px; font-size: 11px;
+    font-family: inherit; outline: none; cursor: pointer;
+  }
+  .sort-select:focus { border-color: #667eea; color: #ccc; }
+  .search-input {
+    background: #1a1a1a; color: #e0e0e0; border: 1px solid #2a2a2a;
+    border-radius: 6px; padding: 5px 12px; font-size: 11px;
+    font-family: inherit; outline: none; min-width: 180px;
+  }
+  .search-input:focus { border-color: #667eea; }
+  .search-input::placeholder { color: #444; }
+  .filter-separator {
+    width: 1px; height: 20px; background: #2a2a2a;
+  }
 
   /* ── Machine cards ───────────────────────────────────────────── */
   .machines { display: flex; flex-direction: column; gap: 16px; }
@@ -85,7 +148,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 14px 18px; background: #151515; border-bottom: 1px solid #2a2a2a;
   }
-  .machine-title { display: flex; align-items: center; gap: 10px; }
+  .machine-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .machine-title h2 { font-size: 15px; font-weight: 600; color: #fff; }
   .machine-type {
     font-size: 10px; padding: 2px 8px; border-radius: 4px;
@@ -93,11 +156,51 @@
   }
   .machine-type.workstation { background: #667eea22; color: #667eea; }
   .machine-type.runai { background: #a78bfa22; color: #a78bfa; }
-  .machine-meta { display: flex; gap: 16px; align-items: center; font-size: 12px; color: #666; }
+  .machine-gpu-info {
+    font-size: 11px; color: #555; padding: 2px 8px;
+    background: #1f1f1f; border-radius: 4px;
+  }
+  .machine-gpu-active-count {
+    font-size: 11px; font-weight: 500;
+  }
+  .machine-gpu-active-count.all-active { color: #4ade80; }
+  .machine-gpu-active-count.some-active { color: #facc15; }
+  .machine-gpu-active-count.none-active { color: #555; }
+  .machine-meta { display: flex; gap: 10px; align-items: center; font-size: 12px; color: #666; }
+  .remove-btn {
+    background: none; border: 1px solid #333; border-radius: 4px; color: #666;
+    font-size: 11px; padding: 2px 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .remove-btn:hover { border-color: #f87171; color: #f87171; }
+  .rename-btn {
+    background: none; border: 1px solid #333; border-radius: 4px; color: #666;
+    font-size: 11px; padding: 2px 8px; cursor: pointer; transition: all 0.15s;
+  }
+  .rename-btn:hover { border-color: #667eea; color: #667eea; }
+  .collapse-btn {
+    background: none; border: 1px solid #333; border-radius: 4px; color: #666;
+    font-size: 11px; padding: 2px 8px; cursor: pointer; transition: all 0.15s;
+    min-width: 20px; text-align: center;
+  }
+  .collapse-btn:hover { border-color: #667eea; color: #667eea; }
+  .drag-handle {
+    cursor: move; user-select: none; padding: 0 6px; color: #555; font-size: 16px;
+  }
+  .drag-handle:hover { color: #888; }
+  .machine-card.dragging { opacity: 0.4; }
+  .machine-card.drag-over { border-top: 3px solid #667eea; }
+  .rename-input {
+    background: #222; border: 1px solid #667eea; border-radius: 4px;
+    color: #fff; padding: 2px 8px; font-size: 15px; font-weight: 600;
+    font-family: inherit; outline: none; width: 200px;
+  }
   .freshness { font-weight: 500; }
   .freshness.fresh { color: #4ade80; }
   .freshness.warm { color: #facc15; }
   .freshness.stale { color: #f87171; }
+
+  .machine-body { overflow: hidden; }
+  .machine-body.collapsed { display: none; }
 
   /* ── System stats row ────────────────────────────────────────── */
   .sys-stats {
@@ -112,13 +215,20 @@
   .gpu-list { padding: 6px 0; }
   .gpu-row {
     display: grid;
-    grid-template-columns: 140px 1fr 1fr auto;
+    grid-template-columns: 160px 1fr 1fr auto;
     gap: 12px; align-items: center;
     padding: 10px 18px;
     border-bottom: 1px solid #1f1f1f;
     font-size: 13px;
   }
   .gpu-row:last-child { border-bottom: none; }
+  .gpu-name-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .gpu-status-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+  .gpu-status-dot.active { background: #4ade80; box-shadow: 0 0 4px #4ade8066; }
+  .gpu-status-dot.idle { background: #444; }
+  .gpu-name-info { min-width: 0; }
   .gpu-name { color: #aaa; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .gpu-idx { color: #555; font-size: 11px; }
 
@@ -237,13 +347,22 @@
   .danger-zone .btn { color: #f87171; border-color: #f8717133; }
   .danger-zone .btn:hover { background: #f8717111; }
 
+  /* ── Empty states ────────────────────────────────────────────── */
+  .no-results {
+    text-align: center; padding: 40px 20px; color: #555;
+    font-size: 13px;
+  }
+
   /* ── Responsive ──────────────────────────────────────────────── */
   @media (max-width: 768px) {
     .gpu-row { grid-template-columns: 1fr; gap: 6px; }
-    .machine-meta { flex-direction: column; gap: 4px; }
+    .machine-meta { flex-wrap: wrap; gap: 6px; }
     .proc-row { grid-template-columns: 1fr; gap: 2px; }
     .header { flex-direction: column; gap: 8px; }
     .container { padding: 12px; }
+    .filter-bar { flex-direction: column; gap: 8px; }
+    .detail-bar { flex-direction: column; }
+    .machine-header { flex-direction: column; gap: 8px; align-items: flex-start; }
   }
 </style>
 </head>
@@ -285,6 +404,8 @@
   <!-- Dashboard -->
   <div id="dashboard" style="display:none;">
     <div class="summary-bar" id="summaryBar"></div>
+    <div id="detailBar"></div>
+    <div id="filterBar"></div>
     <div class="machines" id="machinesList"></div>
   </div>
 </div>
@@ -326,6 +447,10 @@ let config = {
 let machines = {};
 let timer = null;
 let lastFetchOk = false;
+let activeTypeFilter = localStorage.getItem('gpu_dash_filter_type') || 'all';
+let activeSortBy = localStorage.getItem('gpu_dash_sort') || 'recent';
+let searchQuery = '';
+let collapsedCards = JSON.parse(localStorage.getItem('gpu_dash_collapsed') || '{}');
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -338,7 +463,6 @@ function init() {
     startPolling();
   }
 
-  // Pause polling when tab is hidden
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       stopPolling();
@@ -433,159 +557,602 @@ async function fetchData() {
   }
 }
 
+// ── Stats computation ──────────────────────────────────────────────────────
+
+function computeStats() {
+  let all = Object.values(machines);
+  if (activeTypeFilter !== 'all') {
+    all = all.filter(m => (m.machine?.type || 'workstation').toLowerCase() === activeTypeFilter);
+  }
+
+  let wsCount = 0, runaiCount = 0;
+  let totalGpus = 0, activeGpus = 0, idleGpus = 0, offlineGpus = 0;
+  const gpuModels = {};
+  let totalPowerDraw = 0, totalPowerLimit = 0, hasPower = false;
+  let totalVramUsed = 0, totalVramTotal = 0;
+  let utilSum = 0;
+  let totalProcesses = 0;
+  let onlineMachines = 0, staleMachines = 0;
+
+  for (const m of all) {
+    const type = (m.machine?.type || 'workstation').toLowerCase();
+    if (type === 'runai') runaiCount++;
+    else wsCount++;
+
+    const age = machineAge(m.timestamp);
+    const isStale = age.seconds > 600;
+    if (isStale) staleMachines++;
+    else onlineMachines++;
+
+    for (const g of (m.gpus || [])) {
+      totalGpus++;
+
+      const model = shortenGpuName(g.name || 'Unknown');
+      gpuModels[model] = (gpuModels[model] || 0) + 1;
+
+      const hasProcs = g.processes && g.processes.length > 0;
+      if (isStale) offlineGpus++;
+      else if (hasProcs) activeGpus++;
+      else idleGpus++;
+
+      totalVramUsed += (g.memory_used_mb || 0);
+      totalVramTotal += (g.memory_total_mb || 0);
+      utilSum += (g.utilization_peak_percent ?? g.utilization_percent ?? 0);
+
+      if (g.power_draw_w != null) {
+        totalPowerDraw += g.power_draw_w;
+        hasPower = true;
+      }
+      if (g.power_limit_w != null) {
+        totalPowerLimit += g.power_limit_w;
+      }
+
+      totalProcesses += (g.processes || []).length;
+    }
+  }
+
+  const avgUtil = totalGpus > 0 ? Math.round(utilSum / totalGpus) : 0;
+
+  const sortedModels = Object.entries(gpuModels).sort((a, b) => b[1] - a[1]);
+
+  const infMachines = all.filter(m => m.inference?.totals);
+  let infDone = 0, infTotal = 0;
+  if (infMachines.length > 0) {
+    infDone = infMachines.reduce((s, m) => s + (m.inference.totals.videos_done || 0), 0);
+    infTotal = infMachines.reduce((s, m) => s + (m.inference.totals.videos_total || 0), 0);
+  }
+
+  return {
+    totalMachines: all.length, onlineMachines, staleMachines,
+    wsCount, runaiCount,
+    totalGpus, activeGpus, idleGpus, offlineGpus,
+    sortedModels, avgUtil,
+    totalVramUsed, totalVramTotal,
+    totalProcesses,
+    totalPowerDraw: Math.round(totalPowerDraw),
+    totalPowerLimit: Math.round(totalPowerLimit),
+    hasPower,
+    infDone, infTotal,
+    hasInference: infMachines.length > 0,
+  };
+}
+
 // ── Render ──────────────────────────────────────────────────────────────────
 
 function renderDashboard() {
-  renderSummary();
+  const stats = computeStats();
+  renderSummary(stats);
+  renderDetailBar(stats);
+  renderFilterBar(stats);
   renderMachines();
 }
 
-function renderSummary() {
+function renderSummary(stats) {
   const bar = document.getElementById('summaryBar');
-  const all = Object.values(machines);
 
-  const totalGpus = all.reduce((s, m) => s + (m.gpus?.length || 0), 0);
-  const totalProcesses = all.reduce((s, m) => {
-    return s + (m.gpus || []).reduce((ps, g) => ps + (g.processes?.length || 0), 0);
-  }, 0);
-  const avgGpuUtil = totalGpus > 0
-    ? Math.round(all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.utilization_percent || 0), 0), 0) / totalGpus)
-    : 0;
-  const totalVramUsed = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_used_mb || 0), 0), 0);
-  const totalVramTotal = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_total_mb || 0), 0), 0);
-
-  // Inference totals across all machines
-  const infMachines = all.filter(m => m.inference?.totals);
   let infHtml = '';
-  if (infMachines.length > 0) {
-    const infDone = infMachines.reduce((s, m) => s + (m.inference.totals.videos_done || 0), 0);
-    const infTotal = infMachines.reduce((s, m) => s + (m.inference.totals.videos_total || 0), 0);
-    const infPct = infTotal > 0 ? (infDone / infTotal * 100).toFixed(1) : '0.0';
+  if (stats.hasInference) {
+    const infPct = stats.infTotal > 0 ? (stats.infDone / stats.infTotal * 100).toFixed(1) : '0.0';
     infHtml = `
       <div class="summary-card">
         <div class="val" style="color:#a78bfa;">${infPct}%</div>
         <div class="lbl">Inference</div>
+        <div class="summary-sub">${stats.infDone.toLocaleString()} / ${stats.infTotal.toLocaleString()}</div>
+      </div>
+    `;
+  }
+
+  let powerHtml = '';
+  if (stats.hasPower) {
+    const drawKw = (stats.totalPowerDraw / 1000).toFixed(1);
+    const limitKw = (stats.totalPowerLimit / 1000).toFixed(1);
+    powerHtml = `
+      <div class="summary-card">
+        <div class="val" style="color:#facc15;">${drawKw}</div>
+        <div class="lbl">Power (kW)</div>
+        <div class="summary-sub">of ${limitKw} kW limit</div>
       </div>
     `;
   }
 
   bar.innerHTML = `
     <div class="summary-card">
-      <div class="val" style="color:#fff;">${all.length}</div>
+      <div class="val" style="color:#fff;">${stats.totalMachines}</div>
       <div class="lbl">Machines</div>
+      <div class="summary-sub">
+        <span class="st-ws">${stats.wsCount} WS</span>
+        <span class="dot">&middot;</span>
+        <span class="st-runai">${stats.runaiCount} RunAI</span>
+        ${stats.staleMachines > 0 ? `<span class="dot">&middot;</span><span class="st-offline">${stats.staleMachines} stale</span>` : ''}
+      </div>
     </div>
     <div class="summary-card">
-      <div class="val" style="color:#667eea;">${totalGpus}</div>
+      <div class="val" style="color:#667eea;">${stats.totalGpus}</div>
       <div class="lbl">GPUs</div>
+      <div class="summary-sub">
+        <span class="st-active">${stats.activeGpus} active</span>
+        <span class="dot">&middot;</span>
+        <span class="st-idle">${stats.idleGpus} idle</span>
+        ${stats.offlineGpus > 0 ? `<span class="dot">&middot;</span><span class="st-offline">${stats.offlineGpus} offline</span>` : ''}
+      </div>
     </div>
     <div class="summary-card">
-      <div class="val" style="color:${barColor(avgGpuUtil)};">${avgGpuUtil}%</div>
+      <div class="val" style="color:${barColor(stats.avgUtil)};">${stats.avgUtil}%</div>
       <div class="lbl">Avg GPU Util</div>
     </div>
     <div class="summary-card">
-      <div class="val" style="color:#ccc;">${formatGB(totalVramUsed)} / ${formatGB(totalVramTotal)}</div>
+      <div class="val" style="color:#ccc;">${formatGB(stats.totalVramUsed)} / ${formatGB(stats.totalVramTotal)}</div>
       <div class="lbl">VRAM Used</div>
     </div>
     <div class="summary-card">
-      <div class="val" style="color:${totalProcesses > 0 ? '#4ade80' : '#555'};">${totalProcesses}</div>
+      <div class="val" style="color:${stats.totalProcesses > 0 ? '#4ade80' : '#555'};">${stats.totalProcesses}</div>
       <div class="lbl">Running Jobs</div>
     </div>
+    ${powerHtml}
     ${infHtml}
   `;
 }
 
-function renderMachines() {
-  const list = document.getElementById('machinesList');
-  // Sort: most recently updated first
-  const sorted = Object.values(machines).sort((a, b) => {
-    return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
-  });
+function renderDetailBar(stats) {
+  const el = document.getElementById('detailBar');
 
-  list.innerHTML = sorted.map(m => renderMachineCard(m)).join('');
-}
+  let fleetHtml;
+  if (stats.sortedModels.length > 0) {
+    fleetHtml = stats.sortedModels.map(([model, count]) =>
+      `<span class="fleet-chip">${count}&times; ${esc(model)}</span>`
+    ).join('');
+  } else {
+    fleetHtml = '<span class="no-data-text">No GPUs detected</span>';
+  }
 
-function renderMachineCard(m) {
-  const age = machineAge(m.timestamp);
-  const freshnessClass = age.seconds < 120 ? 'fresh' : age.seconds < 600 ? 'warm' : 'stale';
-  const cardClass = age.seconds > 600 ? 'stale' : age.seconds > 1800 ? 'offline' : '';
-  const machineType = m.machine?.type || 'workstation';
-  const label = m.machine?.label || m.machine?.hostname || '?';
-  const hostname = m.machine?.hostname || '';
-
-  const gpus = m.gpus || [];
-  const allProcesses = gpus.flatMap(g => (g.processes || []).map(p => ({ ...p, gpu_index: g.index })));
-
-  return `
-    <div class="machine-card ${cardClass}">
-      <div class="machine-header">
-        <div class="machine-title">
-          <h2>${esc(label)}</h2>
-          <span class="machine-type ${machineType}">${machineType}</span>
-          ${hostname !== label ? `<span style="color:#555;font-size:12px;">${esc(hostname)}</span>` : ''}
-        </div>
-        <div class="machine-meta">
-          <span class="freshness ${freshnessClass}">${age.text}</span>
-          ${m.uptime_seconds ? `<span>uptime ${formatDuration(m.uptime_seconds)}</span>` : ''}
-        </div>
+  el.innerHTML = `
+    <div class="detail-bar">
+      <div class="detail-section">
+        <span class="detail-label">GPU Fleet</span>
+        <div class="fleet-chips">${fleetHtml}</div>
       </div>
-
-      <div class="sys-stats">
-        <div class="sys-stat">
-          <span class="label">CPU</span>
-          <span class="value">${m.cpu?.percent ?? '?'}%</span>
-          <span style="color:#555;font-size:11px;">(${m.cpu?.cores_physical ?? '?'}C/${m.cpu?.cores_logical ?? '?'}T)</span>
-        </div>
-        <div class="sys-stat">
-          <span class="label">RAM</span>
-          <span class="value">${m.ram?.used_gb ?? '?'} / ${m.ram?.total_gb ?? '?'} GB</span>
-          <span style="color:#555;font-size:11px;">(${m.ram?.percent ?? '?'}%)</span>
-        </div>
-      </div>
-
-      ${gpus.length > 0 ? `
-        <div class="gpu-list">
-          ${gpus.map(g => renderGpuRow(g)).join('')}
-        </div>
-      ` : '<div class="no-gpus">No GPUs detected</div>'}
-
-      ${m.inference ? renderInference(m.inference) : ''}
-
-      ${allProcesses.length > 0 ? `
-        <div class="processes">
-          <div class="processes-header">Running Jobs (${allProcesses.length})</div>
-          ${allProcesses.map(p => renderProcess(p)).join('')}
-        </div>
-      ` : `
-        <div class="processes">
-          <div class="no-processes">No GPU processes running</div>
-        </div>
-      `}
     </div>
   `;
 }
 
-function renderGpuRow(g) {
+function renderFilterBar(stats) {
+  const el = document.getElementById('filterBar');
+
+  el.innerHTML = `
+    <div class="filter-bar">
+      <div class="filter-pills">
+        <button class="filter-pill ${activeTypeFilter === 'all' ? 'active' : ''}" onclick="setTypeFilter('all')">
+          All <span class="pill-count">${stats.totalMachines}</span>
+        </button>
+        <button class="filter-pill ${activeTypeFilter === 'workstation' ? 'active' : ''}" onclick="setTypeFilter('workstation')">
+          Workstation <span class="pill-count">${stats.wsCount}</span>
+        </button>
+        <button class="filter-pill ${activeTypeFilter === 'runai' ? 'active' : ''}" onclick="setTypeFilter('runai')">
+          RunAI <span class="pill-count">${stats.runaiCount}</span>
+        </button>
+      </div>
+      <div class="filter-separator"></div>
+      <select class="sort-select" onchange="setSortBy(this.value)">
+        <option value="recent" ${activeSortBy === 'recent' ? 'selected' : ''}>Sort: Recent</option>
+        <option value="name" ${activeSortBy === 'name' ? 'selected' : ''}>Sort: Name</option>
+        <option value="util" ${activeSortBy === 'util' ? 'selected' : ''}>Sort: GPU Utilization</option>
+        <option value="gpus" ${activeSortBy === 'gpus' ? 'selected' : ''}>Sort: GPU Count</option>
+        <option value="jobs" ${activeSortBy === 'jobs' ? 'selected' : ''}>Sort: Active Jobs</option>
+      </select>
+      <input class="search-input" type="text" placeholder="Search machines, GPUs, users..." value="${esc(searchQuery)}" oninput="setSearch(this.value)" id="searchInput">
+    </div>
+  `;
+}
+
+// ── Filter / Sort handlers ─────────────────────────────────────────────────
+
+function setTypeFilter(type) {
+  activeTypeFilter = type;
+  localStorage.setItem('gpu_dash_filter_type', type);
+  renderDashboard();
+}
+
+function setSortBy(sort) {
+  activeSortBy = sort;
+  localStorage.setItem('gpu_dash_sort', sort);
+  renderMachines();
+}
+
+function setSearch(query) {
+  searchQuery = query.toLowerCase();
+  renderMachines();
+}
+
+function toggleCollapse(key, event) {
+  if (event) event.stopPropagation();
+  collapsedCards[key] = !collapsedCards[key];
+  localStorage.setItem('gpu_dash_collapsed', JSON.stringify(collapsedCards));
+  const card = document.querySelector(`.machine-card[data-machine-key="${CSS.escape(key)}"]`);
+  if (card) {
+    const body = card.querySelector('.machine-body');
+    const btn = card.querySelector('.collapse-btn');
+    if (body) body.classList.toggle('collapsed');
+    if (btn) btn.textContent = collapsedCards[key] ? '+' : '-';
+  }
+}
+window.toggleCollapse = toggleCollapse;
+
+// ── Remove machine ─────────────────────────────────────────────────────────
+
+async function removeMachine(key) {
+  if (!confirm('Remove "' + key + '" from the dashboard? The agent can re-add it on next push.')) return;
+  if (!config.token) { alert('Add your GitHub token in Settings to delete machines.'); return; }
+
+  const m = machines[key];
+  if (!m) return;
+  const label = m.machine?.label || m.machine?.hostname || key;
+  const hostname = m.machine?.hostname || key;
+  const safeName = (s) => s.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const possibleFiles = [
+    'gpu-status-' + safeName(label) + '.json',
+    'gpu-status-' + safeName(hostname) + '.json',
+  ];
+
+  try {
+    const resp = await fetch('https://api.github.com/gists/' + config.gistId, {
+      headers: { 'Authorization': 'token ' + config.token, 'Accept': 'application/vnd.github.v3+json' }
+    });
+    const gist = await resp.json();
+    let fileToDelete = null;
+    for (const fn of Object.keys(gist.files)) {
+      if (possibleFiles.includes(fn)) { fileToDelete = fn; break; }
+    }
+    if (!fileToDelete) {
+      for (const [fn, file] of Object.entries(gist.files)) {
+        if (!fn.startsWith('gpu-status-')) continue;
+        try {
+          const d = JSON.parse(file.content);
+          if (d.machine?.hostname === hostname || d.machine?.label === label) { fileToDelete = fn; break; }
+        } catch(e) {}
+      }
+    }
+    if (!fileToDelete) { alert('Could not find the gist file for this machine.'); return; }
+
+    const delResp = await fetch('https://api.github.com/gists/' + config.gistId, {
+      method: 'PATCH',
+      headers: { 'Authorization': 'token ' + config.token, 'Accept': 'application/vnd.github.v3+json' },
+      body: JSON.stringify({ files: { [fileToDelete]: null } })
+    });
+    if (delResp.ok) {
+      delete machines[key];
+      renderDashboard();
+    } else {
+      alert('Failed to remove: HTTP ' + delResp.status);
+    }
+  } catch(e) {
+    alert('Error: ' + e.message);
+  }
+}
+window.removeMachine = removeMachine;
+
+// ── Render machines ────────────────────────────────────────────────────────
+
+function renderMachines() {
+  const list = document.getElementById('machinesList');
+  let filtered = Object.values(machines);
+
+  // Type filter
+  if (activeTypeFilter !== 'all') {
+    filtered = filtered.filter(m => {
+      const type = (m.machine?.type || 'workstation').toLowerCase();
+      return type === activeTypeFilter;
+    });
+  }
+
+  // Search filter
+  if (searchQuery) {
+    const renames = JSON.parse(localStorage.getItem('gpu_dash_renames') || '{}');
+    filtered = filtered.filter(m => {
+      const key = m.machine?.hostname || m.machine?.label || '';
+      const label = (m.machine?.label || '').toLowerCase();
+      const hostname = (m.machine?.hostname || '').toLowerCase();
+      const renamed = (renames[key] || '').toLowerCase();
+      const gpuNames = (m.gpus || []).map(g => (g.name || '').toLowerCase()).join(' ');
+      const userNames = (m.gpus || []).flatMap(g => (g.processes || []).map(p => (p.user || '').toLowerCase())).join(' ');
+      const q = searchQuery;
+      return label.includes(q) || hostname.includes(q) || renamed.includes(q) || gpuNames.includes(q) || userNames.includes(q);
+    });
+  }
+
+  // Sort
+  const customOrder = JSON.parse(localStorage.getItem('gpu_dash_order') || '[]');
+
+  if (activeSortBy === 'recent') {
+    const ordered = [];
+    const used = new Set();
+    for (const key of customOrder) {
+      const m = filtered.find(x => (x.machine?.hostname || x.machine?.label) === key);
+      if (m) { ordered.push(m); used.add(key); }
+    }
+    const rest = filtered
+      .filter(m => !used.has(m.machine?.hostname || m.machine?.label))
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+    filtered = [...ordered, ...rest];
+  } else if (activeSortBy === 'name') {
+    const renames = JSON.parse(localStorage.getItem('gpu_dash_renames') || '{}');
+    filtered.sort((a, b) => {
+      const keyA = a.machine?.hostname || a.machine?.label || '';
+      const keyB = b.machine?.hostname || b.machine?.label || '';
+      const nameA = (renames[keyA] || a.machine?.label || keyA).toLowerCase();
+      const nameB = (renames[keyB] || b.machine?.label || keyB).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  } else if (activeSortBy === 'util') {
+    filtered.sort((a, b) => {
+      const utilA = avgMachineUtil(a);
+      const utilB = avgMachineUtil(b);
+      return utilB - utilA;
+    });
+  } else if (activeSortBy === 'gpus') {
+    filtered.sort((a, b) => (b.gpus || []).length - (a.gpus || []).length);
+  } else if (activeSortBy === 'jobs') {
+    filtered.sort((a, b) => countMachineJobs(b) - countMachineJobs(a));
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="no-results">No machines match your filters</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(m => {
+    const mKey = m.machine?.hostname || m.machine?.label || '?';
+    return renderMachineCard(m, mKey);
+  }).join('');
+
+  setupDragAndDrop();
+}
+
+function avgMachineUtil(m) {
+  const gpus = m.gpus || [];
+  if (gpus.length === 0) return 0;
+  return gpus.reduce((s, g) => s + (g.utilization_peak_percent ?? g.utilization_percent ?? 0), 0) / gpus.length;
+}
+
+function countMachineJobs(m) {
+  return (m.gpus || []).reduce((s, g) => s + (g.processes?.length || 0), 0);
+}
+
+function setupDragAndDrop() {
+  const cards = document.querySelectorAll('.machine-card');
+  let dragged = null;
+
+  cards.forEach(card => {
+    card.draggable = true;
+    card.addEventListener('dragstart', e => {
+      dragged = card;
+      card.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      cards.forEach(c => c.classList.remove('drag-over'));
+    });
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+    });
+    card.addEventListener('dragenter', e => {
+      if (card !== dragged) card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    card.addEventListener('drop', e => {
+      e.preventDefault();
+      if (card !== dragged && dragged) {
+        const list = document.getElementById('machinesList');
+        const cardsArr = Array.from(list.children);
+        const draggedIdx = cardsArr.indexOf(dragged);
+        const targetIdx = cardsArr.indexOf(card);
+        if (draggedIdx < targetIdx) {
+          card.parentNode.insertBefore(dragged, card.nextSibling);
+        } else {
+          card.parentNode.insertBefore(dragged, card);
+        }
+        saveCustomOrder();
+      }
+      card.classList.remove('drag-over');
+    });
+  });
+}
+
+function saveCustomOrder() {
+  const keys = Array.from(document.querySelectorAll('.machine-card'))
+    .map(c => c.dataset.machineKey)
+    .filter(k => k);
+  localStorage.setItem('gpu_dash_order', JSON.stringify(keys));
+}
+
+function renameMachine(key) {
+  const h2 = document.querySelector(`.machine-card[data-machine-key="${CSS.escape(key)}"] h2`);
+  if (!h2) return;
+  const currentName = h2.textContent;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'rename-input';
+  input.value = currentName;
+  h2.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const save = () => {
+    const newName = input.value.trim();
+    const renames = JSON.parse(localStorage.getItem('gpu_dash_renames') || '{}');
+    if (newName && newName !== currentName) {
+      renames[key] = newName;
+    } else {
+      delete renames[key];
+    }
+    localStorage.setItem('gpu_dash_renames', JSON.stringify(renames));
+    renderDashboard();
+  };
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { input.blur(); }
+    if (e.key === 'Escape') { renderDashboard(); }
+  });
+}
+window.renameMachine = renameMachine;
+
+function renderMachineCard(m, machineKey) {
+  const age = machineAge(m.timestamp);
+  const freshnessClass = age.seconds < 120 ? 'fresh' : age.seconds < 600 ? 'warm' : 'stale';
+  const cardClass = age.seconds > 600 ? 'stale' : age.seconds > 1800 ? 'offline' : '';
+  const machineType = m.machine?.type || 'workstation';
+  const origLabel = m.machine?.label || m.machine?.hostname || '?';
+  const renames = JSON.parse(localStorage.getItem('gpu_dash_renames') || '{}');
+  const label = renames[machineKey] || origLabel;
+  const hostname = m.machine?.hostname || '';
+  const isStale = age.seconds > 600;
+
+  const gpus = m.gpus || [];
+  const allProcesses = gpus.flatMap(g => (g.processes || []).map(p => ({ ...p, gpu_index: g.index })));
+
+  // Per-machine GPU model summary
+  const modelCounts = {};
+  for (const g of gpus) {
+    const model = shortenGpuName(g.name || 'Unknown');
+    modelCounts[model] = (modelCounts[model] || 0) + 1;
+  }
+  const gpuInfoStr = Object.entries(modelCounts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([model, count]) => `${count}&times; ${esc(model)}`)
+    .join(', ');
+
+  // GPU active count for this machine
+  const activeCount = gpus.filter(g => g.processes && g.processes.length > 0).length;
+  let activeLabel, activeClass;
+  if (gpus.length === 0) {
+    activeLabel = '';
+    activeClass = '';
+  } else if (isStale) {
+    activeLabel = `${gpus.length} offline`;
+    activeClass = 'none-active';
+  } else if (activeCount === gpus.length) {
+    activeLabel = `${activeCount}/${gpus.length} active`;
+    activeClass = 'all-active';
+  } else if (activeCount > 0) {
+    activeLabel = `${activeCount}/${gpus.length} active`;
+    activeClass = 'some-active';
+  } else {
+    activeLabel = `${gpus.length} idle`;
+    activeClass = 'none-active';
+  }
+
+  const isCollapsed = !!collapsedCards[machineKey];
+
+  return `
+    <div class="machine-card ${cardClass}" data-machine-key="${esc(machineKey)}">
+      <div class="machine-header">
+        <div class="machine-title">
+          <span class="drag-handle" title="Drag to reorder">&#8942;&#8942;</span>
+          <h2>${esc(label)}</h2>
+          <span class="machine-type ${machineType}">${machineType}</span>
+          ${gpuInfoStr ? `<span class="machine-gpu-info">${gpuInfoStr}</span>` : ''}
+          ${activeLabel ? `<span class="machine-gpu-active-count ${activeClass}">${activeLabel}</span>` : ''}
+          ${hostname !== label && hostname !== origLabel ? `<span style="color:#555;font-size:12px;">${esc(hostname)}</span>` : ''}
+        </div>
+        <div class="machine-meta">
+          <span class="freshness ${freshnessClass}">${age.text}</span>
+          ${m.uptime_seconds ? `<span>uptime ${formatDuration(m.uptime_seconds)}</span>` : ''}
+          <button class="rename-btn" onclick="event.stopPropagation(); renameMachine('${esc(machineKey)}')" title="Rename">Rename</button>
+          <button class="remove-btn" onclick="event.stopPropagation(); removeMachine('${esc(machineKey)}')" title="Remove">Remove</button>
+          <button class="collapse-btn" onclick="toggleCollapse('${esc(machineKey)}', event)" title="${isCollapsed ? 'Expand' : 'Collapse'}">${isCollapsed ? '+' : '-'}</button>
+        </div>
+      </div>
+
+      <div class="machine-body ${isCollapsed ? 'collapsed' : ''}">
+        <div class="sys-stats">
+          <div class="sys-stat">
+            <span class="label">CPU</span>
+            <span class="value">${m.cpu?.percent ?? '?'}%</span>
+            <span style="color:#555;font-size:11px;">(${m.cpu?.cores_physical ?? '?'}C/${m.cpu?.cores_logical ?? '?'}T)</span>
+          </div>
+          <div class="sys-stat">
+            <span class="label">RAM</span>
+            <span class="value">${m.ram?.used_gb ?? '?'} / ${m.ram?.total_gb ?? '?'} GB</span>
+            <span style="color:#555;font-size:11px;">(${m.ram?.percent ?? '?'}%)</span>
+          </div>
+        </div>
+
+        ${gpus.length > 0 ? `
+          <div class="gpu-list">
+            ${gpus.map(g => renderGpuRow(g, isStale)).join('')}
+          </div>
+        ` : '<div class="no-gpus">No GPUs detected</div>'}
+
+        ${m.inference ? renderInference(m.inference) : ''}
+
+        ${allProcesses.length > 0 ? `
+          <div class="processes">
+            <div class="processes-header">Running Jobs (${allProcesses.length})</div>
+            ${allProcesses.map(p => renderProcess(p)).join('')}
+          </div>
+        ` : `
+          <div class="processes">
+            <div class="no-processes">No GPU processes running</div>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function renderGpuRow(g, isStale) {
   const util = g.utilization_percent || 0;
+  const peak = g.utilization_peak_percent ?? util;
   const memUsed = g.memory_used_mb || 0;
   const memTotal = g.memory_total_mb || 1;
   const memPct = Math.round(memUsed / memTotal * 100);
   const temp = g.temperature_c;
   const name = shortenGpuName(g.name || 'Unknown');
 
+  const hasProcs = g.processes && g.processes.length > 0;
+  const statusClass = isStale ? 'idle' : hasProcs ? 'active' : 'idle';
+
   let powerStr = '';
   if (g.power_draw_w != null && g.power_limit_w != null) {
     powerStr = `${Math.round(g.power_draw_w)}/${Math.round(g.power_limit_w)}W`;
   }
 
+  const utilLabel = peak > util ? `${util}% (peak ${peak}%)` : `${util}%`;
+
   return `
     <div class="gpu-row">
-      <div>
-        <span class="gpu-idx">GPU ${g.index}</span>
-        <div class="gpu-name" title="${esc(g.name || '')}">${esc(name)}</div>
+      <div class="gpu-name-cell">
+        <span class="gpu-status-dot ${statusClass}" title="${statusClass === 'active' ? 'Active - running processes' : 'Idle - no processes'}"></span>
+        <div class="gpu-name-info">
+          <span class="gpu-idx">GPU ${g.index}</span>
+          <div class="gpu-name" title="${esc(g.name || '')}">${esc(name)}</div>
+        </div>
       </div>
       <div class="bar-group">
-        <div class="bar-label"><span>Util</span><span class="val">${util}%</span></div>
-        <div class="bar-track"><div class="bar-fill ${barColorClass(util)}" style="width:${util}%"></div></div>
+        <div class="bar-label"><span>Util</span><span class="val">${utilLabel}</span></div>
+        <div class="bar-track"><div class="bar-fill ${barColorClass(peak)}" style="width:${peak}%"></div></div>
       </div>
       <div class="bar-group">
         <div class="bar-label"><span>VRAM</span><span class="val">${formatMB(memUsed)} / ${formatMB(memTotal)}</span></div>
@@ -749,7 +1316,6 @@ function tempClass(t) {
 }
 
 function shortenGpuName(name) {
-  // "NVIDIA RTX PRO 6000 Blackwell" → "RTX PRO 6000"
   return name
     .replace(/^NVIDIA\s+/i, '')
     .replace(/\s+(Max-Q|Laptop|Desktop|Mobile)$/i, '')
@@ -803,8 +1369,15 @@ function resetConfig() {
   localStorage.removeItem('gpu_dash_gist_id');
   localStorage.removeItem('gpu_dash_token');
   localStorage.removeItem('gpu_dash_interval');
+  localStorage.removeItem('gpu_dash_filter_type');
+  localStorage.removeItem('gpu_dash_sort');
+  localStorage.removeItem('gpu_dash_collapsed');
   config = { gistId: '', token: '', interval: 30 };
   machines = {};
+  activeTypeFilter = 'all';
+  activeSortBy = 'recent';
+  searchQuery = '';
+  collapsedCards = {};
   stopPolling();
   closeSettings();
   showWelcome();

@@ -6,7 +6,8 @@ set -euo pipefail
 echo "=== GPU Dashboard Agent Setup ==="
 echo ""
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Allow SCRIPT_DIR override (for curl-based install where files are in /tmp)
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 CONFIG_DIR="$HOME/.config/gpu-dashboard"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
@@ -90,17 +91,42 @@ python3 -c "import requests" 2>/dev/null || MISSING="$MISSING requests"
 if [ -n "$MISSING" ]; then
     echo "Missing:$MISSING"
     echo "Trying to install..."
-    if command -v pip3 &>/dev/null; then
-        pip3 install --quiet $MISSING
-    elif command -v pip &>/dev/null; then
-        pip install --quiet $MISSING
-    elif command -v apt &>/dev/null; then
-        echo "No pip found. Installing via apt..."
-        sudo apt install -y $(echo $MISSING | sed 's/psutil/python3-psutil/g; s/requests/python3-requests/g')
-    else
-        echo "ERROR: Cannot install$MISSING — please install manually."
+    INSTALLED=false
+    # Try pip3
+    if ! $INSTALLED && command -v pip3 &>/dev/null; then
+        pip3 install --quiet $MISSING 2>/dev/null && INSTALLED=true
+    fi
+    # Try pip
+    if ! $INSTALLED && command -v pip &>/dev/null; then
+        pip install --quiet $MISSING 2>/dev/null && INSTALLED=true
+    fi
+    # Try pip --user (no sudo needed)
+    if ! $INSTALLED; then
+        pip3 install --user --quiet $MISSING 2>/dev/null && INSTALLED=true
+    fi
+    # Try uv
+    if ! $INSTALLED && command -v uv &>/dev/null; then
+        uv pip install $MISSING --system 2>/dev/null && INSTALLED=true || \
+        uv pip install $MISSING 2>/dev/null && INSTALLED=true
+    fi
+    # Try apt (needs sudo)
+    if ! $INSTALLED && command -v apt &>/dev/null && command -v sudo &>/dev/null; then
+        echo "Trying apt..."
+        sudo apt install -y $(echo $MISSING | sed 's/psutil/python3-psutil/g; s/requests/python3-requests/g') 2>/dev/null && INSTALLED=true
+    fi
+    # Verify
+    python3 -c "import psutil; import requests" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "ERROR: Could not install$MISSING automatically."
+        echo "Please install manually with one of:"
+        echo "  pip install psutil requests"
+        echo "  pip install --user psutil requests"
+        echo "  uv pip install psutil requests --system"
+        echo "  conda install psutil requests"
         exit 1
     fi
+    echo "Dependencies installed."
 else
     echo "All dependencies found."
 fi

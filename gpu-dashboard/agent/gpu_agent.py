@@ -21,6 +21,7 @@ Configuration (pick one):
 from __future__ import annotations
 
 import argparse
+import collections
 import datetime as dt
 import glob as globmod
 import json
@@ -139,6 +140,37 @@ def collect_gpus() -> list[dict]:
         except (ValueError, IndexError):
             continue
     return gpus
+
+
+# ── Rolling GPU utilization tracker ───────────────────────────────────────────
+
+# Stores (timestamp, utilization%) tuples per GPU index.
+# With 120s push interval, 15 samples covers ~30 minutes.
+_UTIL_WINDOW = 1800  # 30 minutes in seconds
+_gpu_util_history: dict[int, collections.deque[tuple[float, int]]] = {}
+
+
+def _record_gpu_util(gpus: list[dict]) -> None:
+    """Record current utilization readings into the rolling buffer."""
+    now = time.time()
+    for gpu in gpus:
+        idx = gpu["index"]
+        if idx not in _gpu_util_history:
+            _gpu_util_history[idx] = collections.deque()
+        buf = _gpu_util_history[idx]
+        buf.append((now, gpu.get("utilization_percent", 0)))
+        # Evict old entries
+        cutoff = now - _UTIL_WINDOW
+        while buf and buf[0][0] < cutoff:
+            buf.popleft()
+
+
+def _get_peak_util(gpu_index: int) -> int | None:
+    """Return peak utilization for a GPU over the rolling window."""
+    buf = _gpu_util_history.get(gpu_index)
+    if not buf:
+        return None
+    return max(v for _, v in buf)
 
 
 def _safe_float(val: str) -> float | None:
@@ -308,7 +340,7 @@ def collect_inference(cfg: dict) -> dict | None:
         if not lines:
             continue
 
-        completed = 0
+        real_completed = 0
         failed = 0
         fps_sum = 0.0
         fps_count = 0
@@ -334,18 +366,21 @@ def collect_inference(cfg: dict) -> dict | None:
                     continue
 
             status = entry.get("status", "")
-            if status == "completed":
-                completed += 1
+            rt = entry.get("runtime_sec")
+            rt_val = float(rt) if rt is not None else 0.0
+
+            # Skip cron-injected synthetic entries (runtime_sec == 0)
+            is_real = rt_val > 0
+
+            if status == "completed" and is_real:
+                real_completed += 1
                 fps_val = entry.get("fps")
-                if fps_val is not None:
+                if fps_val is not None and float(fps_val) > 0:
                     fps_sum += float(fps_val)
                     fps_count += 1
+                runtime_sum += rt_val
             elif status == "failed":
                 failed += 1
-
-            rt = entry.get("runtime_sec")
-            if rt is not None:
-                runtime_sum += float(rt)
 
             ts = entry.get("timestamp")
             if ts and first_ts is None:
@@ -355,15 +390,15 @@ def collect_inference(cfg: dict) -> dict | None:
         if last_entry is None:
             continue
 
-        videos_done = last_entry.get("videos_done", completed + failed)
+        videos_done = last_entry.get("videos_done", real_completed + failed)
         videos_total = last_entry.get("videos_total", 0)
         avg_fps = round(fps_sum / fps_count, 1) if fps_count > 0 else 0.0
 
-        # Per-camera ETA based on average runtime per video
+        # Per-camera ETA: use real inference count for avg_time, combined count for remaining
         eta_hours = None
-        if videos_done > 0 and videos_total > 0:
+        if real_completed > 0 and videos_total > 0 and videos_done > 0:
             remaining = videos_total - videos_done
-            avg_time = runtime_sum / videos_done
+            avg_time = runtime_sum / real_completed
             eta_hours = round(avg_time * remaining / 3600, 1)
 
         cameras[cam_name] = {
@@ -372,7 +407,7 @@ def collect_inference(cfg: dict) -> dict | None:
             "videos_total": videos_total,
             "sessions_done": last_entry.get("sessions_done"),
             "sessions_total": last_entry.get("sessions_total"),
-            "completed": completed,
+            "completed": real_completed,
             "failed": failed,
             "avg_fps": avg_fps,
             "total_runtime_sec": round(runtime_sum, 1),
@@ -436,6 +471,13 @@ def collect_snapshot(cfg: dict) -> dict:
     gpus = collect_gpus()
     processes = collect_gpu_processes()
 
+    # Record utilization and attach peak (30-min max) to each GPU
+    _record_gpu_util(gpus)
+    for gpu in gpus:
+        peak = _get_peak_util(gpu["index"])
+        if peak is not None:
+            gpu["utilization_peak_percent"] = peak
+
     # Attach processes to their GPUs
     for proc in processes:
         idx = proc.get("gpu_index", -1)
@@ -475,9 +517,9 @@ def push_to_gist(cfg: dict, snapshot: dict) -> tuple[bool, int]:
     Returns (success, retry_after_seconds). retry_after_seconds > 0 means
     the caller should back off before the next attempt.
     """
-    hostname = snapshot["machine"]["hostname"]
-    # Sanitize hostname for filename
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "-" for c in hostname)
+    # Use label for filename so RunAI restarts overwrite the same file
+    label = snapshot["machine"].get("label", snapshot["machine"]["hostname"])
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "-" for c in label)
     filename = f"gpu-status-{safe_name}.json"
 
     content = json.dumps(snapshot, indent=2)

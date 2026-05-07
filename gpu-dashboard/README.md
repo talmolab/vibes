@@ -9,10 +9,17 @@ Monitor GPUs across multiple workstations from a single web page. Lightweight ag
 ## Features
 
 - Real-time GPU utilization, VRAM, temperature, and power draw per GPU
+- GPU state breakdown in summary bar (active / idle / offline)
+- GPU fleet view showing model counts across all machines
+- Filter by machine type (Workstation / RunAI), search, and sort
+- Collapsible machine cards with per-GPU status dots
 - CPU usage, RAM, and uptime per machine
 - Per-process details (command, user, GPU memory, runtime)
+- Peak GPU utilization (30-min rolling window)
 - Inference progress tracking with per-camera breakdowns and ETA
+- Drag-to-reorder and rename machines
 - Auto-pause when tab is hidden, configurable refresh interval
+- Filter/sort/collapse state persists in localStorage
 - Works with Ubuntu workstations and RunAI pods
 - Dark theme, responsive layout
 
