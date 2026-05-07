@@ -237,6 +237,24 @@
   .danger-zone .btn { color: #f87171; border-color: #f8717133; }
   .danger-zone .btn:hover { background: #f8717111; }
 
+  /* ── Filter bar ──────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex; gap: 6px; margin-bottom: 16px;
+  }
+  .filter-btn {
+    padding: 5px 14px; border: 1px solid #3a3a3a; border-radius: 6px;
+    background: #1a1a1a; color: #888; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: #555; color: #ccc; }
+  .filter-btn.active { background: #667eea22; border-color: #667eea; color: #667eea; }
+  .filter-btn .count {
+    display: inline-block; min-width: 16px; padding: 0 5px;
+    margin-left: 5px; border-radius: 8px;
+    background: #2a2a2a; font-size: 10px; text-align: center; color: #666;
+  }
+  .filter-btn.active .count { background: #667eea33; color: #667eea; }
+
   /* ── Responsive ──────────────────────────────────────────────── */
   @media (max-width: 768px) {
     .gpu-row { grid-template-columns: 1fr; gap: 6px; }
@@ -285,6 +303,7 @@
   <!-- Dashboard -->
   <div id="dashboard" style="display:none;">
     <div class="summary-bar" id="summaryBar"></div>
+    <div class="filter-bar" id="filterBar"></div>
     <div class="machines" id="machinesList"></div>
   </div>
 </div>
@@ -326,6 +345,7 @@ let config = {
 let machines = {};
 let timer = null;
 let lastFetchOk = false;
+let activeFilter = 'all';
 
 // ── Init ───────────────────────────────────────────────────────────────────
 
@@ -435,27 +455,55 @@ async function fetchData() {
 
 // ── Render ──────────────────────────────────────────────────────────────────
 
+function getFilteredMachines() {
+  const all = Object.values(machines);
+  if (activeFilter === 'all') return all;
+  return all.filter(m => (m.machine?.type || 'workstation') === activeFilter);
+}
+
+function setFilter(type) {
+  activeFilter = type;
+  renderDashboard();
+}
+
 function renderDashboard() {
+  renderFilters();
   renderSummary();
   renderMachines();
 }
 
+function renderFilters() {
+  const bar = document.getElementById('filterBar');
+  const all = Object.values(machines);
+  const types = {};
+  all.forEach(m => {
+    const t = m.machine?.type || 'workstation';
+    types[t] = (types[t] || 0) + 1;
+  });
+
+  const buttons = [`<button class="filter-btn ${activeFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">All<span class="count">${all.length}</span></button>`];
+  for (const [type, count] of Object.entries(types).sort()) {
+    buttons.push(`<button class="filter-btn ${activeFilter === type ? 'active' : ''}" onclick="setFilter('${type}')">${type}<span class="count">${count}</span></button>`);
+  }
+  bar.innerHTML = buttons.join('');
+}
+
 function renderSummary() {
   const bar = document.getElementById('summaryBar');
-  const all = Object.values(machines);
+  const filtered = getFilteredMachines();
 
-  const totalGpus = all.reduce((s, m) => s + (m.gpus?.length || 0), 0);
-  const totalProcesses = all.reduce((s, m) => {
+  const totalGpus = filtered.reduce((s, m) => s + (m.gpus?.length || 0), 0);
+  const totalProcesses = filtered.reduce((s, m) => {
     return s + (m.gpus || []).reduce((ps, g) => ps + (g.processes?.length || 0), 0);
   }, 0);
   const avgGpuUtil = totalGpus > 0
-    ? Math.round(all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.utilization_percent || 0), 0), 0) / totalGpus)
+    ? Math.round(filtered.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.utilization_percent || 0), 0), 0) / totalGpus)
     : 0;
-  const totalVramUsed = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_used_mb || 0), 0), 0);
-  const totalVramTotal = all.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_total_mb || 0), 0), 0);
+  const totalVramUsed = filtered.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_used_mb || 0), 0), 0);
+  const totalVramTotal = filtered.reduce((s, m) => s + (m.gpus || []).reduce((gs, g) => gs + (g.memory_total_mb || 0), 0), 0);
 
-  // Inference totals across all machines
-  const infMachines = all.filter(m => m.inference?.totals);
+  // Inference totals across filtered machines
+  const infMachines = filtered.filter(m => m.inference?.totals);
   let infHtml = '';
   if (infMachines.length > 0) {
     const infDone = infMachines.reduce((s, m) => s + (m.inference.totals.videos_done || 0), 0);
@@ -471,7 +519,7 @@ function renderSummary() {
 
   bar.innerHTML = `
     <div class="summary-card">
-      <div class="val" style="color:#fff;">${all.length}</div>
+      <div class="val" style="color:#fff;">${filtered.length}</div>
       <div class="lbl">Machines</div>
     </div>
     <div class="summary-card">
@@ -496,8 +544,8 @@ function renderSummary() {
 
 function renderMachines() {
   const list = document.getElementById('machinesList');
-  // Sort: most recently updated first
-  const sorted = Object.values(machines).sort((a, b) => {
+  const filtered = getFilteredMachines();
+  const sorted = filtered.sort((a, b) => {
     return new Date(b.timestamp || 0) - new Date(a.timestamp || 0);
   });
 
