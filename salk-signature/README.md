@@ -8,23 +8,32 @@ Apple Mail, or Gmail.
 
 ## Features
 
-- **Live preview** rendered from a pure `renderSignature(state)` template function.
+- **Flexible line builder** — build the signature line by line instead of with fixed fields:
+  - **Pick a type per line**: Name, Title, Lab / Department, Office phone, Mobile, Email,
+    Website / Link, or **Custom text** (freeform).
+  - **Add as many lines as you want** (e.g. several title lines) with the **+ Add line** button.
+  - **Reorder** by dragging the ⠿ handle (desktop) or with the ↑ / ↓ buttons (touch-friendly),
+    and remove any line with ✕.
+  - Empty lines are simply omitted from the output.
+- **Live preview** rendered from a pure `renderSignature()` over the line list — the exact
+  string that lands on the clipboard (no DOM scraping).
 - **Rich-HTML copy** using the modern Clipboard API (`ClipboardItem` with `text/html` +
   `text/plain`), falling back to the legacy `execCommand('copy')` + Selection/Range path so it
   works across browsers and email clients.
 - **Table-based signature** with fully inlined styles for maximum email-client compatibility
   (Outlook's Word rendering engine handles tables far better than div/flex layouts).
-- **Optional blocks** that include/omit as a whole: lab/department, office phone + extension,
-  mobile, lab website, Salk logo, and social links.
+- **Standard Salk footer** (institute name, address, `www.salk.edu`) always included, with
+  toggles for the **Salk logo** and **social links**.
 - **`tel:` / `mailto:` links** with explicit inline color + `text-decoration` so clients don't
   re-style them.
 - **Pre-uppercased** title/lab text (rather than relying on CSS `text-transform`, which Outlook
   honors inconsistently).
-- **Configurable office phone** (defaults to the main Salk number `(858) 453-4100`).
+- **Office phone** defaults to the main Salk number `(858) 453-4100` when left blank.
 - **Per-client guidance tabs** (Outlook / Apple Mail / Gmail), including the Apple Mail
   "uncheck *Always match my default message font*" caveat.
 - **Raw HTML source view** and a "Copy HTML source" button for power users.
-- **Shareable settings** encoded in the URL hash.
+- **Shareable signature** — the full line list + footer toggles are encoded (base64 JSON) in the
+  URL hash, so a link round-trips the entire signature.
 
 ## Design tokens
 
