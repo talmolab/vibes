@@ -30,6 +30,7 @@ Self-contained HTML tools and applets for the web.
 - [SAM3 Segmenter](sam3-segmenter/) <a href="sam3-segmenter/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export</span>
 - [GPU Dashboard](gpu-dashboard/) <a href="gpu-dashboard/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Monitor GPUs across multiple workstations with real-time stats and inference progress tracking</span>
 - [Lab Camera Planner](lab-camera-planner/) <a href="lab-camera-planner/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard</span>
+- [Salk Email Signature](salk-signature/) <a href="salk-signature/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail</span>
 
 ## About
 
