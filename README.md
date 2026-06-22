@@ -30,6 +30,7 @@ Self-contained HTML tools and applets for the web.
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
 - [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
+- [Salk Email Signature](salk-signature/) - Generate a branded Salk email signature with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail
 
 ## About
 
