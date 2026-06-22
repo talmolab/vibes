@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salk Email Signature Generator</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #fafafa;
+            color: #222;
+        }
+        h1 { margin-bottom: 0.25rem; }
+        .description { color: #666; margin-top: 0; }
+        a { color: #0a6cbd; }
+        .layout { display: flex; gap: 20px; align-items: flex-start; }
+        .col-form { flex: 1 1 360px; min-width: 0; }
+        .col-preview { flex: 1 1 380px; min-width: 0; position: sticky; top: 20px; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 0 0 20px 0;
+        }
+        label.field { display: block; font-weight: 600; font-size: 14px; margin: 12px 0 4px; }
+        label.field:first-child { margin-top: 0; }
+        .req { color: #c0392b; }
+        input[type="text"], input[type="email"], input[type="tel"] {
+            width: 100%;
+            padding: 11px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        input:focus { outline: none; border-color: #0a6cbd; }
+        .opt { border-top: 1px solid #eee; padding-top: 12px; margin-top: 12px; }
+        .toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; }
+        .toggle input { width: 18px; height: 18px; accent-color: #0a6cbd; cursor: pointer; }
+        .opt-body { margin-top: 8px; display: none; }
+        .opt-body.show { display: block; }
+        .opt-body.row { display: none; gap: 10px; }
+        .opt-body.row.show { display: flex; }
+        .opt-body.row .ext { flex: 0 0 110px; }
+        .hint { font-size: 12px; color: #888; margin: 4px 0 0; }
+        button {
+            background: #0a6cbd;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover { background: #08568f; }
+        button.secondary { background: #eef2f6; color: #0a6cbd; }
+        button.secondary:hover { background: #dde7f0; }
+        .preview-frame {
+            border: 1px solid #e3e3e3;
+            border-radius: 6px;
+            padding: 18px;
+            background: #fff;
+            overflow-x: auto;
+        }
+        .preview-label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #888; margin: 0 0 8px; }
+        .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .toast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+            background: #222; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 14px;
+            opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.err { background: #c0392b; }
+        details.src { margin-top: 14px; }
+        details.src summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #0a6cbd; }
+        textarea#src {
+            width: 100%; min-height: 150px; margin-top: 10px; padding: 10px;
+            border: 2px solid #ddd; border-radius: 6px; font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 12px; line-height: 1.4; white-space: pre; resize: vertical;
+        }
+        .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .tab { background: #eef2f6; color: #444; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+        .tab.active { background: #0a6cbd; color: #fff; }
+        .guide { font-size: 14px; }
+        .guide ol { margin: 0; padding-left: 20px; }
+        .guide li { margin-bottom: 6px; }
+        .note { background: #fff8e6; border-left: 4px solid #f1c40f; padding: 10px 12px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
+        @media (max-width: 760px) {
+            body { padding: 15px; }
+            .layout { flex-direction: column; }
+            .col-preview { position: static; width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Salk Email Signature Generator</h1>
+    <p class="description">Fill in your details, preview the signature, and copy it straight into your email client.</p>
+
+    <div class="layout">
+        <!-- ============ FORM ============ -->
+        <div class="col-form">
+            <div class="card">
+                <label class="field" for="name">Name <span class="req">*</span></label>
+                <input type="text" id="name" placeholder="Jane Doe" autocomplete="name">
+
+                <label class="field" for="title">Title <span class="req">*</span></label>
+                <input type="text" id="title" placeholder="Postdoctoral Researcher">
+
+                <label class="field" for="email">Email <span class="req">*</span></label>
+                <input type="email" id="email" placeholder="jdoe@salk.edu" autocomplete="email">
+
+                <!-- Optional: Lab / Department -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_lab"> Lab / Department</label>
+                    <div class="opt-body" id="b_lab">
+                        <input type="text" id="lab" placeholder="Smith Laboratory">
+                    </div>
+                </div>
+
+                <!-- Optional: Phone -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_phone"> Office phone</label>
+                    <div class="opt-body row" id="b_phone">
+                        <input type="tel" id="phone" placeholder="(858) 453-4100">
+                        <input type="text" id="ext" class="ext" placeholder="ext.">
+                    </div>
+                    <p class="hint" id="phone_hint" style="display:none">Defaults to the main Salk number. Add an extension if you have one.</p>
+                </div>
+
+                <!-- Optional: Mobile -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_mobile"> Mobile</label>
+                    <div class="opt-body" id="b_mobile">
+                        <input type="tel" id="mobile" placeholder="(555) 123-4567">
+                    </div>
+                </div>
+
+                <!-- Optional: Lab website -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_web"> Lab website</label>
+                    <div class="opt-body" id="b_web">
+                        <input type="text" id="web" placeholder="smithlab.salk.edu">
+                    </div>
+                </div>
+
+                <!-- Optional: Logo -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_logo" checked> Salk logo</label>
+                    <p class="hint">Hosted image. Some clients block remote images until the recipient allows them.</p>
+                </div>
+
+                <!-- Optional: Social -->
+                <div class="opt">
+                    <label class="toggle"><input type="checkbox" id="t_social" checked> Social links</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ PREVIEW ============ -->
+        <div class="col-preview">
+            <div class="card">
+                <p class="preview-label">Live preview</p>
+                <div class="preview-frame">
+                    <div id="signaturePreview"></div>
+                </div>
+                <div class="actions">
+                    <button id="copyBtn">Copy signature</button>
+                    <button id="copyHtmlBtn" class="secondary">Copy HTML source</button>
+                </div>
+                <details class="src">
+                    <summary>View / edit raw HTML</summary>
+                    <textarea id="src" readonly spellcheck="false"></textarea>
+                </details>
+            </div>
+
+            <div class="card">
+                <div class="tabs">
+                    <button class="tab active" data-tab="outlook">Outlook</button>
+                    <button class="tab" data-tab="apple">Apple Mail</button>
+                    <button class="tab" data-tab="gmail">Gmail</button>
+                </div>
+                <div class="guide" id="guide"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ---- Brand constants ----
+        const COLOR = '#6D6E71';
+        const LOGO_URL = 'https://www.salk.edu/wp-content/uploads/2026/03/26-salk-signature-tag-logo.png';
+        const INSTITUTE = 'Salk Institute for Biological Studies';
+        const ADDRESS = '10010 N Torrey Pines Rd | La Jolla, CA 92037';
+        const DEFAULT_PHONE = '(858) 453-4100';
+        const SOCIAL = [
+            ['Facebook', 'https://www.facebook.com/SalkInstitute'],
+            ['Instagram', 'https://www.instagram.com/salkinstitute'],
+            ['LinkedIn', 'https://www.linkedin.com/company/salk-institute-for-biological-studies'],
+            ['YouTube', 'https://www.youtube.com/@SalkInstitute'],
+            ['X', 'https://x.com/salkinstitute']
+        ];
+        const LINK = `color:${COLOR};text-decoration:none;`;
+
+        const $ = id => document.getElementById(id);
+
+        // ---- Helpers ----
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function normalizeUrl(raw) {
+            let v = raw.trim();
+            const display = v.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            const href = /^https?:\/\//i.test(v) ? v : 'https://' + display;
+            return { href, display };
+        }
+        function telHref(num, ext) {
+            const digits = String(num).replace(/\D/g, '');
+            if (!digits) return '';
+            let h = 'tel:+1' + digits.replace(/^1/, '');
+            if (ext && String(ext).replace(/\D/g, '')) h += ';ext=' + String(ext).replace(/\D/g, '');
+            return h;
+        }
+
+        // ---- Read form into a plain state object ----
+        function getState() {
+            return {
+                name: $('name').value.trim(),
+                title: $('title').value.trim(),
+                email: $('email').value.trim(),
+                showLab: $('t_lab').checked, lab: $('lab').value.trim(),
+                showPhone: $('t_phone').checked,
+                phone: $('phone').value.trim() || DEFAULT_PHONE,
+                ext: $('ext').value.trim(),
+                showMobile: $('t_mobile').checked, mobile: $('mobile').value.trim(),
+                showWeb: $('t_web').checked, web: $('web').value.trim(),
+                showLogo: $('t_logo').checked,
+                showSocial: $('t_social').checked
+            };
+        }
+
+        // ---- Pure template: state -> inlined HTML table string ----
+        function renderSignature(s) {
+            const e = escapeHtml;
+            const name = e(s.name || 'Your Name');
+            const title = e((s.title || 'Your Title').toUpperCase());
+            const email = s.email || 'you@salk.edu';
+            let r = '';
+            r += `<strong>${name}</strong><br>`;
+            r += `<span style="font-size:10px;text-transform:uppercase;">${title}</span><br>`;
+            if (s.showLab && s.lab)
+                r += `<span style="font-size:10px;text-transform:uppercase;">${e(s.lab.toUpperCase())}</span><br>`;
+            if (s.showPhone) {
+                const tel = telHref(s.phone, s.ext);
+                const txt = e(s.phone) + (s.ext ? ' x' + e(s.ext) : '');
+                r += `<strong>PH</strong> ` + (tel ? `<a href="${e(tel)}" style="${LINK}">${txt}</a>` : txt) + `<br>`;
+            }
+            if (s.showMobile && s.mobile) {
+                const tel = telHref(s.mobile, '');
+                r += `<strong>M</strong> ` + (tel ? `<a href="${e(tel)}" style="${LINK}">${e(s.mobile)}</a>` : e(s.mobile)) + `<br>`;
+            }
+            r += `<strong>E</strong> <a href="mailto:${e(email)}" style="${LINK}">${e(email)}</a><br>`;
+            if (s.showWeb && s.web) {
+                const u = normalizeUrl(s.web);
+                r += `<a href="${e(u.href)}" style="${LINK}">${e(u.display)}</a><br>`;
+            }
+            r += `<br>`;
+            if (s.showLogo)
+                r += `<a href="https://www.salk.edu" style="text-decoration:none;border:none;"><img src="${LOGO_URL}" width="75" height="50" style="width:75px;height:50px;border:0;" alt="Salk Institute"></a><br>`;
+            r += `<strong>${INSTITUTE}</strong><br>`;
+            r += `${ADDRESS}<br>`;
+            r += `<br>`;
+            r += `<a href="https://www.salk.edu" style="color:${COLOR};font-size:12px;font-family:Arial,sans-serif;text-decoration:none;"><strong>www.salk.edu</strong></a><br>`;
+            if (s.showSocial)
+                r += SOCIAL.map(([n, u]) => `<a href="${u}" style="${LINK}">${n}</a>`).join(' | ');
+            return `<table cellpadding="0" cellspacing="0" border="0" style="background-color:#fff;font-family:Arial,sans-serif;color:${COLOR};font-size:12px;"><tbody><tr><td style="vertical-align:top;line-height:16px;padding:0;">${r}</td></tr></tbody></table>`;
+        }
+
+        // ---- Plain-text fallback ----
+        function renderPlain(s) {
+            const lines = [s.name || 'Your Name', (s.title || 'Your Title').toUpperCase()];
+            if (s.showLab && s.lab) lines.push(s.lab.toUpperCase());
+            if (s.showPhone) lines.push('PH ' + s.phone + (s.ext ? ' x' + s.ext : ''));
+            if (s.showMobile && s.mobile) lines.push('M ' + s.mobile);
+            lines.push('E ' + (s.email || 'you@salk.edu'));
+            if (s.showWeb && s.web) lines.push(normalizeUrl(s.web).display);
+            lines.push('', INSTITUTE, ADDRESS, '', 'www.salk.edu');
+            if (s.showSocial) lines.push(SOCIAL.map(x => x[0]).join(' | '));
+            return lines.join('\n');
+        }
+
+        // ---- Toast ----
+        let toastTimer;
+        function toast(msg, isErr) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isErr ? ' err' : '');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.className = 'toast' + (isErr ? ' err' : ''); }, 2200);
+        }
+
+        // ---- Render the live preview + source ----
+        function update() {
+            const html = renderSignature(getState());
+            $('signaturePreview').innerHTML = html;
+            $('src').value = html;
+            // toggle paired inputs
+            $('b_lab').classList.toggle('show', $('t_lab').checked);
+            $('b_phone').classList.toggle('show', $('t_phone').checked);
+            $('phone_hint').style.display = $('t_phone').checked ? 'block' : 'none';
+            $('b_mobile').classList.toggle('show', $('t_mobile').checked);
+            $('b_web').classList.toggle('show', $('t_web').checked);
+            saveHash();
+        }
+
+        // ---- Copy: rich HTML via Clipboard API, execCommand fallback ----
+        async function copySignature() {
+            const s = getState();
+            const html = renderSignature(s);
+            const plain = renderPlain(s);
+            try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                    await navigator.clipboard.write([new ClipboardItem({
+                        'text/html': new Blob([html], { type: 'text/html' }),
+                        'text/plain': new Blob([plain], { type: 'text/plain' })
+                    })]);
+                    toast('Signature copied — paste into your email signature settings');
+                    return;
+                }
+            } catch (err) { /* fall through */ }
+            // Legacy fallback: select the visible node and execCommand('copy')
+            try {
+                const node = $('signaturePreview');
+                const range = document.createRange();
+                range.selectNode(node);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                const ok = document.execCommand('copy');
+                sel.removeAllRanges();
+                toast(ok ? 'Signature copied!' : 'Copy failed — select it manually or use the HTML source', !ok);
+            } catch (e2) {
+                toast('Copy failed — open "View raw HTML" and copy it manually', true);
+            }
+        }
+
+        async function copyHtml() {
+            const html = renderSignature(getState());
+            try {
+                await navigator.clipboard.writeText(html);
+                toast('HTML source copied');
+            } catch {
+                const ta = $('src');
+                ta.removeAttribute('readonly');
+                ta.select();
+                document.execCommand('copy');
+                ta.setAttribute('readonly', '');
+                toast('HTML source copied');
+            }
+        }
+
+        // ---- Client guidance tabs ----
+        const GUIDES = {
+            outlook: `<ol>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Outlook: <strong>File → Options → Mail → Signatures</strong> (new Outlook: <strong>Settings → Mail → Compose and reply</strong>).</li>
+                <li>Create a new signature and <strong>paste</strong> (Ctrl+V) into the editor.</li>
+                <li>Set it as the default for new messages and replies.</li>
+            </ol>
+            <div class="note">Outlook uses Word for rendering — the table layout and hosted logo are built for it. If the logo looks oversized, confirm the width/height stuck (75×50).</div>`,
+            apple: `<ol>
+                <li>For best results use <strong>Safari</strong> to copy (it carries the logo into Mail most reliably).</li>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Mail: <strong>Settings → Signatures</strong>, create a new one, and <strong>paste</strong>.</li>
+                <li><strong>Uncheck "Always match my default message font"</strong> or Mail will override the styling.</li>
+            </ol>
+            <div class="note">In Chrome/Firefox the logo may not copy into Mail — use Safari, or paste the HTML source.</div>`,
+            gmail: `<ol>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Gmail: <strong>Settings (gear) → See all settings → General → Signature</strong>.</li>
+                <li>Create a new signature and <strong>paste</strong> into the box.</li>
+                <li>Set it as the default under "Signature defaults" and <strong>Save Changes</strong>.</li>
+            </ol>`
+        };
+        function setTab(name) {
+            document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+            $('guide').innerHTML = GUIDES[name];
+        }
+
+        // ---- URL state (shareable settings) ----
+        const FIELDS = ['name', 'title', 'email', 'lab', 'phone', 'ext', 'mobile', 'web'];
+        const TOGGLES = { lab: 't_lab', phone: 't_phone', mobile: 't_mobile', web: 't_web', logo: 't_logo', social: 't_social' };
+        function saveHash() {
+            const p = new URLSearchParams();
+            FIELDS.forEach(f => { const v = $(f).value.trim(); if (v) p.set(f, v); });
+            Object.entries(TOGGLES).forEach(([k, id]) => { if ($(id).checked) p.set('s_' + k, '1'); });
+            history.replaceState(null, '', '#' + p.toString());
+        }
+        function loadHash() {
+            const h = location.hash.slice(1);
+            if (!h) return;
+            const p = new URLSearchParams(h);
+            FIELDS.forEach(f => { if (p.has(f)) $(f).value = p.get(f); });
+            // only override toggle defaults if any state param is present
+            if ([...p.keys()].some(k => k.startsWith('s_'))) {
+                Object.entries(TOGGLES).forEach(([k, id]) => { $(id).checked = p.has('s_' + k); });
+            }
+        }
+
+        // ---- Wire up ----
+        document.querySelectorAll('input').forEach(el => {
+            el.addEventListener('input', update);
+            el.addEventListener('change', update);
+        });
+        $('copyBtn').addEventListener('click', copySignature);
+        $('copyHtmlBtn').addEventListener('click', copyHtml);
+        document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+        loadHash();
+        setTab('outlook');
+        update();
+    </script>
+</body>
+</html>
