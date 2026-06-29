@@ -28,9 +28,10 @@ Before you capture 3 poses, the visualization runs an **idle drift** and respond
 
 ## Controls
 
-- **Start Camera / Stop / Capture Pose** — webcam control and pose collection (point-light render on black)
+- **Start Camera / Stop / Capture Pose** — webcam control and pose collection
 - **Track** — Body, Left Hand, Right Hand, or Both Hands
 - **Features** — Keypoints (normalized coords), Distances (pairwise), or Angles (pairwise) — the representation PCA is computed on
+- **Display** — Video + Keypoints (default; live webcam with a colored skeleton overlay) or Point Light (white Gaussian glows on black)
 - **Model** — MediaPipe complexity: Lite (fast, default) / Full / Heavy
 - **Sens.** — how far a given pose change pushes the fractal
 - **Smooth** — temporal smoothing of the control signal (low = snappy, high = flowy)
