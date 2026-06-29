@@ -45,8 +45,8 @@
             border-radius: 8px;
             overflow: hidden;
         }
-        #glCanvas { width: 100%; height: 100%; }
-        #glCanvas:fullscreen { width: 100vw; height: 100vh; }
+        #glCanvas, #vizCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+        #glWrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; border-radius: 0; }
         .controls {
             display: flex;
             gap: 8px;
@@ -205,9 +205,16 @@
                 <button id="fsBtn" style="float:right;padding:4px 10px;font-size:12px;">⛶ Fullscreen</button>
             </h2>
             <div id="glWrap">
+                <canvas id="vizCanvas"></canvas>
                 <canvas id="glCanvas"></canvas>
             </div>
             <div class="controls">
+                <label>Visualization:
+                    <select id="vizSelect">
+                        <option value="constellation" selected>Pose Constellation</option>
+                        <option value="fractal">Fractal Hyperspace</option>
+                    </select>
+                </label>
                 <label>Quality:
                     <select id="qualitySelect">
                         <option value="0.5">Low</option>
@@ -215,6 +222,8 @@
                         <option value="1">High</option>
                     </select>
                 </label>
+            </div>
+            <div class="controls">
                 <span id="tripStatus" class="status" style="padding:0;flex:1;text-align:left;">
                     Idle drift — capture 3+ poses to take control.
                 </span>
@@ -234,6 +243,9 @@
         const poseCanvas = document.getElementById('poseCanvas');
         const pctx = poseCanvas.getContext('2d');
         const glCanvas = document.getElementById('glCanvas');
+        const glWrap = document.getElementById('glWrap');
+        const vizCanvas = document.getElementById('vizCanvas');
+        const vctx = vizCanvas.getContext('2d');
         const status = document.getElementById('status');
         const tripStatus = document.getElementById('tripStatus');
         const startBtn = document.getElementById('startBtn');
@@ -247,6 +259,7 @@
         const featureSelect = document.getElementById('featureSelect');
         const modelSelect = document.getElementById('modelSelect');
         const displaySelect = document.getElementById('displaySelect');
+        const vizSelect = document.getElementById('vizSelect');
         const qualitySelect = document.getElementById('qualitySelect');
         const sensRange = document.getElementById('sensRange');
         const smoothRange = document.getElementById('smoothRange');
@@ -586,6 +599,137 @@
             gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
 
+        // ---- Pose Constellation renderer (keypoints as 3D point sources) ----
+        // Pre-tinted glow sprites across the hue wheel for cheap colored points.
+        const HUES = 24;
+        const glowSprites = Array.from({ length: HUES }, (_, i) => {
+            const hue = i * 360 / HUES;
+            const c = document.createElement('canvas');
+            c.width = c.height = GS;
+            const g = c.getContext('2d');
+            const r = GS / 2;
+            const grad = g.createRadialGradient(r, r, 0, r, r, r);
+            grad.addColorStop(0, `hsla(${hue},100%,88%,1)`);
+            grad.addColorStop(0.16, `hsla(${hue},100%,66%,0.65)`);
+            grad.addColorStop(0.42, `hsla(${hue},100%,55%,0.14)`);
+            grad.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+            g.fillStyle = grad;
+            g.fillRect(0, 0, GS, GS);
+            return c;
+        });
+        const glowFor = (hue) => glowSprites[((Math.round(hue / (360 / HUES)) % HUES) + HUES) % HUES];
+
+        const rotY = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [c*p[0] + s*p[2], p[1], -s*p[0] + c*p[2]]; };
+        const rotX = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0], c*p[1] - s*p[2], s*p[1] + c*p[2]]; };
+
+        // Centered 3D points + edges from the live pose.
+        function poseToPoints(lm) {
+            let cx = 0, cy = 0, cz = 0;
+            for (const p of lm) { cx += p.x; cy += p.y; cz += (p.z || 0); }
+            const n = lm.length; cx /= n; cy /= n; cz /= n;
+            const pts = lm.map(p => [(p.x - cx) * 1.7, (p.y - cy) * 1.7, ((p.z || 0) - cz) * 1.7]);
+            return { pts, cons: getConnections() };
+        }
+
+        // A flowing knot used as the idle attractor before a pose is tracked.
+        function idlePoints(t) {
+            const N = 44, pts = [], cons = [];
+            for (let i = 0; i < N; i++) {
+                const u = i / N * Math.PI * 2;
+                pts.push([0.6*Math.sin(3*u + t*0.4), 0.6*Math.sin(2*u), 0.6*Math.cos(3*u)]);
+                if (i > 0) cons.push([i - 1, i]);
+            }
+            cons.push([N - 1, 0]);
+            return { pts, cons };
+        }
+
+        function resizeViz() {
+            const scale = parseFloat(qualitySelect.value);
+            const rect = glWrap.getBoundingClientRect();
+            const w = Math.max(1, Math.round(rect.width * scale));
+            const h = Math.max(1, Math.round(rect.height * scale));
+            if (vizCanvas.width !== w || vizCanvas.height !== h) {
+                vizCanvas.width = w; vizCanvas.height = h;
+                vctx.fillStyle = '#000'; vctx.fillRect(0, 0, w, h);
+            }
+        }
+
+        function renderConstellation(timeSec, lm) {
+            resizeViz();
+            const W = vizCanvas.width, H = vizCanvas.height;
+            const minDim = Math.min(W, H);
+
+            // motion-trail feedback
+            vctx.globalCompositeOperation = 'source-over';
+            vctx.fillStyle = 'rgba(0,0,0,0.25)';
+            vctx.fillRect(0, 0, W, H);
+
+            const { pts, cons } = (lm && lm.length) ? poseToPoints(lm) : idlePoints(timeSec);
+
+            // PCA subspace -> structured transforms (axis names match the control bars)
+            const yaw   = timeSec * 0.3 + control[0] * Math.PI;            // PC1 orbit
+            const depth = 1 + Math.min(3, Math.round(Math.abs(control[1]) * 2.4)); // PC2 fold (recursion)
+            const twist = control[2] * 2.2;                                // PC3 twist (helix)
+            const pitch = 0.22 + control[2] * 0.35;
+            const hue0  = control[3] * 120 + timeSec * 14;                 // PC4 color
+            const focal = minDim * 0.8 * (1 + control[4] * 0.35);          // PC5 zoom (dolly)
+            const camDist = 2.1;
+            const sym   = 1 + Math.min(7, Math.round(Math.abs(control[5]) * 3.2)); // PC6 symmetry (mandala)
+
+            // 3D transform + perspective project to base 2D points
+            const P = pts.map(p0 => {
+                let p = rotY(p0, twist * p0[1]);     // helical twist by height
+                p = rotY(p, yaw);
+                p = rotX(p, pitch);
+                const zc = camDist + p[2];
+                if (zc < 0.1) return null;
+                return {
+                    x: focal * p[0] / zc,
+                    y: focal * p[1] / zc,
+                    size: Math.min(minDim * 0.16, focal * 0.05 / zc),
+                    bright: Math.min(1.5, 1.4 / zc)
+                };
+            });
+
+            vctx.globalCompositeOperation = 'lighter';
+            const cxs = W / 2, cys = H / 2;
+
+            for (let d = 0; d < depth; d++) {
+                const sc = Math.pow(0.6, d);            // nested shrinking copies
+                const rotD = d * (0.5 + control[2] * 0.8);
+                const hueD = hue0 + d * 50;
+                for (let m = 0; m < sym; m++) {
+                    const ang = rotD + m * (Math.PI * 2 / sym);
+                    const ca = Math.cos(ang), sa = Math.sin(ang);
+                    const hue = hueD + m * (sym > 1 ? 18 : 0);
+                    // transform base points by this copy's rotate+scale around center
+                    const T = P.map(b => b && {
+                        x: cxs + (b.x * ca - b.y * sa) * sc,
+                        y: cys + (b.x * sa + b.y * ca) * sc,
+                        size: b.size * sc, bright: b.bright
+                    });
+                    // edges
+                    vctx.lineWidth = Math.max(1, focal * 0.004 * sc);
+                    for (const [i, j] of cons) {
+                        const a = T[i], b = T[j];
+                        if (!a || !b) continue;
+                        vctx.strokeStyle = `hsla(${((hue % 360) + 360) % 360},90%,62%,${0.45 * Math.min(a.bright, b.bright)})`;
+                        vctx.beginPath();
+                        vctx.moveTo(a.x, a.y); vctx.lineTo(b.x, b.y);
+                        vctx.stroke();
+                    }
+                    // nodes (point sources)
+                    const sprite = glowFor(hue);
+                    for (const t of T) {
+                        if (!t) continue;
+                        const s = Math.max(6, t.size) * (0.6 + t.bright);
+                        vctx.drawImage(sprite, t.x - s / 2, t.y - s / 2, s, s);
+                    }
+                }
+            }
+            vctx.globalCompositeOperation = 'source-over';
+        }
+
         // ---- control bars UI ----
         const barFills = [];
         for (let i = 0; i < NPC; i++) {
@@ -717,7 +861,9 @@
             const a = parseFloat(smoothRange.value);
             for (let i = 0; i < NPC; i++) control[i] += (target[i] - control[i]) * a;
             updateBars();
-            renderGL(now / 1000);
+
+            if (vizSelect.value === 'fractal') renderGL(now / 1000);
+            else renderConstellation(now / 1000, stream ? currentLandmarks : null);
         }
 
         // ---- capture / gallery ----
@@ -764,15 +910,23 @@
             poseLandmarker = handLandmarker = null;
             if (wasRunning) await startCamera(); else await initLandmarkers();
         });
-        qualitySelect.addEventListener('change', resizeGL);
-        window.addEventListener('resize', resizeGL);
+        function applyVizMode() {
+            const fractal = vizSelect.value === 'fractal';
+            glCanvas.style.display = fractal ? '' : 'none';
+            vizCanvas.style.display = fractal ? 'none' : '';
+        }
+        vizSelect.addEventListener('change', () => { applyVizMode(); resizeGL(); resizeViz(); });
+        qualitySelect.addEventListener('change', () => { resizeGL(); resizeViz(); });
+        window.addEventListener('resize', () => { resizeGL(); resizeViz(); });
         fsBtn.addEventListener('click', () => {
-            if (!document.fullscreenElement) glCanvas.requestFullscreen?.();
+            if (!document.fullscreenElement) glWrap.requestFullscreen?.();
             else document.exitFullscreen?.();
         });
 
-        // start render loop immediately (idle drift before camera)
+        // start render loop immediately (idle animation before camera)
+        applyVizMode();
         resizeGL();
+        resizeViz();
         rafId = requestAnimationFrame(loop);
         initLandmarkers().catch(e => { status.textContent = 'Failed to load models: ' + e.message; });
     </script>

@@ -11,7 +11,7 @@ Self-contained HTML tools and applets for the web.
 - [GitHub Discussion to Markdown](github-discussion-markdown/) - Convert GitHub discussions to structured markdown
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
-- [Pose Subspace Trip](pose-subspace-trip/) - Control a trippy ray-marched fractal hyperspace with your body via a pose-driven PCA subspace
+- [Pose Subspace Trip](pose-subspace-trip/) - Drive trippy 3D visualizations (pose constellation or ray-marched fractal) with your body via a pose-driven PCA subspace
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 - [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
