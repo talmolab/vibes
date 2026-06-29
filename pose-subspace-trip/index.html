@@ -60,13 +60,13 @@
         #glWrap {
             position: relative;
             width: 100%;
-            aspect-ratio: 1 / 1;
+            height: clamp(320px, 56vh, 600px);
             background: #000;
             border-radius: 8px;
             overflow: hidden;
         }
         #glCanvas, #vizCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-        #glWrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; border-radius: 0; }
+        #glWrap:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
         .controls {
             display: flex;
             gap: 8px;
