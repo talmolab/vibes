@@ -16,6 +16,26 @@
         }
         h1 { margin-bottom: 0.3rem; color: #fff; }
         .description { color: #9aa; margin-top: 0; }
+        .howto {
+            background: #11112a;
+            border: 1px solid #2a2a44;
+            border-radius: 10px;
+            padding: 4px 16px;
+            margin: 0 0 20px;
+        }
+        .howto summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #cdd;
+            padding: 8px 0;
+            list-style: none;
+        }
+        .howto summary::-webkit-details-marker { display: none; }
+        .howto summary::before { content: '▸ '; color: #f093fb; }
+        .howto[open] summary::before { content: '▾ '; }
+        .howto ol { margin: 4px 0 12px; padding-left: 22px; color: #aab; font-size: 14px; }
+        .howto li { margin: 5px 0; }
+        .howto strong { color: #e6e6ff; }
         .container {
             display: grid;
             grid-template-columns: 360px 1fr;
@@ -132,9 +152,23 @@
 <body>
     <h1>Pose Subspace Trip</h1>
     <p class="description">
-        Capture a few extreme poses to define your control axes, then warp a fractal hyperspace with your body.
-        Your live pose is projected onto a PCA subspace whose coordinates drive the visualization.
+        Capture a few extreme poses to define your control axes, then warp a trippy 3D visualization with your body.
+        Your live pose is projected onto a PCA subspace whose coordinates drive the scene.
     </p>
+
+    <details class="howto" open>
+        <summary>How to use</summary>
+        <ol>
+            <li><strong>Start Camera</strong> and allow access — you'll see yourself with a skeleton overlay.</li>
+            <li>Strike a distinct pose and click <strong>Capture Pose</strong>. Capture <strong>3+ poses that are as different as possible</strong> (arms up, crouched, leaning left/right…). These define your control axes.</li>
+            <li>Now <strong>move</strong>: your live pose is projected onto the captured subspace, and the 6 coordinates drive the visualization in real time. The bars show where you are on each axis.</li>
+            <li>Switch <strong>Visualization</strong> between <strong>Pose Constellation</strong> (your skeleton as glowing 3D points) and <strong>Fractal Hyperspace</strong>. Hit <strong>⛶ Fullscreen</strong> for the full trip.</li>
+        </ol>
+        <p style="color:#889;font-size:13px;margin:0 0 10px;">
+            Tips: <strong>Sens.</strong> sets how far a pose pushes the scene; <strong>Smooth</strong> trades snappiness for flow.
+            Try <strong>Hands</strong> mode for fine control. Before 3 poses are captured it runs an idle animation and reacts loosely to your overall position.
+        </p>
+    </details>
 
     <div class="container">
         <div class="panel">
