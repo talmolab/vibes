@@ -104,6 +104,8 @@
         .log-container h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; }
         .overlay-controls { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
         .overlay-controls label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #aaa; cursor: pointer; }
+        .overlay-controls select { background: #1a1a1a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 2px 4px; font-size: 12px; cursor: pointer; }
+        .overlay-controls select:focus { outline: none; border-color: #667eea; }
         @media (max-width: 600px) { body { padding: 10px; } .info-row { flex-direction: column; } .panels-row { flex-direction: column; } }
     </style>
 </head>
@@ -147,6 +149,17 @@
                 <span class="control-separator"></span>
                 <div class="overlay-controls">
                     <label title="Show pose skeletons on video"><input type="checkbox" id="showPosesCheck" checked> Poses</label>
+                    <label title="Loop playback"><input type="checkbox" id="loopCheck" checked> Loop</label>
+                    <label title="Playback speed">Speed
+                        <select id="speedSelect">
+                            <option value="0.25">0.25&times;</option>
+                            <option value="0.5">0.5&times;</option>
+                            <option value="1" selected>1&times;</option>
+                            <option value="1.5">1.5&times;</option>
+                            <option value="2">2&times;</option>
+                            <option value="4">4&times;</option>
+                        </select>
+                    </label>
                 </div>
             </div>
         </div>
@@ -222,8 +235,13 @@
             <textarea id="logBox" readonly rows="6" style="width: 100%; background: #1a1a1a; color: #888; border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 11px; resize: vertical; padding: 8px;"></textarea>
         </div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
-    <script>
+    <script type="module">
+        // ============================================
+        // sleap-io.js — ported, high-performance video + SLP logic.
+        // Browser ESM bundle (bundles mediabunny / h5wasm / mp4box), pinned version.
+        // ============================================
+        import * as sleapio from 'https://esm.sh/@talmolab/sleap-io.js@0.4.1';
+
         // ============================================
         // Track Colors (same as slp-viewer)
         // ============================================
@@ -234,7 +252,7 @@
         // State
         // ============================================
         const state = {
-            videoDecoder: null, currentFrame: 0, totalFrames: 0, fps: 0, fileName: '', videoInfo: null, isPlaying: false, playInterval: null,
+            videoBackend: null, currentFrame: 0, totalFrames: 0, fps: 0, fileName: '', videoInfo: null, isPlaying: false, playbackSpeed: 1, loop: true, frameIndex: null,
             mode: 'idle', activeAnnotation: null, selectedSegmentId: null,
             // Pose data from SLP
             poseData: null, hasPoseData: false, slpFileName: '',
@@ -265,61 +283,93 @@
         let lastContainerWidth = 0, lastContainerHeight = 0;
 
         // ============================================
-        // Video Decoder
+        // Video Backend (sleap-io.js MediaBunny) + prefetch
         // ============================================
-        class VideoDecoder {
-            constructor(opts = {}) { this.cacheSize = opts.cacheSize || 60; this.lookahead = opts.lookahead || 30; this.cache = new Map(); this.samples = []; this.keyframeIndices = []; this.decoder = null; this.config = null; this.videoTrack = null; this.mp4boxFile = null; this.file = null; this.fileSize = 0; this.isDecoding = false; }
-            async init(file) {
-                this.file = file; this.fileSize = file.size; this.mp4boxFile = MP4Box.createFile();
-                const ready = new Promise((res, rej) => { this.mp4boxFile.onError = rej; this.mp4boxFile.onReady = res; });
-                let offset = 0, resolved = false; ready.then(() => resolved = true);
-                while (offset < this.fileSize && !resolved) { const buf = await this.readChunk(offset, 1024 * 1024); buf.fileStart = offset; const next = this.mp4boxFile.appendBuffer(buf); offset = next === undefined ? offset + buf.byteLength : next; await new Promise(r => setTimeout(r, 0)); }
-                const info = await ready; if (!info.videoTracks.length) throw new Error('No video tracks');
-                this.videoTrack = info.videoTracks[0]; const trak = this.mp4boxFile.getTrackById(this.videoTrack.id); const desc = this.getCodecDesc(trak);
-                const codec = this.videoTrack.codec.startsWith('vp08') ? 'vp8' : this.videoTrack.codec;
-                this.config = { codec, codedWidth: this.videoTrack.video.width, codedHeight: this.videoTrack.video.height }; if (desc) this.config.description = desc;
-                const support = await window.VideoDecoder.isConfigSupported(this.config); if (!support.supported) throw new Error(`Codec ${codec} not supported`);
-                this.extractSamples(); const dur = this.videoTrack.duration / this.videoTrack.timescale; this.fps = this.samples.length / dur;
-                return { codec, width: this.videoTrack.video.width, height: this.videoTrack.video.height, totalFrames: this.samples.length, fps: this.fps };
+        // Frames are decoded by sleap-io.js's MediaBunnyVideoBackend: a persistent
+        // decode sink that caches decoded ImageBitmaps. We prefetch a window ahead of
+        // the playhead so playback reads become cache hits (~0ms) — there is no
+        // per-GOP decoder teardown, so playback no longer stutters every ~30 frames.
+        const VIDEO_CACHE_SIZE = 100;   // decoded frames kept in the backend cache (2x the active window)
+        const PREFETCH_AHEAD = 40;      // frames to decode ahead of the playhead (~0.8s @ 47fps; prefetch runs ~5x real-time)
+        const PREFETCH_BEHIND = 12;     // frames kept behind for smooth back-scrub
+        const PREFETCH_MARGIN = 16;     // re-arm prefetch once the playhead moves this far
+        let lastPrefetchTarget = -1;
+
+        async function createVideoBackendFor(file) {
+            const name = file.name || 'video.mp4';
+            try {
+                return await sleapio.MediaBunnyVideoBackend.fromBlob(file, name, { cacheSize: VIDEO_CACHE_SIZE });
+            } catch (err) {
+                log(`MediaBunny backend failed (${err.message}); falling back to mp4box`);
+                const vb = await sleapio.createVideoBackend(file, { backend: 'mp4box' });
+                // createVideoBackend doesn't await mp4box init, so wait for it to populate shape/fps.
+                if (vb && vb.ready && typeof vb.ready.then === 'function') await vb.ready;
+                return vb;
             }
-            async readChunk(off, size) { return await this.file.slice(off, Math.min(off + size, this.fileSize)).arrayBuffer(); }
-            getCodecDesc(trak) { for (const e of trak.mdia.minf.stbl.stsd.entries) { const box = e.avcC || e.hvcC || e.vpcC || e.av1C; if (box) { const s = new DataStream(undefined, 0, DataStream.BIG_ENDIAN); box.write(s); return new Uint8Array(s.buffer, 8); } } return null; }
-            extractSamples() { const info = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id); if (!info?.length) throw new Error('No samples'); const ts = this.videoTrack.timescale; this.samples = info.map((s, i) => ({ offset: s.offset, size: s.size, timestamp: s.cts * 1e6 / ts, duration: s.duration * 1e6 / ts, isKeyframe: s.is_sync, cts: s.cts, decodeIndex: i })).sort((a, b) => a.cts - b.cts); this.samples.forEach((s, i) => { if (s.isKeyframe) this.keyframeIndices.push(i); }); }
-            findKeyframeBefore(idx) { let r = 0; for (const k of this.keyframeIndices) { if (k <= idx) r = k; else break; } return r; }
-            async getFrame(idx) { if (idx < 0 || idx >= this.samples.length) return null; if (this.cache.has(idx)) { const bmp = this.cache.get(idx); this.cache.delete(idx); this.cache.set(idx, bmp); return { bitmap: bmp, fromCache: true }; } if (this.isDecoding) { await new Promise(r => { const c = () => this.isDecoding ? setTimeout(c, 10) : r(); c(); }); if (this.cache.has(idx)) return { bitmap: this.cache.get(idx), fromCache: true }; } const kf = this.findKeyframeBefore(idx); const end = Math.min(idx + this.lookahead, this.samples.length - 1); await this.decodeRange(kf, end, idx); const bmp = this.cache.get(idx); return bmp ? { bitmap: bmp, fromCache: false } : null; }
-            async decodeRange(start, end, target) { this.isDecoding = true; try { if (this.decoder) try { this.decoder.close(); } catch (e) {} let minDI = Infinity, maxDI = -Infinity; for (let i = start; i <= end; i++) { minDI = Math.min(minDI, this.samples[i].decodeIndex); maxDI = Math.max(maxDI, this.samples[i].decodeIndex); } const toFeed = []; for (let i = 0; i < this.samples.length; i++) { const s = this.samples[i]; if (s.decodeIndex >= minDI && s.decodeIndex <= maxDI) toFeed.push({ pi: i, s }); } toFeed.sort((a, b) => a.s.decodeIndex - b.s.decodeIndex); const dataMap = new Map(); for (const { s } of toFeed) dataMap.set(s.decodeIndex, new Uint8Array(await this.readChunk(s.offset, s.size))); const tsMap = new Map(); for (const { pi, s } of toFeed) tsMap.set(Math.round(s.timestamp), pi); const halfC = Math.floor(this.cacheSize / 2), cStart = Math.max(start, target - halfC), cEnd = Math.min(end, target + halfC); await new Promise((res, rej) => { let cnt = 0; this.decoder = new window.VideoDecoder({ output: f => { let fi = tsMap.get(Math.round(f.timestamp)); if (fi === undefined) { let best = Infinity; for (const [t, i] of tsMap) { const d = Math.abs(t - f.timestamp); if (d < best) { best = d; fi = i; } } } if (fi !== undefined && fi >= cStart && fi <= cEnd) { createImageBitmap(f).then(b => { this.addToCache(fi, b); f.close(); if (++cnt >= toFeed.length) res(); }).catch(() => { f.close(); if (++cnt >= toFeed.length) res(); }); } else { f.close(); if (++cnt >= toFeed.length) res(); } }, error: e => e.name === 'AbortError' ? res() : rej(e) }); this.decoder.configure(this.config); for (const { s } of toFeed) { this.decoder.decode(new EncodedVideoChunk({ type: s.isKeyframe ? 'key' : 'delta', timestamp: s.timestamp, duration: s.duration, data: dataMap.get(s.decodeIndex) })); } this.decoder.flush(); }); } finally { this.isDecoding = false; } }
-            addToCache(idx, bmp) { if (this.cache.size >= this.cacheSize) { const first = this.cache.keys().next().value; this.cache.get(first).close(); this.cache.delete(first); } this.cache.set(idx, bmp); }
-            close() { if (this.decoder) this.decoder.close(); for (const b of this.cache.values()) b.close(); this.cache.clear(); }
+        }
+
+        function schedulePrefetch(center) {
+            const b = state.videoBackend;
+            if (!b || typeof b.prefetch !== 'function' || !state.totalFrames) return;
+            if (lastPrefetchTarget >= 0 && Math.abs(center - lastPrefetchTarget) < PREFETCH_MARGIN) return;
+            lastPrefetchTarget = center;
+            const start = Math.max(0, center - PREFETCH_BEHIND);
+            const end = Math.min(state.totalFrames - 1, center + PREFETCH_AHEAD);
+            b.prefetch(start, end).catch(() => {});
         }
 
         // ============================================
-        // SLP Worker (same pattern as slp-viewer)
+        // SLP Loading (via sleap-io.js loadSlp)
         // ============================================
-        let slpWorker = null;
-
-        function initSlpWorker() {
-            if (slpWorker) slpWorker.terminate();
-            slpWorker = new Worker('./slp-worker.js');
-            slpWorker.onmessage = (e) => {
-                const { type, data } = e.data;
-                if (type === 'log') {
-                    log(data.message);
-                } else if (type === 'loading') {
-                    showError(data.message);
-                } else if (type === 'result') {
-                    hideError();
-                    handleSlpLoaded(data);
-                } else if (type === 'error') {
-                    hideError();
-                    showError('SLP Error: ' + data.message);
-                    log('SLP error: ' + data.message);
+        // Convert a sleap-io.js Labels object into the pose-data shape the rest of
+        // this vibe already renders from: skeleton {nodes, edges} + per-frame
+        // instances [{trackIdx, score, type, points:[[x,y]|null]}].
+        function labelsToPoseData(labels, filename, fileSize) {
+            const skel = labels.skeletons[0] || { nodeNames: [], edgeIndices: [] };
+            const skeleton = { name: skel.name || 'skeleton', nodes: skel.nodeNames || [], edges: skel.edgeIndices || [], symmetries: [] };
+            const numNodes = skeleton.nodes.length;
+            const tracks = labels.tracks.map(t => t.name);
+            const trackIndex = new Map(labels.tracks.map((t, i) => [t, i]));
+            const videoIndex = new Map(labels.videos.map((v, i) => [v, i]));
+            const frames = [];
+            for (const lf of labels.labeledFrames) {
+                if (!lf.instances.length) continue;
+                const instances = [];
+                for (const inst of lf.instances) {
+                    const pts = inst.points || [];
+                    const points = [];
+                    for (let k = 0; k < numNodes; k++) {
+                        const pt = pts[k];
+                        if (pt && pt.visible && Number.isFinite(pt.xy[0]) && Number.isFinite(pt.xy[1])) points.push([pt.xy[0], pt.xy[1]]);
+                        else points.push(null);
+                    }
+                    const isPred = typeof inst.score === 'number';
+                    instances.push({
+                        trackIdx: (inst.track != null && trackIndex.has(inst.track)) ? trackIndex.get(inst.track) : -1,
+                        score: isPred ? inst.score : (inst.trackingScore ?? null),
+                        type: isPred ? 'predicted' : 'user',
+                        points
+                    });
                 }
-            };
-            slpWorker.onerror = (e) => {
+                frames.push({ frameIdx: lf.frameIdx, videoIdx: videoIndex.get(lf.video) ?? 0, instances });
+            }
+            return { filename, fileSize, source: 'sleap-io.js', skeleton, tracks, frames };
+        }
+
+        async function loadSlpFromSource(source, filename, fileSize, label) {
+            hideError();
+            showError('Parsing SLP...');
+            log(`Loading SLP: ${label} (${(fileSize / 1024 / 1024).toFixed(1)} MB)`);
+            try {
+                const labels = await sleapio.loadSlp(source, { openVideos: false });
                 hideError();
-                showError('Worker error: ' + e.message);
-                log('Worker error: ' + e.message);
-            };
+                handleSlpLoaded(labelsToPoseData(labels, filename, fileSize));
+            } catch (err) {
+                hideError();
+                showError('SLP Error: ' + err.message);
+                log('SLP error: ' + err.message);
+                console.error(err);
+            }
         }
 
         function handleSlpLoaded(data) {
@@ -328,6 +378,8 @@
             state.slpFileName = data.filename;
             state.tracks = data.tracks;
             state.selectedTrackIdx = data.tracks.length > 0 ? 0 : null;
+            state.frameIndex = new Map();
+            for (const f of data.frames) { if ((f.videoIdx ?? 0) === 0) state.frameIndex.set(f.frameIdx, f); }
             renderTrackList();
             renderTimelineTracks();
             updateMetrics();
@@ -359,9 +411,18 @@
         // ============================================
         async function loadVideo(file) {
             hideError(); try {
-                state.fileName = file.name; if (state.videoDecoder) state.videoDecoder.close();
-                state.videoDecoder = new VideoDecoder({ cacheSize: 60, lookahead: 30 });
-                state.videoInfo = await state.videoDecoder.init(file); state.totalFrames = state.videoInfo.totalFrames; state.fps = state.videoInfo.fps;
+                // Create the new backend BEFORE touching current state, so a failed load
+                // leaves any already-working video intact instead of a closed/stale backend.
+                const vb = await createVideoBackendFor(file);
+                const width = vb.shape ? vb.shape[2] : 0, height = vb.shape ? vb.shape[1] : 0;
+                const totalFrames = vb.numFrames ?? (vb.shape ? vb.shape[0] : 0);
+                if (!totalFrames) { try { vb.close(); } catch (e) {} throw new Error('Could not read video (unsupported format or codec).'); }
+                stopPlayback();
+                if (state.videoBackend) { try { state.videoBackend.close(); } catch (e) {} }
+                state.videoBackend = vb; currentBitmap = null; lastPrefetchTarget = -1;
+                state.fileName = file.name;
+                state.videoInfo = { width, height, totalFrames, fps: vb.fps || 30 };
+                state.totalFrames = totalFrames; state.fps = state.videoInfo.fps;
                 state.currentFrame = 0; state.segments = []; state.mode = 'idle'; state.activeAnnotation = null; state.selectedSegmentId = null;
                 scale = 1; offsetX = 0; offsetY = 0;
                 log(`Loaded: ${file.name} (${state.videoInfo.width}x${state.videoInfo.height}, ${state.totalFrames} frames @ ${state.fps.toFixed(1)} fps)`);
@@ -376,22 +437,26 @@
         }
 
         // ============================================
-        // SLP Loading (via Web Worker)
+        // SLP Loading (buttons / URL)
         // ============================================
-        function loadSlp(file) {
-            hideError();
-            initSlpWorker();
-            showError('Loading SLP...');
-            log(`Loading SLP: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
-            slpWorker.postMessage({ type: 'loadLocal', file: file });
+        async function loadSlp(file) {
+            const buf = await file.arrayBuffer();
+            await loadSlpFromSource(new Uint8Array(buf), file.name, file.size, file.name);
         }
 
-        function loadSlpFromUrl(url) {
-            hideError();
-            initSlpWorker();
-            showError('Loading SLP from URL...');
-            log(`Loading SLP from URL: ${url}`);
-            slpWorker.postMessage({ type: 'loadUrl', url: url });
+        async function loadSlpFromUrl(url) {
+            const filename = url.split('/').pop().split('?')[0] || 'remote.slp';
+            try {
+                showError('Fetching SLP...');
+                const r = await fetch(url);
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const buf = await r.arrayBuffer();
+                await loadSlpFromSource(new Uint8Array(buf), filename, buf.byteLength, url);
+            } catch (err) {
+                hideError();
+                showError('SLP Error: ' + err.message);
+                log('SLP error: ' + err.message);
+            }
         }
 
         // ============================================
@@ -466,7 +531,29 @@
         // ============================================
         // Frame Navigation
         // ============================================
-        async function seekToFrame(idx) { if (!state.videoDecoder) return; idx = ((idx % state.totalFrames) + state.totalFrames) % state.totalFrames; const r = await state.videoDecoder.getFrame(idx); if (r?.bitmap) { state.currentFrame = idx; currentBitmap = r.bitmap; renderFrame(); updateSeekbar(); updateStatusDisplay(); renderTimelineTracks(); } }
+        async function displayFrame(idx) {
+            if (!state.videoBackend || !state.totalFrames) return null;
+            idx = ((idx % state.totalFrames) + state.totalFrames) % state.totalFrames;
+            const frame = await state.videoBackend.getFrame(idx);
+            if (frame) {
+                // MediaBunny returns ImageBitmap (owned by its cache). Convert an ImageData
+                // frame for canvas drawing; ignore raw byte frames we can't draw.
+                let bmp = null;
+                if (frame instanceof ImageBitmap) bmp = frame;
+                else if (frame instanceof ImageData) bmp = await createImageBitmap(frame);
+                if (bmp) {
+                    state.currentFrame = idx;
+                    currentBitmap = bmp;
+                    renderFrame(); updateSeekbar(); updateStatusDisplay(); renderTimelineTracks();
+                }
+            }
+            return frame;
+        }
+        // Manual seek (arrows / seekbar / buttons): display, then arm prefetch around the new spot.
+        async function seekToFrame(idx) {
+            await displayFrame(idx);
+            schedulePrefetch(state.currentFrame);
+        }
 
         function renderFrame() {
             if (!currentBitmap) return;
@@ -513,8 +600,8 @@
         }
 
         function getFrameData(frameIdx) {
-            if (!state.poseData) return null;
-            return state.poseData.frames.find(f => f.frameIdx === frameIdx && (f.videoIdx ?? 0) === 0);
+            if (!state.frameIndex) return null;
+            return state.frameIndex.get(frameIdx) || null;
         }
 
         function drawPose(ctx, instance, skeleton, color, isSelected) {
@@ -568,7 +655,42 @@
         document.addEventListener('mouseup', () => { if (isScrubbing) { document.body.style.userSelect = ''; isScrubbing = false; updateSeekbar(); } });
 
         // Playback
-        function togglePlayback() { if (state.isPlaying) { state.isPlaying = false; playBtn.textContent = '\u25B6'; if (state.playInterval) clearInterval(state.playInterval); } else { state.isPlaying = true; playBtn.textContent = '\u23F8'; state.playInterval = setInterval(() => seekToFrame(state.currentFrame + 1), 1000 / state.fps); } }
+        // requestAnimationFrame clock: advance by elapsed-time * fps * speed so playback
+        // is smooth and speed-adjustable. Reads hit the prefetched cache (~0ms).
+        let rafId = null, playClockLast = null, frameAccum = 0, playbackBusy = false;
+        function startPlayback() {
+            if (!state.videoBackend || state.totalFrames <= 1) return;
+            state.isPlaying = true; playBtn.textContent = '⏸';
+            playClockLast = null; frameAccum = 0;
+            schedulePrefetch(state.currentFrame);
+            rafId = requestAnimationFrame(playbackTick);
+        }
+        function stopPlayback() {
+            state.isPlaying = false; playBtn.textContent = '▶';
+            if (rafId) cancelAnimationFrame(rafId);
+            rafId = null; playbackBusy = false;
+        }
+        function togglePlayback() { state.isPlaying ? stopPlayback() : startPlayback(); }
+        function playbackTick(now) {
+            if (!state.isPlaying) return;
+            rafId = requestAnimationFrame(playbackTick);
+            if (playClockLast === null) playClockLast = now;
+            let dt = (now - playClockLast) / 1000; playClockLast = now;
+            if (dt > 0.25) dt = 0.25; // clamp big gaps (e.g. backgrounded tab)
+            frameAccum += dt * state.fps * state.playbackSpeed;
+            if (frameAccum < 1 || playbackBusy) return;
+            const advance = Math.floor(frameAccum); frameAccum -= advance;
+            let next = state.currentFrame + advance;
+            if (next >= state.totalFrames) {
+                if (state.loop) next %= state.totalFrames;
+                // End of video with loop off: stop synchronously (no captured flag in an async
+                // callback that could later halt a restarted session), then show the last frame.
+                else { stopPlayback(); displayFrame(state.totalFrames - 1); return; }
+            }
+            playbackBusy = true;
+            displayFrame(next).finally(() => { playbackBusy = false; });
+            schedulePrefetch(next);
+        }
         playBtn.addEventListener('click', togglePlayback);
         document.getElementById('firstFrameBtn').addEventListener('click', () => seekToFrame(0));
         document.getElementById('prevFrameBtn').addEventListener('click', () => seekToFrame(state.currentFrame - 1));
@@ -580,6 +702,8 @@
 
         // Show poses toggle
         document.getElementById('showPosesCheck').addEventListener('change', e => { state.showPoses = e.target.checked; renderFrame(); });
+        document.getElementById('speedSelect').addEventListener('change', e => { state.playbackSpeed = parseFloat(e.target.value); log(`Playback speed: ${state.playbackSpeed}x`); });
+        document.getElementById('loopCheck').addEventListener('change', e => { state.loop = e.target.checked; log(`Loop: ${state.loop ? 'on' : 'off'}`); });
 
         // Mouse wheel zoom
         canvasContainer.addEventListener('wheel', e => { e.preventDefault(); const rect = canvasContainer.getBoundingClientRect(), mx = e.clientX - rect.left, my = e.clientY - rect.top; let d = Math.max(-100, Math.min(100, e.deltaY)); const zf = Math.exp(-d * 0.001), ns = Math.max(0.1, Math.min(50, scale * zf)); zoomToPoint(mx, my, ns); renderFrame(); });
@@ -1080,7 +1204,7 @@
         // Keyboard
         // ============================================
         document.addEventListener('keydown', e => {
-            if (!state.videoDecoder || eventTypeModal.style.display === 'flex') return;
+            if (!state.videoBackend || eventTypeModal.style.display === 'flex') return;
             if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); }
             else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); }
             // Zoom with +/- keys

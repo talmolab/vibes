@@ -6,8 +6,9 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 
 ## Features
 
-- Load local MP4/WebM videos (uses File System Access API when available)
+- Load local MP4/WebM/MKV/MOV videos (uses File System Access API when available)
 - Load from URL with `?url=` query parameter support
+- **Smooth, speed-adjustable playback** - 0.25×–4× speed, loop toggle, and stutter-free scrubbing via frame prefetching
 - **Track-level annotation** - Load SLEAP `.slp` files and assign events to specific tracked subjects
 - Frame-accurate navigation (arrow keys, Home/End)
 - Hotkey-driven annotation (press to start, press again to commit)
@@ -20,6 +21,10 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 - Resizable canvas
 - JSON export/import for annotations (includes event type definitions and track data)
 - Debug log panel for troubleshooting
+
+## Video & Pose Engine
+
+Video decoding and SLEAP `.slp` parsing are powered by [sleap-io.js](https://github.com/talmolab/sleap-io.js) (`@talmolab/sleap-io.js`), the JavaScript port of [sleap-io](https://github.com/talmolab/sleap-io). Frames are decoded by a persistent [MediaBunny](https://mediabunny.dev)-based backend that **prefetches a window ahead of the playhead**, so playback and scrubbing stay smooth without the periodic decode stalls of a rebuild-per-keyframe decoder. Supported containers include MP4, WebM, Matroska, MOV, and MPEG-TS. SLP files are read directly in the browser (skeleton, tracks, instances, and points) — no server round-trip.
 
 ## Keyboard Shortcuts
 
@@ -145,6 +150,5 @@ Example: `https://vibes.tlab.sh/event-annotator/?url=https://example.com/video.m
 ### Future Work
 
 - Drag segment edges to resize
-- Playback speed control
 - Undo/redo
 - Support for multi-subject events (e.g., "Track 0 and Track 1 are fighting")
