@@ -127,6 +127,23 @@ tracks: ['Track 0', 'Track 1', 'Track 2']
 
 Example: `https://vibes.tlab.sh/event-annotator/?url=https://example.com/video.mp4&slp=https://example.com/poses.slp`
 
+## Saving & Resuming a Session
+
+Annotations live in the browser only — nothing is uploaded. To keep your work,
+click **Export** to download a JSON file (segments + event types + tracks).
+
+To **resume later** and continue where you left off:
+
+1. **Load Video** — open the same video you were annotating.
+2. **Load SLP** (optional) — for the pose overlay and track names.
+3. **Import** — select your saved annotations JSON. Your segments, event types,
+   and tracks are restored onto the timeline.
+
+> The **Import** button is disabled until a video is loaded, because loading a
+> video starts a fresh session (clearing annotations) — so always load the video
+> first, then import. If the video's frame count differs from the annotations',
+> the log warns you that positions may not line up.
+
 ## Export Format
 
 ```json
