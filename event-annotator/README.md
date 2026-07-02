@@ -6,8 +6,9 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 
 ## Features
 
-- Load local MP4/WebM videos (uses File System Access API when available)
+- Load local MP4/WebM/MKV/MOV videos (uses File System Access API when available)
 - Load from URL with `?url=` query parameter support
+- **Smooth, speed-adjustable playback** - 0.25×–4× speed, loop toggle, and stutter-free scrubbing via frame prefetching
 - **Track-level annotation** - Load SLEAP `.slp` files and assign events to specific tracked subjects
 - Frame-accurate navigation (arrow keys, Home/End)
 - Hotkey-driven annotation (press to start, press again to commit)
@@ -15,11 +16,16 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 - **Erase mode** - selectively remove or trim segments for specific event types
 - Timeline with rows per event type × track combination
 - Pose overlay visualization with track highlighting
-- Click segments to select, Delete to remove
+- **Live keypoint-visibility panel** - per-node, per-track dots showing which skeleton keypoints are visible in the current frame, updating as the video plays
+- Click a segment to jump to it, double-click to play from it; Delete to remove
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas
 - JSON export/import for annotations (includes event type definitions and track data)
 - Debug log panel for troubleshooting
+
+## Video & Pose Engine
+
+Video decoding and SLEAP `.slp` parsing are powered by [sleap-io.js](https://github.com/talmolab/sleap-io.js) (`@talmolab/sleap-io.js`), the JavaScript port of [sleap-io](https://github.com/talmolab/sleap-io). Frames are decoded by a persistent [MediaBunny](https://mediabunny.dev)-based backend that **prefetches a window ahead of the playhead**, so playback and scrubbing stay smooth without the periodic decode stalls of a rebuild-per-keyframe decoder. Supported containers include MP4, WebM, Matroska, MOV, and MPEG-TS. SLP files are read directly in the browser (skeleton, tracks, instances, and points) — no server round-trip.
 
 ## Keyboard Shortcuts
 
@@ -39,6 +45,7 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 | X | Erase selected event type |
 | Escape | Cancel current annotation |
 | Delete | Remove selected segment |
+| [ / ] | Set selected segment's start / end to the current frame |
 
 ## Track-Level Annotation
 
@@ -110,9 +117,11 @@ tracks: ['Track 0', 'Track 1', 'Track 2']
 |--------|-----|
 | Create segment | Press hotkey to start, navigate, press again to commit |
 | Create on selected row | Select row with ↑/↓, press Z to paint, navigate, Z again |
+| Jump to a segment | Single-click it (playhead moves to its start) |
+| Play from a segment | Double-click it (jumps to its start and plays) |
+| Edit start/end (frame-level) | Select it, then type exact frames in the editor, use the input arrows to nudge ±1, or scrub the video and press `[` / `]` (or the ⇤/⇥ buttons) to snap the start/end to the current frame |
 | Remove segment | Click to select, press Delete |
 | Erase range | Select row, press X, navigate, X again (trims/splits segments) |
-| Adjust boundaries | Delete and re-annotate, or use erase to trim |
 | Cancel in-progress | Press Escape |
 
 ## URL Parameters
@@ -121,6 +130,23 @@ tracks: ['Track 0', 'Track 1', 'Track 2']
 - `?slp=SLP_URL` - Load SLEAP pose data from URL
 
 Example: `https://vibes.tlab.sh/event-annotator/?url=https://example.com/video.mp4&slp=https://example.com/poses.slp`
+
+## Saving & Resuming a Session
+
+Annotations live in the browser only — nothing is uploaded. To keep your work,
+click **Export** to download a JSON file (segments + event types + tracks).
+
+To **resume later** and continue where you left off:
+
+1. **Load Video** — open the same video you were annotating.
+2. **Load SLP** (optional) — for the pose overlay and track names.
+3. **Import** — select your saved annotations JSON. Your segments, event types,
+   and tracks are restored onto the timeline.
+
+> The **Import** button is disabled until a video is loaded, because loading a
+> video starts a fresh session (clearing annotations) — so always load the video
+> first, then import. If the video's frame count differs from the annotations',
+> the log warns you that positions may not line up.
 
 ## Export Format
 
@@ -145,6 +171,5 @@ Example: `https://vibes.tlab.sh/event-annotator/?url=https://example.com/video.m
 ### Future Work
 
 - Drag segment edges to resize
-- Playback speed control
 - Undo/redo
 - Support for multi-subject events (e.g., "Track 0 and Track 1 are fighting")
