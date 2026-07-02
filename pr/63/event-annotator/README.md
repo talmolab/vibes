@@ -44,6 +44,7 @@ Video decoding and SLEAP `.slp` parsing are powered by [sleap-io.js](https://git
 | X | Erase selected event type |
 | Escape | Cancel current annotation |
 | Delete | Remove selected segment |
+| [ / ] | Set selected segment's start / end to the current frame |
 
 ## Track-Level Annotation
 
@@ -117,9 +118,9 @@ tracks: ['Track 0', 'Track 1', 'Track 2']
 | Create on selected row | Select row with ↑/↓, press Z to paint, navigate, Z again |
 | Jump to a segment | Single-click it (playhead moves to its start) |
 | Play from a segment | Double-click it (jumps to its start and plays) |
+| Edit start/end (frame-level) | Select it, then type exact frames in the editor, use the input arrows to nudge ±1, or scrub the video and press `[` / `]` (or the ⇤/⇥ buttons) to snap the start/end to the current frame |
 | Remove segment | Click to select, press Delete |
 | Erase range | Select row, press X, navigate, X again (trims/splits segments) |
-| Adjust boundaries | Delete and re-annotate, or use erase to trim |
 | Cancel in-progress | Press Escape |
 
 ## URL Parameters
