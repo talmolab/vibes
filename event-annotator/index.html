@@ -112,7 +112,7 @@
 <body>
     <div class="container">
         <h1>Video Event Annotator</h1>
-        <p class="description">Frame-accurate event annotation with track-level support. Load SLP files for multi-animal tracking.</p>
+        <p class="description">Frame-accurate event annotation with track-level support. Load SLP files for multi-animal tracking. <b>Resuming a session?</b> Load your video (and SLP), then <b>Import</b> your saved annotations JSON to pick up where you left off.</p>
         <div class="controls">
             <input type="file" id="fileInput" accept="video/mp4,video/webm,.mp4,.webm,.slp" style="display: none;">
             <input type="file" id="slpInput" accept=".slp" style="display: none;">
@@ -121,8 +121,8 @@
             <button id="loadSlpBtn">Load SLP</button>
             <button id="loadUrlBtn">Load from URL</button>
             <button id="demoBtn">Load Demo</button>
-            <button id="importBtn" disabled>Import</button>
-            <button id="exportBtn" disabled>Export</button>
+            <button id="importBtn" disabled title="Load a previously exported annotations JSON to resume (load the video first)">Import</button>
+            <button id="exportBtn" disabled title="Save all annotations (segments, event types, tracks) to a JSON file">Export</button>
             <button id="clearBtn" disabled>Clear</button>
         </div>
         <div class="url-input-container" id="urlInputContainer" style="display: none;">
@@ -1358,7 +1358,11 @@
                     if (d.eventTypes) state.eventTypes = d.eventTypes;
                     renderTrackList(); renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); hideError();
                     log(`Imported: ${state.segments.length} segments from ${f.name}`);
-                } else throw new Error('Invalid file');
+                    // Warn if the loaded video's length differs from the annotations' — segments would be misplaced.
+                    if (d.totalFrames && state.totalFrames && d.totalFrames !== state.totalFrames) {
+                        log(`Warning: annotations were made on a ${d.totalFrames}-frame video but this one has ${state.totalFrames}. Segment positions may not line up — load the matching video.`);
+                    }
+                } else throw new Error("not an annotations file (missing a 'segments' array). Import a JSON that was created with this tool's Export button.");
             } catch (er) { showError('Import error: ' + er.message); log(`Import error: ${er.message}`); }
             e.target.value = '';
         });
