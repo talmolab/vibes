@@ -16,7 +16,7 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 - **Erase mode** - selectively remove or trim segments for specific event types
 - Timeline with rows per event type × track combination
 - Pose overlay visualization with track highlighting
-- Click segments to select, Delete to remove
+- Click a segment to jump to it, double-click to play from it; Delete to remove
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas
 - JSON export/import for annotations (includes event type definitions and track data)
@@ -115,6 +115,8 @@ tracks: ['Track 0', 'Track 1', 'Track 2']
 |--------|-----|
 | Create segment | Press hotkey to start, navigate, press again to commit |
 | Create on selected row | Select row with ↑/↓, press Z to paint, navigate, Z again |
+| Jump to a segment | Single-click it (playhead moves to its start) |
+| Play from a segment | Double-click it (jumps to its start and plays) |
 | Remove segment | Click to select, press Delete |
 | Erase range | Select row, press X, navigate, X again (trims/splits segments) |
 | Adjust boundaries | Delete and re-annotate, or use erase to trim |
