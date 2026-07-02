@@ -142,6 +142,23 @@
         .vis-legend { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #888; margin-top: 8px; }
         .vis-legend .vis-scale { display: flex; height: 12px; width: 140px; border-radius: 3px; overflow: hidden; }
         .vis-legend .vis-scale span { flex: 1; }
+        .vis-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .vis-toggle { display: flex; border: 1px solid #555; border-radius: 5px; overflow: hidden; }
+        .vis-view-btn { background: #1a1a1a; color: #aaa; border: none; padding: 4px 12px; font-size: 11px; cursor: pointer; margin: 0; border-radius: 0; }
+        .vis-view-btn.active { background: #667eea; color: #fff; }
+        .vis-pertrack { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #aaa; cursor: pointer; }
+        .vis-barlegend { display: flex; flex-wrap: wrap; gap: 5px 14px; font-size: 11px; color: #aaa; margin-bottom: 10px; }
+        .vis-barlegend .vbl { display: flex; align-items: center; gap: 5px; }
+        .vis-barlegend .vbl-sw { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .vis-bars { display: flex; flex-direction: column; gap: 5px; }
+        .vb-row { display: flex; gap: 8px; align-items: center; }
+        .vb-label { width: 78px; min-width: 78px; text-align: right; font-family: monospace; font-size: 11px; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .vb-bars { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .vb-bar-row { display: flex; align-items: center; gap: 6px; }
+        .vb-bar-row.vb-newgroup { margin-top: 4px; }
+        .vb-track { flex: 1; height: 12px; background: #1a1a1a; border-radius: 2px; }
+        .vb-fill { height: 100%; border-radius: 2px; min-width: 1px; }
+        .vb-pct { width: 34px; min-width: 34px; font-size: 10px; color: #bbb; }
         @media (max-width: 600px) { body { padding: 10px; } .info-row { flex-direction: column; } .panels-row { flex-direction: column; } }
     </style>
 </head>
@@ -267,8 +284,13 @@
         </div>
         <div class="vis-report" id="visReport" style="display: none;">
             <div class="vis-report-header">
-                <h3>Keypoint Visibility by Event Type <span class="hint">(% of annotated frames each keypoint is visible)</span></h3>
-                <div>
+                <h3>Keypoint Visibility <span class="hint">(% of annotated frames each keypoint is visible)</span></h3>
+                <div class="vis-controls">
+                    <div class="vis-toggle">
+                        <button id="visViewHeatmap" class="vis-view-btn active">Heatmap</button>
+                        <button id="visViewBars" class="vis-view-btn">Bars</button>
+                    </div>
+                    <label class="vis-pertrack" title="Break each event type down by track"><input type="checkbox" id="visPerTrackToggle"> Per track</label>
                     <button id="visCsvBtn" style="padding: 4px 10px; font-size: 11px;">Download CSV</button>
                     <button id="visCloseBtn" style="padding: 4px 10px; font-size: 11px;">Close</button>
                 </div>
@@ -1585,46 +1607,21 @@
         });
 
         // ============================================
-        // Keypoint visibility report (% visible per keypoint × event type)
+        // Keypoint visibility report (% visible per keypoint, by event type and optionally track)
         // ============================================
-        // For each event type, walk every frame of its segments and tally, per node,
-        // how often that keypoint is present (non-null) on the relevant instance(s):
-        // the segment's track for track-level segments, or all instances for frame-level.
-        function computeVisibilityMatrix() {
-            if (!state.hasPoseData || !state.poseData || !state.poseData.skeleton.nodes.length) return null;
-            const nodes = state.poseData.skeleton.nodes;
-            const N = nodes.length;
-            const ets = state.eventTypes.filter(e => !e.isEraser);
-            const counts = ets.map(() => ({ visible: new Array(N).fill(0), total: new Array(N).fill(0), samples: 0, segCount: 0 }));
-            ets.forEach((et, ei) => {
-                const segs = state.segments.filter(s => s.eventTypeId === et.id);
-                counts[ei].segCount = segs.length;
-                for (const seg of segs) {
-                    for (let f = seg.startFrame; f <= seg.endFrame; f++) {
-                        const fd = getFrameData(f);
-                        if (!fd) continue;
-                        const insts = (seg.trackIdx === null || seg.trackIdx === undefined)
-                            ? fd.instances
-                            : fd.instances.filter(inst => inst.trackIdx === seg.trackIdx);
-                        for (const inst of insts) {
-                            counts[ei].samples++;
-                            for (let k = 0; k < N; k++) {
-                                counts[ei].total[k]++;
-                                if (inst.points[k] != null) counts[ei].visible[k]++;
-                            }
-                        }
-                    }
-                }
-            });
-            const matrix = nodes.map((_, k) => ets.map((et, ei) => {
-                const tot = counts[ei].total[k];
-                return tot > 0 ? (counts[ei].visible[k] / tot) * 100 : null;
-            }));
-            return {
-                nodes,
-                eventTypes: ets.map((et, ei) => ({ id: et.id, name: et.name, color: et.color, samples: counts[ei].samples, segCount: counts[ei].segCount })),
-                matrix
-            };
+        let visView = 'heatmap';   // 'heatmap' | 'bars'
+        let visPerTrack = false;
+        let lastVisData = null;
+
+        // Darken a #hex by track index so per-track bars of the same event are distinguishable.
+        function visShade(hex, trackIdx) {
+            const f = Math.max(0.45, 1 - trackIdx * 0.22);
+            const m = hex.replace('#', '');
+            if (m.length < 6) return hex;
+            const r = Math.round(parseInt(m.substr(0, 2), 16) * f);
+            const g = Math.round(parseInt(m.substr(2, 2), 16) * f);
+            const b = Math.round(parseInt(m.substr(4, 2), 16) * f);
+            return `rgb(${r},${g},${b})`;
         }
         // Red (low) -> amber -> green (high) heat color; value is always shown too (accessible).
         function visHeatColor(pct) {
@@ -1634,49 +1631,105 @@
             else { r = Math.round(214 - ((p - 0.5) / 0.5) * 150); g = 200; }
             return `rgb(${r},${g},70)`;
         }
-        let lastVisMatrix = null;
-        function renderVisibilityReport() {
-            const body = document.getElementById('visReportBody');
-            const data = computeVisibilityMatrix();
-            lastVisMatrix = data;
-            if (!data) { body.innerHTML = '<p style="color:#888;font-size:12px;">Load an SLP file with pose data to compute keypoint visibility.</p>'; return; }
-            const withSegs = data.eventTypes.filter(et => et.segCount > 0);
-            if (!withSegs.length) { body.innerHTML = '<p style="color:#888;font-size:12px;">No annotations yet — annotate some event bouts, then reopen this report.</p>'; return; }
+        // Build the per-keypoint visibility series. Each series is one column/bar-group:
+        // an event type (aggregate over its instances) or, with perTrack, an event x track.
+        function computeVisibility(perTrack) {
+            if (!state.hasPoseData || !state.poseData || !state.poseData.skeleton.nodes.length) return null;
+            const nodes = state.poseData.skeleton.nodes, N = nodes.length;
+            const ets = state.eventTypes.filter(e => !e.isEraser);
+            const series = [], acc = [];
+            const add = (meta) => { series.push(Object.assign({ samples: 0, segCount: 0 }, meta)); acc.push({ visible: new Array(N).fill(0), total: new Array(N).fill(0) }); return series.length - 1; };
+            const tally = (si, inst) => { series[si].samples++; const a = acc[si]; const pts = inst.points; for (let k = 0; k < N; k++) { a.total[k]++; if (pts[k] != null) a.visible[k]++; } };
+            const nT = state.tracks.length;
+            for (const et of ets) {
+                const eventSegs = state.segments.filter(s => s.eventTypeId === et.id);
+                if (!eventSegs.length) continue;
+                if (perTrack && nT > 0) {
+                    for (let T = 0; T < nT; T++) {
+                        // Track T sees its own track-level segments plus any frame-level ones.
+                        const segs = eventSegs.filter(s => s.trackIdx === T || s.trackIdx == null);
+                        if (!segs.length) continue;
+                        const si = add({ label: `${et.name} · ${state.tracks[T]}`, eventName: et.name, eventId: et.id, eventColor: et.color, trackIdx: T, fillColor: getTrackColor(T), segCount: segs.length });
+                        for (const seg of segs) for (let f = seg.startFrame; f <= seg.endFrame; f++) {
+                            const fd = getFrameData(f); if (!fd) continue;
+                            const inst = fd.instances.find(i => i.trackIdx === T); if (inst) tally(si, inst);
+                        }
+                    }
+                } else {
+                    const si = add({ label: et.name, eventName: et.name, eventId: et.id, eventColor: et.color, trackIdx: null, fillColor: et.color, segCount: eventSegs.length });
+                    for (const seg of eventSegs) for (let f = seg.startFrame; f <= seg.endFrame; f++) {
+                        const fd = getFrameData(f); if (!fd) continue;
+                        const insts = (seg.trackIdx == null) ? fd.instances : fd.instances.filter(i => i.trackIdx === seg.trackIdx);
+                        for (const inst of insts) tally(si, inst);
+                    }
+                }
+            }
+            // Keep only series that actually gathered samples.
+            const keep = series.map((s, i) => i).filter(i => series[i].samples > 0);
+            const keptSeries = keep.map(i => series[i]);
+            const matrix = nodes.map((_, k) => keep.map(i => { const t = acc[i].total[k]; return t > 0 ? (acc[i].visible[k] / t) * 100 : null; }));
+            return { nodes, series: keptSeries, matrix };
+        }
+
+        function renderVisHeatmap(data) {
             let html = '<table class="vis-heatmap"><thead><tr><th>Keypoint</th>';
-            for (const et of data.eventTypes) {
-                if (et.segCount === 0) continue;
-                html += `<th><span style="color:${et.color}">&#9632;</span> ${et.name}<br><span style="color:#888;font-weight:normal;font-size:10px;">${et.segCount} bouts · ${et.samples} f</span></th>`;
+            for (const s of data.series) {
+                const trackLine = s.trackIdx != null ? `<br><span style="color:${getTrackColor(s.trackIdx)};font-weight:normal;">${state.tracks[s.trackIdx]}</span>` : '';
+                html += `<th><span style="color:${s.eventColor}">&#9632;</span> ${s.eventName}${trackLine}<br><span style="color:#888;font-weight:normal;font-size:10px;">${s.segCount} bouts · ${s.samples} f</span></th>`;
             }
             html += '</tr></thead><tbody>';
             data.nodes.forEach((node, k) => {
                 html += `<tr><th>${node}</th>`;
-                data.eventTypes.forEach((et, ei) => {
-                    if (et.segCount === 0) return;
-                    const v = data.matrix[k][ei];
-                    if (v === null) html += `<td class="vis-na">&mdash;</td>`;
-                    else html += `<td class="vis-cell" style="background:${visHeatColor(v)}">${v.toFixed(0)}%</td>`;
+                data.series.forEach((s, si) => {
+                    const v = data.matrix[k][si];
+                    html += v === null ? '<td class="vis-na">&mdash;</td>' : `<td class="vis-cell" style="background:${visHeatColor(v)}">${v.toFixed(0)}%</td>`;
                 });
                 html += '</tr>';
             });
             html += '</tbody></table>';
             html += '<div class="vis-legend"><span>0%</span><span class="vis-scale"></span><span>100%</span><span style="margin-left:6px;">% of a behavior\'s annotated frames in which the keypoint is present</span></div>';
-            body.innerHTML = html;
-            // paint the legend gradient
+            return html;
+        }
+
+        function renderVisBars(data) {
+            let html = '<div class="vis-barlegend">';
+            for (const s of data.series) html += `<span class="vbl"><span class="vbl-sw" style="background:${s.fillColor}"></span>${s.label} <span style="color:#777">(${s.samples}f)</span></span>`;
+            html += '</div><div class="vis-bars">';
+            data.nodes.forEach((node, k) => {
+                html += `<div class="vb-row"><div class="vb-label" title="${node}">${node}</div><div class="vb-bars">`;
+                data.series.forEach((s, si) => {
+                    const v = data.matrix[k][si];
+                    const pct = v === null ? 0 : v;
+                    const label = v === null ? 'n/a' : pct.toFixed(0) + '%';
+                    const newGroup = si > 0 && data.series[si - 1].eventId !== s.eventId ? ' vb-newgroup' : '';
+                    html += `<div class="vb-bar-row${newGroup}"><div class="vb-track"><div class="vb-fill" style="width:${pct}%;background:${s.fillColor}" title="${s.label}: ${label}"></div></div><span class="vb-pct">${label}</span></div>`;
+                });
+                html += '</div></div>';
+            });
+            html += '</div>';
+            return html;
+        }
+
+        function renderVisibilityReport() {
+            const body = document.getElementById('visReportBody');
+            const data = computeVisibility(visPerTrack);
+            lastVisData = data;
+            if (!data) { body.innerHTML = '<p style="color:#888;font-size:12px;">Load an SLP file with pose data to compute keypoint visibility.</p>'; return; }
+            if (!data.series.length) { body.innerHTML = '<p style="color:#888;font-size:12px;">No annotations yet — annotate some event bouts, then reopen this report.</p>'; return; }
+            body.innerHTML = visView === 'bars' ? renderVisBars(data) : renderVisHeatmap(data);
             const scale = body.querySelector('.vis-scale');
-            if (scale) { for (let i = 0; i <= 10; i++) { const s = document.createElement('span'); s.style.background = visHeatColor(i * 10); scale.appendChild(s); } }
+            if (scale) for (let i = 0; i <= 10; i++) { const sp = document.createElement('span'); sp.style.background = visHeatColor(i * 10); scale.appendChild(sp); }
         }
         function visibilityToCsv() {
-            const data = lastVisMatrix || computeVisibilityMatrix();
-            if (!data) return null;
-            const ets = data.eventTypes.filter(et => et.segCount > 0);
-            const header = ['keypoint', ...ets.map(et => `${et.name} (%visible)`)];
-            const rows = [header.join(',')];
+            const data = lastVisData || computeVisibility(visPerTrack);
+            if (!data || !data.series.length) return null;
+            const esc = (x) => `"${String(x).replace(/"/g, '""')}"`;
+            const rows = [['keypoint', ...data.series.map(s => esc(s.label + ' (%visible)'))].join(',')];
             data.nodes.forEach((node, k) => {
-                const cells = ets.map(et => { const ei = data.eventTypes.indexOf(et); const v = data.matrix[k][ei]; return v === null ? '' : v.toFixed(2); });
-                rows.push([node, ...cells].join(','));
+                rows.push([esc(node), ...data.series.map((s, si) => { const v = data.matrix[k][si]; return v === null ? '' : v.toFixed(2); })].join(','));
             });
-            rows.push(['#bouts', ...ets.map(et => et.segCount)].join(','));
-            rows.push(['#frames', ...ets.map(et => et.samples)].join(','));
+            rows.push(['#bouts', ...data.series.map(s => s.segCount)].join(','));
+            rows.push(['#frames', ...data.series.map(s => s.samples)].join(','));
             return rows.join('\n');
         }
         document.getElementById('visReportBtn').addEventListener('click', () => {
@@ -1686,6 +1739,15 @@
             panel.scrollIntoView({ block: 'nearest' });
         });
         document.getElementById('visCloseBtn').addEventListener('click', () => { document.getElementById('visReport').style.display = 'none'; });
+        function setVisView(v) {
+            visView = v;
+            document.getElementById('visViewHeatmap').classList.toggle('active', v === 'heatmap');
+            document.getElementById('visViewBars').classList.toggle('active', v === 'bars');
+            renderVisibilityReport();
+        }
+        document.getElementById('visViewHeatmap').addEventListener('click', () => setVisView('heatmap'));
+        document.getElementById('visViewBars').addEventListener('click', () => setVisView('bars'));
+        document.getElementById('visPerTrackToggle').addEventListener('change', e => { visPerTrack = e.target.checked; renderVisibilityReport(); });
         document.getElementById('visCsvBtn').addEventListener('click', () => {
             const csv = visibilityToCsv();
             if (!csv) return;
