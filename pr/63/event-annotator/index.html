@@ -59,6 +59,17 @@
         .track-panel h3 { margin: 0 0 8px 0; font-size: 13px; color: #fff; display: flex; align-items: center; gap: 6px; }
         .track-panel .hint { font-size: 10px; color: #666; font-weight: normal; }
         .track-list { max-height: 120px; overflow-y: auto; }
+        .keypoints-panel { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; }
+        .kp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 10px; flex-wrap: wrap; }
+        .kp-header h3 { margin: 0; font-size: 13px; color: #fff; }
+        .kp-header .hint { font-size: 10px; color: #666; font-weight: normal; }
+        .kp-legend { display: flex; gap: 10px; font-size: 11px; color: #aaa; flex-wrap: wrap; }
+        .kp-legend .kp-leg { display: flex; align-items: center; gap: 4px; }
+        .kp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 3px 14px; max-height: 200px; overflow-y: auto; }
+        .kp-node { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 1px 0; }
+        .kp-node .kp-dots { display: flex; gap: 3px; flex-shrink: 0; }
+        .kp-node .kp-name { color: #bbb; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .kp-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #555; box-sizing: border-box; background: transparent; transition: background 0.05s; }
         .track-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 4px; cursor: pointer; margin: 2px 0; font-size: 12px; transition: background 0.15s; }
         .track-item:hover { background: #3a3a3a; }
         .track-item.selected { background: #444; box-shadow: inset 0 0 0 2px #667eea; }
@@ -206,6 +217,13 @@
                 </div>
                 <div class="event-type-buttons" id="eventTypeButtons"></div>
             </div>
+        </div>
+        <div class="keypoints-panel" id="keypointsPanel" style="display: none;">
+            <div class="kp-header">
+                <h3>Keypoint Visibility <span class="hint">(current frame)</span></h3>
+                <span class="kp-legend" id="kpLegend"></span>
+            </div>
+            <div class="kp-grid" id="kpGrid"></div>
         </div>
         <div class="modal-overlay" id="eventTypeModal" style="display: none;">
             <div class="modal">
@@ -443,10 +461,68 @@
             for (const f of data.frames) { if ((f.videoIdx ?? 0) === 0) state.frameIndex.set(f.frameIdx, f); }
             renderTrackList();
             renderTimelineTracks();
+            renderKeypointPanel();
             updateMetrics();
             updateStatusDisplay();
             if (currentBitmap) renderFrame();
             log(`SLP loaded: ${data.tracks.length} tracks, ${data.frames.length} frames`);
+        }
+
+        // ============================================
+        // Live keypoint-visibility panel (per current frame)
+        // ============================================
+        // Built once per SLP load; each frame we only toggle the dots (cheap), so it
+        // stays in sync during playback without the cost of rebuilding the list.
+        let kpDots = null;  // kpDots[column][nodeIdx] -> dot element
+        function kpColumns() { return state.tracks.length ? state.tracks : ['instance']; }
+        function renderKeypointPanel() {
+            const panel = document.getElementById('keypointsPanel');
+            const nodes = state.poseData && state.poseData.skeleton ? state.poseData.skeleton.nodes : [];
+            if (!state.hasPoseData || !nodes.length) { panel.style.display = 'none'; kpDots = null; return; }
+            const cols = kpColumns();
+            const colColor = (ci) => state.tracks.length ? getTrackColor(ci) : getTrackColor(0);
+            // Legend
+            const legend = document.getElementById('kpLegend'); legend.innerHTML = '';
+            cols.forEach((name, ci) => {
+                const s = document.createElement('span'); s.className = 'kp-leg';
+                s.innerHTML = `<span class="kp-dot" style="background:${colColor(ci)};border-color:transparent;"></span>`;
+                s.appendChild(document.createTextNode(name));
+                legend.appendChild(s);
+            });
+            const off = document.createElement('span'); off.className = 'kp-leg';
+            off.innerHTML = `<span class="kp-dot"></span>`; off.appendChild(document.createTextNode('not visible'));
+            legend.appendChild(off);
+            // Grid of node rows
+            const grid = document.getElementById('kpGrid'); grid.innerHTML = '';
+            kpDots = cols.map(() => []);
+            nodes.forEach((name, ni) => {
+                const row = document.createElement('div'); row.className = 'kp-node';
+                const dots = document.createElement('span'); dots.className = 'kp-dots';
+                cols.forEach((c, ci) => { const d = document.createElement('span'); d.className = 'kp-dot'; dots.appendChild(d); kpDots[ci][ni] = d; });
+                const nm = document.createElement('span'); nm.className = 'kp-name'; nm.textContent = name; nm.title = name;
+                row.appendChild(dots); row.appendChild(nm);
+                grid.appendChild(row);
+            });
+            panel.style.display = 'block';
+            updateKeypointVisibility();
+        }
+        function updateKeypointVisibility() {
+            if (!kpDots) return;
+            // Reset every dot to "not visible"
+            for (const col of kpDots) for (const d of col) { d.style.background = 'transparent'; d.style.borderColor = '#555'; }
+            const fd = getFrameData(state.currentFrame);
+            if (!fd) return;
+            for (const inst of fd.instances) {
+                const ci = state.tracks.length
+                    ? (inst.trackIdx != null && inst.trackIdx >= 0 && inst.trackIdx < kpDots.length ? inst.trackIdx : -1)
+                    : 0;
+                if (ci < 0) continue;
+                const color = state.tracks.length ? getTrackColor(inst.trackIdx) : getTrackColor(0);
+                const pts = inst.points, col = kpDots[ci];
+                for (let k = 0; k < pts.length && k < col.length; k++) {
+                    if (pts[k] !== null) { col[k].style.background = color; col[k].style.borderColor = 'transparent'; }
+                }
+            }
         }
 
         // ============================================
@@ -611,6 +687,7 @@
                     // status + timeline render; otherwise take the cheap path to keep playback smooth.
                     if (state.mode === 'painting') { updateStatusDisplay(); renderTimelineTracks(); }
                     else { updateFrameCounter(); updatePlayheads(); }
+                    updateKeypointVisibility();
                 }
             }
             return frame;
