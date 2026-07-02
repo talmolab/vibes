@@ -32,6 +32,13 @@
         .timeline-header h3 { margin: 0; font-size: 13px; color: #fff; }
         .timeline-header-right { display: flex; align-items: center; gap: 10px; font-size: 11px; }
         .timeline-header-right label { display: flex; align-items: center; gap: 4px; color: #888; cursor: pointer; }
+        .segment-editor { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: #1f1f1f; border: 1px solid #444; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
+        .segment-editor .seg-editor-label { font-weight: bold; color: #fff; margin-right: 4px; }
+        .segment-editor .seg-field { display: flex; align-items: center; gap: 4px; color: #aaa; }
+        .segment-editor .seg-frame-input { width: 74px; background: #111; border: 1px solid #555; border-radius: 4px; padding: 4px 6px; color: #e0e0e0; font-size: 13px; }
+        .segment-editor .seg-frame-input:focus { outline: none; border-color: #667eea; }
+        .segment-editor button { font-size: 11px; padding: 4px 8px; }
+        .segment-editor .seg-editor-hint { color: #666; font-size: 10px; margin-left: auto; }
         .timeline-track { position: relative; height: 28px; background: #333; border-radius: 4px; margin: 6px 0; cursor: crosshair; border-left: 3px solid transparent; transition: opacity 0.15s, background 0.15s; }
         .timeline-track.deemphasized { opacity: 0.4; background: #2a2a2a; }
         .timeline-track.deemphasized:hover { opacity: 0.7; }
@@ -177,6 +184,14 @@
                     <span id="selectedSegmentInfo" style="color: #888;"></span>
                 </div>
             </div>
+            <div class="segment-editor" id="segmentEditor" style="display: none;">
+                <span class="seg-editor-label" id="segEditorLabel"></span>
+                <label class="seg-field">Start <input type="number" id="segStartInput" class="seg-frame-input" min="1" step="1"></label>
+                <button id="segStartToPlayhead" title="Set start to the current frame (or press [ )">&#8676; playhead</button>
+                <label class="seg-field">End <input type="number" id="segEndInput" class="seg-frame-input" min="1" step="1"></label>
+                <button id="segEndToPlayhead" title="Set end to the current frame (or press ] )">playhead &#8677;</button>
+                <span class="seg-editor-hint">use the arrows to nudge &plusmn;1 frame, or [ / ] to snap to the playhead</span>
+            </div>
             <div id="timelineTracks"></div>
         </div>
         <div class="panels-row" id="panelsRow" style="display: none;">
@@ -228,6 +243,7 @@
                 <div class="hotkey"><span class="hotkey-key">X</span><span class="hotkey-desc">Erase row</span></div>
                 <div class="hotkey"><span class="hotkey-key">Escape</span><span class="hotkey-desc">Cancel</span></div>
                 <div class="hotkey"><span class="hotkey-key">Delete</span><span class="hotkey-desc">Remove</span></div>
+                <div class="hotkey"><span class="hotkey-key">[ / ]</span><span class="hotkey-desc">Set sel. start/end to frame</span></div>
             </div>
         </div>
         <div class="log-container">
@@ -1223,10 +1239,76 @@
                 });
                 c.appendChild(t);
             }
+            renderSegmentEditor();
         }
 
         // Focus track toggle
         document.getElementById('focusTrackToggle').addEventListener('change', e => { state.showAllTracks = !e.target.checked; renderTimelineTracks(); });
+
+        // ============================================
+        // Frame-level segment boundary editing
+        // ============================================
+        function getSelectedSegment() {
+            return state.selectedSegmentId ? state.segments.find(s => s.id === state.selectedSegmentId) : null;
+        }
+        function updateSelectedSegmentInfo(seg) {
+            const el = document.getElementById('selectedSegmentInfo');
+            if (!seg) { el.textContent = ''; return; }
+            const et = getEventType(seg.eventTypeId);
+            const trackName = seg.trackIdx !== null && state.tracks[seg.trackIdx] !== undefined ? state.tracks[seg.trackIdx] : '(frame-level)';
+            el.textContent = `${et ? et.name : '?'} on ${trackName} (${seg.startFrame + 1}-${seg.endFrame + 1}) — double-click to play · Delete to remove`;
+        }
+        // Show/populate the editor for the selected segment. Safe to call anytime — it won't
+        // clobber an input the user is currently typing in.
+        function renderSegmentEditor() {
+            const editor = document.getElementById('segmentEditor');
+            const seg = getSelectedSegment();
+            if (!seg) { editor.style.display = 'none'; return; }
+            const et = getEventType(seg.eventTypeId);
+            const trackName = seg.trackIdx !== null && state.tracks[seg.trackIdx] !== undefined ? state.tracks[seg.trackIdx] : '(frame-level)';
+            document.getElementById('segEditorLabel').textContent = `Edit: ${et ? et.name : '?'} · ${trackName}`;
+            const si = document.getElementById('segStartInput'), ei = document.getElementById('segEndInput');
+            si.max = state.totalFrames; ei.max = state.totalFrames;
+            if (document.activeElement !== si) si.value = seg.startFrame + 1;
+            if (document.activeElement !== ei) ei.value = seg.endFrame + 1;
+            editor.style.display = 'flex';
+        }
+        // Apply new bounds to the selected segment (1-indexed frames in from the UI).
+        function applySegmentBounds(startDisplay, endDisplay) {
+            const seg = getSelectedSegment(); if (!seg) return;
+            const max = state.totalFrames - 1;
+            let start = Math.round(startDisplay - 1), end = Math.round(endDisplay - 1);
+            if (isNaN(start)) start = seg.startFrame;
+            if (isNaN(end)) end = seg.endFrame;
+            start = Math.max(0, Math.min(max, start));
+            end = Math.max(0, Math.min(max, end));
+            if (start > end) { const t = start; start = end; end = t; }
+            seg.startFrame = start; seg.endFrame = end;
+            renderTimelineTracks(); updateMetrics(); updateSelectedSegmentInfo(seg);
+        }
+        // Snap the selected segment's start/end to the current playhead ([ and ] keys / buttons).
+        function setSelectedSegmentEdge(which) {
+            const seg = getSelectedSegment();
+            if (!seg) { log('Select a segment first (click it on the timeline), then [ / ] set its start/end to the current frame.'); return; }
+            if (which === 'start') seg.startFrame = Math.min(state.currentFrame, seg.endFrame);
+            else seg.endFrame = Math.max(state.currentFrame, seg.startFrame);
+            const et = getEventType(seg.eventTypeId);
+            log(`Set ${et ? et.name : ''} ${which} = frame ${state.currentFrame + 1} → [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
+            renderTimelineTracks(); updateMetrics(); updateSelectedSegmentInfo(seg);
+        }
+        document.getElementById('segStartInput').addEventListener('input', () => {
+            const seg = getSelectedSegment(); if (!seg) return;
+            applySegmentBounds(parseInt(document.getElementById('segStartInput').value, 10), seg.endFrame + 1);
+        });
+        document.getElementById('segEndInput').addEventListener('input', () => {
+            const seg = getSelectedSegment(); if (!seg) return;
+            applySegmentBounds(seg.startFrame + 1, parseInt(document.getElementById('segEndInput').value, 10));
+        });
+        // On blur, re-sync the field to the (clamped) stored value.
+        document.getElementById('segStartInput').addEventListener('blur', renderSegmentEditor);
+        document.getElementById('segEndInput').addEventListener('blur', renderSegmentEditor);
+        document.getElementById('segStartToPlayhead').addEventListener('click', () => setSelectedSegmentEdge('start'));
+        document.getElementById('segEndToPlayhead').addEventListener('click', () => setSelectedSegmentEdge('end'));
 
         // ============================================
         // Status Display
@@ -1281,6 +1363,8 @@
         // ============================================
         document.addEventListener('keydown', e => {
             if (!state.videoBackend || eventTypeModal.style.display === 'flex') return;
+            // Don't hijack typing in a text/number field (e.g. the segment frame inputs).
+            if (e.target && e.target.matches && e.target.matches('input, textarea, select')) return;
             if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(state.currentFrame - (e.ctrlKey ? 30 : 1)); }
             else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(state.currentFrame + (e.ctrlKey ? 30 : 1)); }
             // Zoom with +/- keys
@@ -1296,6 +1380,9 @@
             else if (e.key === ' ') { e.preventDefault(); togglePlayback(); }
             else if (e.key === 'Escape') { e.preventDefault(); cancelPainting(); }
             else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedSegment(); }
+            // Set the selected segment's start / end to the current frame
+            else if (e.key === '[') { e.preventDefault(); setSelectedSegmentEdge('start'); }
+            else if (e.key === ']') { e.preventDefault(); setSelectedSegmentEdge('end'); }
             // Track selection with number keys (0 = frame-level, 1-9 = tracks)
             else if (e.key >= '0' && e.key <= '9' && !e.ctrlKey && !e.metaKey && !e.altKey && state.hasPoseData) {
                 e.preventDefault();
