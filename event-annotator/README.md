@@ -16,6 +16,7 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 - **Erase mode** - selectively remove or trim segments for specific event types
 - Timeline with rows per event type × track combination
 - Pose overlay visualization with track highlighting
+- **Live keypoint-visibility panel** - per-node, per-track dots showing which skeleton keypoints are visible in the current frame, updating as the video plays
 - Click a segment to jump to it, double-click to play from it; Delete to remove
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas
