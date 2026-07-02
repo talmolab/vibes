@@ -286,14 +286,17 @@
         // Video Backend (sleap-io.js MediaBunny) + prefetch
         // ============================================
         // Frames are decoded by sleap-io.js's MediaBunnyVideoBackend: a persistent
-        // decode sink that caches decoded ImageBitmaps. We prefetch a window ahead of
-        // the playhead so playback reads become cache hits (~0ms) — there is no
-        // per-GOP decoder teardown, so playback no longer stutters every ~30 frames.
-        const VIDEO_CACHE_SIZE = 100;   // decoded frames kept in the backend cache (2x the active window)
-        const PREFETCH_AHEAD = 40;      // frames to decode ahead of the playhead (~0.8s @ 47fps; prefetch runs ~5x real-time)
-        const PREFETCH_BEHIND = 12;     // frames kept behind for smooth back-scrub
-        const PREFETCH_MARGIN = 16;     // re-arm prefetch once the playhead moves this far
-        let lastPrefetchTarget = -1;
+        // decode sink that caches decoded ImageBitmaps. Reads of decoded frames are
+        // ~0ms, so playback stays ahead of the ~30-frame per-GOP teardown the old
+        // decoder suffered. MediaBunny only decodes efficiently in BATCHES (~8ms/frame)
+        // and re-decoding an already-buffered range is costly, so we prefetch in
+        // fixed, NON-OVERLAPPING forward chunks and only fetch the next chunk as the
+        // playhead nears the buffered edge.
+        const VIDEO_CACHE_SIZE = 120;   // decoded frames kept in the backend cache (holds current + next chunk + scrub-back)
+        const PREFETCH_CHUNK = 40;      // frames per prefetch batch (non-overlapping)
+        const PREFETCH_TRIGGER = 32;    // fetch the next chunk once the playhead is within this many frames of the buffered edge
+        let prefetchStart = 0, prefetchEnd = -1;
+        function resetPrefetch() { prefetchStart = 0; prefetchEnd = -1; }
 
         async function createVideoBackendFor(file) {
             const name = file.name || 'video.mp4';
@@ -311,11 +314,20 @@
         function schedulePrefetch(center) {
             const b = state.videoBackend;
             if (!b || typeof b.prefetch !== 'function' || !state.totalFrames) return;
-            if (lastPrefetchTarget >= 0 && Math.abs(center - lastPrefetchTarget) < PREFETCH_MARGIN) return;
-            lastPrefetchTarget = center;
-            const start = Math.max(0, center - PREFETCH_BEHIND);
-            const end = Math.min(state.totalFrames - 1, center + PREFETCH_AHEAD);
-            b.prefetch(start, end).catch(() => {});
+            // Jumped outside the buffered window (a seek): start a fresh chunk at the playhead.
+            if (center < prefetchStart || center > prefetchEnd) {
+                prefetchStart = center;
+                prefetchEnd = Math.min(state.totalFrames - 1, center + PREFETCH_CHUNK - 1);
+                b.prefetch(prefetchStart, prefetchEnd).catch(() => {});
+                return;
+            }
+            // Nearing the buffered edge: fetch the NEXT, non-overlapping chunk (never re-decode buffered frames).
+            if (prefetchEnd < state.totalFrames - 1 && center + PREFETCH_TRIGGER > prefetchEnd) {
+                const start = prefetchEnd + 1;
+                const end = Math.min(state.totalFrames - 1, start + PREFETCH_CHUNK - 1);
+                b.prefetch(start, end).catch(() => {});
+                prefetchEnd = end;
+            }
         }
 
         // ============================================
@@ -419,7 +431,7 @@
                 if (!totalFrames) { try { vb.close(); } catch (e) {} throw new Error('Could not read video (unsupported format or codec).'); }
                 stopPlayback();
                 if (state.videoBackend) { try { state.videoBackend.close(); } catch (e) {} }
-                state.videoBackend = vb; currentBitmap = null; lastPrefetchTarget = -1;
+                state.videoBackend = vb; currentBitmap = null; resetPrefetch();
                 state.fileName = file.name;
                 state.videoInfo = { width, height, totalFrames, fps: vb.fps || 30 };
                 state.totalFrames = totalFrames; state.fps = state.videoInfo.fps;
@@ -544,7 +556,11 @@
                 if (bmp) {
                     state.currentFrame = idx;
                     currentBitmap = bmp;
-                    renderFrame(); updateSeekbar(); updateStatusDisplay(); renderTimelineTracks();
+                    renderFrame(); updateSeekbar();
+                    // While painting, the in-progress preview segment must grow, so do the full
+                    // status + timeline render; otherwise take the cheap path to keep playback smooth.
+                    if (state.mode === 'painting') { updateStatusDisplay(); renderTimelineTracks(); }
+                    else { updateFrameCounter(); updatePlayheads(); }
                 }
             }
             return frame;
@@ -1091,6 +1107,15 @@
             return rows;
         }
 
+        // Lightweight per-frame update: move the existing playheads instead of rebuilding
+        // the entire timeline DOM (rows + segment divs + listeners), which is far too
+        // expensive to do ~47x/second and was the main source of playback jitter.
+        function updatePlayheads() {
+            const left = (state.currentFrame / state.totalFrames) * 100 + '%';
+            const phs = document.querySelectorAll('#timelineTracks .timeline-playhead');
+            for (const ph of phs) ph.style.left = left;
+        }
+
         function renderTimelineTracks() {
             const c = document.getElementById('timelineTracks'); c.innerHTML = '';
             const rows = getTimelineRows();
@@ -1161,6 +1186,12 @@
         // ============================================
         // Status Display
         // ============================================
+        // Cheap per-frame update for the playback hot path (only the frame number changes;
+        // the full status rebuild does per-frame innerHTML we don't need while just playing).
+        function updateFrameCounter() {
+            document.getElementById('frameDisplay').textContent = `${state.currentFrame + 1} / ${state.totalFrames}`;
+        }
+
         function updateStatusDisplay() {
             const m = document.getElementById('modeDisplay'), f = document.getElementById('frameDisplay'), td = document.getElementById('trackDisplay');
             const pi = document.getElementById('paintingInfo'), pd = document.getElementById('paintingDisplay');
