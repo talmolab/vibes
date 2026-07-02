@@ -17,6 +17,7 @@ Frame-accurate event segment annotation with track-level support, multi-row time
 - Timeline with rows per event type × track combination
 - Pose overlay visualization with track highlighting
 - **Live keypoint-visibility panel** - per-node, per-track dots showing which skeleton keypoints are visible in the current frame, updating as the video plays
+- **Keypoint-visibility report** - the **Visibility** button charts, as a heatmap, the % of each event type's annotated frames in which each keypoint is visible (with a CSV download)
 - Click a segment to jump to it, double-click to play from it; Delete to remove
 - Zoom/pan with mouse wheel, drag, pinch gestures
 - Resizable canvas

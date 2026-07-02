@@ -128,6 +128,20 @@
         .overlay-controls label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #aaa; cursor: pointer; }
         .overlay-controls select { background: #1a1a1a; color: #e0e0e0; border: 1px solid #444; border-radius: 4px; padding: 2px 4px; font-size: 12px; cursor: pointer; }
         .overlay-controls select:focus { outline: none; border-color: #667eea; }
+        .vis-report { background: #2a2a2a; padding: 12px 15px; border-radius: 8px; margin: 10px 0; }
+        .vis-report-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+        .vis-report-header h3 { margin: 0; font-size: 13px; color: #fff; }
+        .vis-report-header .hint { font-size: 10px; color: #888; font-weight: normal; }
+        .vis-report-body { overflow-x: auto; }
+        .vis-heatmap { border-collapse: collapse; font-size: 12px; }
+        .vis-heatmap th, .vis-heatmap td { padding: 5px 8px; text-align: center; white-space: nowrap; }
+        .vis-heatmap thead th { color: #fff; border-bottom: 1px solid #444; font-size: 11px; }
+        .vis-heatmap tbody th { text-align: right; color: #ccc; font-weight: normal; font-family: monospace; }
+        .vis-heatmap td.vis-cell { color: #111; font-weight: bold; border-radius: 3px; min-width: 46px; }
+        .vis-heatmap td.vis-na { color: #666; background: #1f1f1f; }
+        .vis-legend { display: flex; align-items: center; gap: 8px; font-size: 10px; color: #888; margin-top: 8px; }
+        .vis-legend .vis-scale { display: flex; height: 12px; width: 140px; border-radius: 3px; overflow: hidden; }
+        .vis-legend .vis-scale span { flex: 1; }
         @media (max-width: 600px) { body { padding: 10px; } .info-row { flex-direction: column; } .panels-row { flex-direction: column; } }
     </style>
 </head>
@@ -145,6 +159,7 @@
             <button id="demoBtn">Load Demo</button>
             <button id="importBtn" disabled title="Load a previously exported annotations JSON to resume (load the video first)">Import</button>
             <button id="exportBtn" disabled title="Save all annotations (segments, event types, tracks) to a JSON file">Export</button>
+            <button id="visReportBtn" disabled title="Chart the % of annotated frames each keypoint is visible, per event type">Visibility</button>
             <button id="clearBtn" disabled>Clear</button>
         </div>
         <div class="url-input-container" id="urlInputContainer" style="display: none;">
@@ -249,6 +264,16 @@
             <div class="metrics"><h3>Video</h3><div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div><div class="metric"><span class="metric-label">Size:</span> <span id="metricRes">-</span></div><div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div></div>
             <div class="metrics"><h3>Tracking</h3><div class="metric"><span class="metric-label">SLP:</span> <span id="metricSlp">-</span></div><div class="metric"><span class="metric-label">Tracks:</span> <span id="metricTracks">-</span></div></div>
             <div class="metrics"><h3>Annotations</h3><div class="metric"><span class="metric-label">Segments:</span> <span id="metricSegments">0</span></div><div class="metric"><span class="metric-label">Event Types:</span> <span id="metricEventTypes">0</span></div></div>
+        </div>
+        <div class="vis-report" id="visReport" style="display: none;">
+            <div class="vis-report-header">
+                <h3>Keypoint Visibility by Event Type <span class="hint">(% of annotated frames each keypoint is visible)</span></h3>
+                <div>
+                    <button id="visCsvBtn" style="padding: 4px 10px; font-size: 11px;">Download CSV</button>
+                    <button id="visCloseBtn" style="padding: 4px 10px; font-size: 11px;">Close</button>
+                </div>
+            </div>
+            <div class="vis-report-body" id="visReportBody"></div>
         </div>
         <div class="hotkeys">
             <h3>Keyboard Shortcuts</h3>
@@ -575,6 +600,7 @@
                 document.getElementById('timelineContainer').style.display = 'block'; document.getElementById('panelsRow').style.display = 'flex';
                 document.getElementById('infoRow').style.display = 'flex'; document.getElementById('exportBtn').disabled = false;
                 document.getElementById('importBtn').disabled = false; document.getElementById('clearBtn').disabled = false;
+                document.getElementById('visReportBtn').disabled = false;
                 lastContainerWidth = canvasContainer.clientWidth; lastContainerHeight = canvasContainer.clientHeight;
                 renderTrackList(); renderEventTypeButtons(); renderTimelineTracks(); updateMetrics(); updateStatusDisplay(); await seekToFrame(0);
             } catch (err) { console.error(err); showError('Error: ' + err.message); }
@@ -1556,6 +1582,118 @@
                 renderTimelineTracks(); updateMetrics();
                 log(`Cleared: ${count} segments`);
             }
+        });
+
+        // ============================================
+        // Keypoint visibility report (% visible per keypoint × event type)
+        // ============================================
+        // For each event type, walk every frame of its segments and tally, per node,
+        // how often that keypoint is present (non-null) on the relevant instance(s):
+        // the segment's track for track-level segments, or all instances for frame-level.
+        function computeVisibilityMatrix() {
+            if (!state.hasPoseData || !state.poseData || !state.poseData.skeleton.nodes.length) return null;
+            const nodes = state.poseData.skeleton.nodes;
+            const N = nodes.length;
+            const ets = state.eventTypes.filter(e => !e.isEraser);
+            const counts = ets.map(() => ({ visible: new Array(N).fill(0), total: new Array(N).fill(0), samples: 0, segCount: 0 }));
+            ets.forEach((et, ei) => {
+                const segs = state.segments.filter(s => s.eventTypeId === et.id);
+                counts[ei].segCount = segs.length;
+                for (const seg of segs) {
+                    for (let f = seg.startFrame; f <= seg.endFrame; f++) {
+                        const fd = getFrameData(f);
+                        if (!fd) continue;
+                        const insts = (seg.trackIdx === null || seg.trackIdx === undefined)
+                            ? fd.instances
+                            : fd.instances.filter(inst => inst.trackIdx === seg.trackIdx);
+                        for (const inst of insts) {
+                            counts[ei].samples++;
+                            for (let k = 0; k < N; k++) {
+                                counts[ei].total[k]++;
+                                if (inst.points[k] != null) counts[ei].visible[k]++;
+                            }
+                        }
+                    }
+                }
+            });
+            const matrix = nodes.map((_, k) => ets.map((et, ei) => {
+                const tot = counts[ei].total[k];
+                return tot > 0 ? (counts[ei].visible[k] / tot) * 100 : null;
+            }));
+            return {
+                nodes,
+                eventTypes: ets.map((et, ei) => ({ id: et.id, name: et.name, color: et.color, samples: counts[ei].samples, segCount: counts[ei].segCount })),
+                matrix
+            };
+        }
+        // Red (low) -> amber -> green (high) heat color; value is always shown too (accessible).
+        function visHeatColor(pct) {
+            const p = Math.max(0, Math.min(100, pct)) / 100;
+            let r, g;
+            if (p < 0.5) { r = 214; g = Math.round(70 + (p / 0.5) * 130); }
+            else { r = Math.round(214 - ((p - 0.5) / 0.5) * 150); g = 200; }
+            return `rgb(${r},${g},70)`;
+        }
+        let lastVisMatrix = null;
+        function renderVisibilityReport() {
+            const body = document.getElementById('visReportBody');
+            const data = computeVisibilityMatrix();
+            lastVisMatrix = data;
+            if (!data) { body.innerHTML = '<p style="color:#888;font-size:12px;">Load an SLP file with pose data to compute keypoint visibility.</p>'; return; }
+            const withSegs = data.eventTypes.filter(et => et.segCount > 0);
+            if (!withSegs.length) { body.innerHTML = '<p style="color:#888;font-size:12px;">No annotations yet — annotate some event bouts, then reopen this report.</p>'; return; }
+            let html = '<table class="vis-heatmap"><thead><tr><th>Keypoint</th>';
+            for (const et of data.eventTypes) {
+                if (et.segCount === 0) continue;
+                html += `<th><span style="color:${et.color}">&#9632;</span> ${et.name}<br><span style="color:#888;font-weight:normal;font-size:10px;">${et.segCount} bouts · ${et.samples} f</span></th>`;
+            }
+            html += '</tr></thead><tbody>';
+            data.nodes.forEach((node, k) => {
+                html += `<tr><th>${node}</th>`;
+                data.eventTypes.forEach((et, ei) => {
+                    if (et.segCount === 0) return;
+                    const v = data.matrix[k][ei];
+                    if (v === null) html += `<td class="vis-na">&mdash;</td>`;
+                    else html += `<td class="vis-cell" style="background:${visHeatColor(v)}">${v.toFixed(0)}%</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            html += '<div class="vis-legend"><span>0%</span><span class="vis-scale"></span><span>100%</span><span style="margin-left:6px;">% of a behavior\'s annotated frames in which the keypoint is present</span></div>';
+            body.innerHTML = html;
+            // paint the legend gradient
+            const scale = body.querySelector('.vis-scale');
+            if (scale) { for (let i = 0; i <= 10; i++) { const s = document.createElement('span'); s.style.background = visHeatColor(i * 10); scale.appendChild(s); } }
+        }
+        function visibilityToCsv() {
+            const data = lastVisMatrix || computeVisibilityMatrix();
+            if (!data) return null;
+            const ets = data.eventTypes.filter(et => et.segCount > 0);
+            const header = ['keypoint', ...ets.map(et => `${et.name} (%visible)`)];
+            const rows = [header.join(',')];
+            data.nodes.forEach((node, k) => {
+                const cells = ets.map(et => { const ei = data.eventTypes.indexOf(et); const v = data.matrix[k][ei]; return v === null ? '' : v.toFixed(2); });
+                rows.push([node, ...cells].join(','));
+            });
+            rows.push(['#bouts', ...ets.map(et => et.segCount)].join(','));
+            rows.push(['#frames', ...ets.map(et => et.samples)].join(','));
+            return rows.join('\n');
+        }
+        document.getElementById('visReportBtn').addEventListener('click', () => {
+            const panel = document.getElementById('visReport');
+            renderVisibilityReport();
+            panel.style.display = 'block';
+            panel.scrollIntoView({ block: 'nearest' });
+        });
+        document.getElementById('visCloseBtn').addEventListener('click', () => { document.getElementById('visReport').style.display = 'none'; });
+        document.getElementById('visCsvBtn').addEventListener('click', () => {
+            const csv = visibilityToCsv();
+            if (!csv) return;
+            const b = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(b);
+            a.download = (state.fileName || 'annotations').replace(/\.[^.]+$/, '') + '_keypoint_visibility.csv';
+            a.click(); URL.revokeObjectURL(a.href);
+            log('Exported keypoint visibility CSV');
         });
 
         window.addEventListener('resize', () => { if (currentBitmap) renderFrame(); renderTimelineTracks(); });
