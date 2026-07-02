@@ -1150,6 +1150,10 @@
             for (const ph of phs) ph.style.left = left;
         }
 
+        // Track segment clicks so we can tell a single click (jump here) from a
+        // double click (play from here) without a fragile native dblclick on rebuilt DOM.
+        let lastSegClickId = null, lastSegClickTime = 0;
+
         function renderTimelineTracks() {
             const c = document.getElementById('timelineTracks'); c.innerHTML = '';
             const rows = getTimelineRows();
@@ -1168,18 +1172,25 @@
                     const l = (seg.startFrame / state.totalFrames) * 100, w = ((seg.endFrame - seg.startFrame + 1) / state.totalFrames) * 100;
                     const s = document.createElement('div'); s.className = 'timeline-segment' + (seg.id === state.selectedSegmentId ? ' selected' : '');
                     s.style.cssText = `left:${l}%;width:${w}%;background:${row.eventType.color};`;
-                    s.title = `${row.label}: ${seg.startFrame + 1}-${seg.endFrame + 1}`;
-                    s.addEventListener('click', ev => {
+                    s.title = `${row.label}: ${seg.startFrame + 1}-${seg.endFrame + 1} — click to jump, double-click to play`;
+                    s.addEventListener('click', async ev => {
                         ev.stopPropagation();
+                        const now = performance.now();
+                        const isDouble = (seg.id === lastSegClickId && now - lastSegClickTime < 400);
+                        lastSegClickId = seg.id; lastSegClickTime = now;
+                        // Select the segment + its row (so Delete works and the row is focused)
                         state.selectedSegmentId = seg.id;
-                        // Also select this row when clicking a segment
                         state.selectedEventTypeId = row.eventType.id;
                         state.selectedTrackIdx = row.trackIdx;
                         const trackName = seg.trackIdx !== null ? state.tracks[seg.trackIdx] : '(frame-level)';
-                        document.getElementById('selectedSegmentInfo').textContent = `${row.eventType.name} on ${trackName} (${seg.startFrame + 1}-${seg.endFrame + 1}) - Delete to remove`;
-                        log(`Selected: ${row.eventType.name} on ${trackName} [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
+                        document.getElementById('selectedSegmentInfo').textContent = `${row.eventType.name} on ${trackName} (${seg.startFrame + 1}-${seg.endFrame + 1}) — double-click to play · Delete to remove`;
+                        log(`${isDouble ? 'Play from' : 'Selected'}: ${row.eventType.name} on ${trackName} [${seg.startFrame + 1}-${seg.endFrame + 1}]`);
                         renderTrackList();
                         renderTimelineTracks();
+                        // Jump the playhead to the annotation's start; a double click plays from there.
+                        stopPlayback();
+                        await seekToFrame(seg.startFrame);
+                        if (isDouble) startPlayback();
                     });
                     t.appendChild(s);
                 }
