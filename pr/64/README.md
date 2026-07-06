@@ -32,6 +32,7 @@ Self-contained HTML tools and applets for the web.
 - [GPU Dashboard](gpu-dashboard/) <a href="gpu-dashboard/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Monitor GPUs across multiple workstations with real-time stats and inference progress tracking</span>
 - [Lab Camera Planner](lab-camera-planner/) <a href="lab-camera-planner/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard</span>
 - [Salk Email Signature](salk-signature/) <a href="salk-signature/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail</span>
+- [Global Track Matcher](global-track-matcher/) <a href="global-track-matcher/README" class="readme-badge">[README]</a><br><span class="vibe-desc">create an association list connecting identities in proofread .slp files to a global identity</span>
 
 ## About
 
