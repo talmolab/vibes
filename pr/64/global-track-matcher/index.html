@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Global Track Matcher</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg:#1a1a1a; --panel:#2a2a2a; --panel2:#333; --line:#3a3a3a;
+    --text:#e0e0e0; --muted:#888; --dim:#666; --accent:#667eea; --good:#4ade80; --warn:#f59e0b;
+  }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    margin:0; padding:20px; background:var(--bg); color:var(--text); line-height:1.5;
+  }
+  .container { max-width:1280px; margin:0 auto; }
+  h1 { margin:0 0 4px; color:#fff; font-size:24px; }
+  .description { color:var(--muted); margin:0 0 18px; font-size:14px; }
+  .step { background:var(--panel); border-radius:8px; padding:14px 16px; margin:0 0 14px; }
+  .step h2 { margin:0 0 10px; font-size:14px; color:#fff; display:flex; align-items:center; gap:8px; }
+  .step h2 .n { background:var(--accent); color:#fff; width:20px; height:20px; border-radius:50%;
+    display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0; }
+  .hint { color:var(--dim); font-size:12px; }
+  label { font-size:13px; color:var(--muted); }
+  textarea, input, select {
+    font-family:inherit; font-size:16px; background:var(--panel2); color:var(--text);
+    border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+  }
+  textarea { width:100%; min-height:78px; resize:vertical; }
+  input[type=number] { width:70px; }
+  button {
+    background:var(--accent); color:#fff; border:none; padding:8px 14px; border-radius:6px;
+    font-size:13px; cursor:pointer; margin:0;
+  }
+  button:hover { background:#5568d3; }
+  button.ghost { background:var(--panel2); border:1px solid var(--line); }
+  button.ghost:hover { background:#3f3f3f; }
+  button:disabled { background:#444; color:#888; cursor:not-allowed; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1 1 auto; }
+
+  /* toolbar */
+  .toolbar { position:sticky; top:0; z-index:50; background:var(--panel); border-radius:8px;
+    padding:10px 14px; margin:0 0 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    box-shadow:0 2px 10px rgba(0,0,0,.4); }
+  .brushes { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .brush { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:20px;
+    background:var(--panel2); border:2px solid transparent; cursor:pointer; font-size:13px; user-select:none; }
+  .brush .dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+  .brush .k { font-family:monospace; font-size:10px; color:var(--dim); }
+  .brush.active { border-color:#fff; box-shadow:0 0 0 2px rgba(255,255,255,.15); }
+  .brush.erase .dot { background:repeating-linear-gradient(45deg,#555,#555 3px,#333 3px,#333 6px); }
+  .progress { font-size:13px; color:var(--muted); margin-left:auto; white-space:nowrap; }
+  .progress b { color:var(--text); }
+
+  /* video sections */
+  .video-sec { background:var(--panel); border-radius:8px; padding:12px 14px; margin:0 0 16px; }
+  .video-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .video-head .name { font-weight:600; color:#fff; font-size:15px; word-break:break-all; }
+  .video-head .meta { font-size:12px; color:var(--dim); }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--panel2); color:var(--muted); }
+  .badge.warn { background:rgba(245,158,11,.15); color:var(--warn); }
+  .badge.ok { background:rgba(74,222,128,.12); color:var(--good); }
+  .unpaired { color:var(--warn); }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:12px; }
+  .card { background:var(--panel2); border-radius:8px; padding:10px; border:2px solid transparent;
+    cursor:pointer; transition:border-color .12s, box-shadow .12s; }
+  .card:hover { border-color:#4a4a4a; }
+  .card.assigned { border-color:var(--acol,#667eea); }
+  .card.dup { box-shadow:0 0 0 2px var(--warn) inset; }
+  .card-top { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+  .card-top .tname { font-weight:600; font-size:14px; color:#fff; }
+  .card-top .assign-label { margin-left:auto; font-size:12px; padding:2px 8px; border-radius:10px;
+    background:#222; color:var(--dim); display:flex; align-items:center; gap:5px; cursor:pointer; }
+  .card-top .assign-label:hover { background:#3a3a3a; color:var(--text); }
+  .card-top .assign-label .dot { width:9px; height:9px; border-radius:50%; }
+  .card-top .assign-label .caret { color:var(--dim); font-size:9px; margin-left:1px; }
+  .card-top .assign-label [data-role=labeltext] { display:flex; align-items:center; gap:5px; }
+
+  .idmenu { position:absolute; z-index:300; background:#242424; border:1px solid var(--line);
+    border-radius:8px; padding:4px; min-width:160px; max-height:280px; overflow:auto; display:none;
+    box-shadow:0 8px 28px rgba(0,0,0,.55); }
+  .idmenu.show { display:block; }
+  .idmenu-head { font-size:11px; color:var(--dim); padding:5px 9px 6px; border-bottom:1px solid var(--line);
+    margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+  .idmenu-empty { font-size:12px; color:var(--muted); padding:6px 9px; }
+  .idmenu .item { display:flex; align-items:center; gap:8px; padding:6px 9px; border-radius:6px;
+    cursor:pointer; font-size:13px; color:var(--text); }
+  .idmenu .item:hover { background:#333; }
+  .idmenu .item.current { background:#30303c; }
+  .idmenu .item .dot { width:11px; height:11px; border-radius:50%; flex-shrink:0; }
+  .idmenu .item .nm { flex:1; }
+  .idmenu .item .ck { color:var(--good); font-size:12px; }
+  .idmenu .item.clear { color:var(--muted); }
+  .idmenu .sep { height:1px; background:var(--line); margin:4px 2px; }
+
+  .howto { background:rgba(102,126,234,.1); border:1px solid rgba(102,126,234,.35); color:#c7cdf5;
+    border-radius:8px; padding:9px 13px; margin:0 0 16px; font-size:13px; }
+  .howto b { color:#fff; }
+  .thumbs { display:flex; gap:6px; flex-wrap:wrap; }
+  .thumb { position:relative; width:calc(25% - 5px); aspect-ratio:1/1; background:#111; border-radius:5px;
+    overflow:hidden; min-width:54px; }
+  .thumb canvas { width:100%; height:100%; display:block; }
+  .thumb .fr { position:absolute; left:2px; bottom:1px; font-size:9px; color:#fff; background:rgba(0,0,0,.55);
+    padding:0 3px; border-radius:3px; font-family:monospace; pointer-events:none; }
+  .thumb.loading::after { content:''; position:absolute; inset:0; background:
+    linear-gradient(100deg,#181818 30%,#242424 50%,#181818 70%); background-size:200% 100%;
+    animation:sh 1.1s infinite; }
+  @keyframes sh { to { background-position:-200% 0; } }
+  .card-actions { display:flex; gap:6px; margin-top:8px; }
+  .card-actions button { padding:4px 8px; font-size:11px; }
+
+  .status { font-size:13px; color:var(--muted); }
+  .status.err { color:#f87171; }
+  .swatches { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .swatch { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--muted);
+    background:var(--panel2); padding:3px 8px; border-radius:12px; }
+  .swatch .dot { width:10px; height:10px; border-radius:50%; }
+
+  /* lightbox */
+  .lightbox { position:fixed; inset:0; background:rgba(0,0,0,.9); display:none; z-index:200;
+    align-items:center; justify-content:center; padding:24px; }
+  .lightbox.show { display:flex; }
+  .lb-inner { display:flex; gap:18px; align-items:stretch; max-width:97vw; max-height:92vh; }
+  .lb-frame { display:flex; align-items:center; justify-content:center; min-width:0; }
+  .lb-frame canvas { max-width:62vw; max-height:88vh; border-radius:8px; background:#000;
+    box-shadow:0 8px 40px rgba(0,0,0,.6); }
+  .lb-side { display:flex; flex-direction:column; gap:8px; width:min(34vw,420px); flex-shrink:0; }
+  .lb-croplabel { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
+  .lb-side canvas { width:100%; background:#111; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,.5); }
+  .lb-cap { color:#cbd0e6; font-size:13px; line-height:1.5; word-break:break-word; }
+  .lb-close { position:fixed; top:16px; right:18px; z-index:210; background:#2a2a2a; color:#fff;
+    border:1px solid var(--line); width:34px; height:34px; border-radius:50%; font-size:15px; cursor:pointer; }
+  .lb-close:hover { background:#3a3a3a; }
+  @media (max-width:820px){
+    .lb-inner{ flex-direction:column; align-items:center; overflow:auto; }
+    .lb-frame canvas{ max-width:92vw; max-height:56vh; }
+    .lb-side{ width:92vw; }
+    .lb-side canvas{ max-width:320px; margin:0 auto; }
+  }
+  @media (max-width:600px){ body{padding:14px;} .cards{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Global Track Matcher</h1>
+  <p class="description">Reconcile per-video track identities into shared global identities. Load a folder of proofread <code>.slp</code> files and their videos, look at sample frames of each track, and assign every local track to a global individual. Export the mapping as CSV.</p>
+
+  <div class="step">
+    <h2><span class="n">1</span> Name your global identities</h2>
+    <label>One per line — these become the labels you paint tracks with (e.g. animal IDs).</label>
+    <textarea id="namesInput" placeholder="mouse_A&#10;mouse_B&#10;mouse_C"></textarea>
+    <div class="row" style="margin-top:8px;">
+      <button id="setNamesBtn">Set identities</button>
+      <label>Frames per track <input type="number" id="framesPer" value="4" min="1" max="8"></label>
+      <span class="hint">Tip: keys 1–9 pick an identity, 0 erases.</span>
+    </div>
+    <div class="swatches" id="swatches"></div>
+  </div>
+
+  <div class="step">
+    <h2><span class="n">2</span> Load your data</h2>
+    <label>Pick your <code>.slp</code> folder and your video folder separately (they can be different locations). Everything stays on your machine.</label>
+    <div class="row" style="margin-top:8px;">
+      <button id="slpFolderBtn">Choose SLP folder…</button>
+      <button id="videoFolderBtn">Choose video folder…</button>
+      <button class="ghost" id="filesBtn">Choose files…</button>
+      <input type="file" id="fileInput" multiple accept=".slp,.mp4,.mov,.avi,.mkv,.webm,.m4v" style="display:none;">
+      <input type="file" id="slpDirInput" webkitdirectory directory multiple style="display:none;">
+      <input type="file" id="videoDirInput" webkitdirectory directory multiple style="display:none;">
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <span class="status" id="loadStatus">No data loaded yet.</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <button class="ghost" id="importBtn">Import CSV…</button>
+      <input type="file" id="csvInput" accept=".csv" style="display:none;">
+      <span class="hint">SLP and videos are matched by filename, so folder trees don't need to match. Resume a session with Import CSV.</span>
+    </div>
+  </div>
+
+  <div class="toolbar" id="toolbar" style="display:none;">
+    <span class="hint">Brush:</span>
+    <div class="brushes" id="brushes"></div>
+    <button id="thumbsBtn" class="ghost">Load all frames</button>
+    <button id="exportBtn">Export CSV</button>
+    <span class="progress" id="progress"></span>
+  </div>
+
+  <div class="howto" id="howto" style="display:none;">
+    <b>To label an individual:</b> pick an identity in the toolbar (or press <b>1</b>–<b>9</b>) and click cards to paint them — click again with the same identity to undo. Or click a card's <b>identity label</b> (top-right) to choose from a menu.
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" id="lbClose" title="Close (Esc)">✕</button>
+  <div class="lb-inner">
+    <div class="lb-frame"><canvas id="lbFrame"></canvas></div>
+    <div class="lb-side">
+      <div class="lb-croplabel">Individual</div>
+      <canvas id="lbCrop"></canvas>
+      <div class="lb-cap" id="lbCap"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/h5wasm@0.8.8/dist/iife/h5wasm.js"></script>
+<script>
+(async function () {
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const num = v => typeof v === 'bigint' ? Number(v) : v;
+  const VIDEO_EXT = ['mp4','mov','avi','mkv','webm','m4v'];
+  const PALETTE = ['#ef4444','#3b82f6','#22c55e','#eab308','#a855f7','#f97316','#06b6d4','#ec4899',
+                   '#84cc16','#8b5cf6','#14b8a6','#f43f5e','#0ea5e9','#d946ef','#65a30d','#fb923c'];
+
+  // ---------- state ----------
+  let FS = null, h5ready = false, fsCounter = 0;
+  const state = {
+    globals: [],            // [{name,color}]
+    brush: null,            // active identity name, '__ERASE__', or null
+    videos: [],             // parsed sections
+    videoPool: [],          // available video entries (from any pick)
+    assign: new Map(),      // key -> global name
+  };
+  const keyOf = (slpName, ti) => slpName + '::' + ti;
+  const parseKey = (k) => { const i = k.lastIndexOf('::'); return [k.slice(0, i), k.slice(i + 2)]; };
+
+  // ---------- h5wasm ----------
+  async function ensureH5() {
+    if (h5ready) return;
+    await h5wasm.ready;
+    FS = h5wasm.FS;
+    h5ready = true;
+  }
+
+  // ---------- SLP parsing (validated against real files) ----------
+  function parseSLP(buf) {
+    const name = 'f' + (fsCounter++) + '.slp';
+    FS.writeFile(name, new Uint8Array(buf));
+    const f = new h5wasm.File(name, 'r');
+    try {
+      const tracks = f.get('tracks_json').value.map(s => JSON.parse(s)[1]);
+      const vjson = JSON.parse(f.get('videos_json').value[0]);
+      const shape = (vjson.backend && vjson.backend.shape) || vjson.shape || [];
+      const nFrames = num(shape[0]) || 0, H = num(shape[1]) || 0, W = num(shape[2]) || 0;
+      const rawName = (vjson.filename || (vjson.backend && vjson.backend.filename) || '');
+      const videoFilename = rawName.replace(/\\/g, '/').split('/').pop();
+
+      const frames = f.get('frames').value;      // [frame_id, video, frame_idx, i_start, i_end]
+      const fid2idx = new Map();
+      for (const r of frames) fid2idx.set(num(r[0]), num(r[2]));
+
+      const inst = f.get('instances').value;     // [id,type,frame_id,skel,track,fromPred,score,ps,pe,tscore]
+      const pred = f.get('pred_points').value;   // [x,y,visible,complete,score]
+      let user = []; try { user = f.get('points').value; } catch (e) {}
+
+      const perTrack = new Map();
+      for (const r of inst) {
+        const trk = num(r[4]); if (trk < 0) continue;
+        const ds = num(r[1]) === 0 ? user : pred;
+        const s = num(r[7]), e = num(r[8]);
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, nvis = 0;
+        for (let p = s; p < e; p++) {
+          const pt = ds[p]; if (!pt) continue;
+          const x = pt[0], y = pt[1];
+          if (!pt[2] || x == null || y == null) continue;
+          nvis++; if (x < x0) x0 = x; if (y < y0) y0 = y; if (x > x1) x1 = x; if (y > y1) y1 = y;
+        }
+        if (!nvis) continue;
+        if (!perTrack.has(trk)) perTrack.set(trk, []);
+        perTrack.get(trk).push({ frameIdx: fid2idx.get(num(r[2])), bbox: [x0, y0, x1, y1], nvis, score: num(r[6]) });
+      }
+      return { tracks, nFrames, H, W, videoFilename, perTrack };
+    } finally {
+      try { f.close(); } catch (e) {}
+      try { FS.unlink(name); } catch (e) {}
+    }
+  }
+
+  function pickSamples(list, K) {
+    if (!list.length) return [];
+    const maxVis = Math.max.apply(null, list.map(s => s.nvis));
+    let good = list.filter(s => s.nvis >= Math.max(2, Math.ceil(0.5 * maxVis)));
+    if (good.length < K) good = list.slice();
+    good.sort((a, b) => a.frameIdx - b.frameIdx);
+    const out = [], seen = new Set();
+    for (let i = 0; i < K; i++) {
+      const s = good[Math.round((good.length - 1) * (K === 1 ? 0 : i / (K - 1)))];
+      if (s && !seen.has(s.frameIdx)) { seen.add(s.frameIdx); out.push(s); }
+    }
+    return out;
+  }
+
+  // ---------- identities ----------
+  function setNamesFromText() {
+    const names = $('#namesInput').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const seen = new Set(); const uniq = [];
+    for (const n of names) { if (!seen.has(n)) { seen.add(n); uniq.push(n); } }
+    state.globals = uniq.map((name, i) => ({ name, color: PALETTE[i % PALETTE.length] }));
+    if (state.brush && state.brush !== '__ERASE__' && !seen.has(state.brush)) state.brush = null;
+    location.hash = 'names=' + encodeURIComponent(uniq.join(','));
+    renderSwatches(); renderBrushes(); refreshAssignments();
+  }
+  function colorFor(name) { const g = state.globals.find(g => g.name === name); return g ? g.color : '#888'; }
+  function ensureGlobal(name) {
+    if (!name || state.globals.some(g => g.name === name)) return;
+    state.globals.push({ name, color: PALETTE[state.globals.length % PALETTE.length] });
+  }
+
+  function renderSwatches() {
+    $('#swatches').innerHTML = '';
+    state.globals.forEach(g => {
+      const el = document.createElement('span'); el.className = 'swatch';
+      const d = document.createElement('span'); d.className = 'dot'; d.style.background = g.color;
+      const t = document.createElement('span'); t.textContent = g.name;
+      el.appendChild(d); el.appendChild(t); $('#swatches').appendChild(el);
+    });
+  }
+  function renderBrushes() {
+    const box = $('#brushes'); box.innerHTML = '';
+    state.globals.forEach((g, i) => {
+      const b = document.createElement('div');
+      b.className = 'brush' + (state.brush === g.name ? ' active' : '');
+      const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = g.color;
+      const nm = document.createElement('span'); nm.textContent = g.name;
+      const k = document.createElement('span'); k.className = 'k'; if (i < 9) k.textContent = (i + 1);
+      b.appendChild(dot); b.appendChild(nm); b.appendChild(k);
+      b.onclick = () => { state.brush = (state.brush === g.name ? null : g.name); renderBrushes(); };
+      box.appendChild(b);
+    });
+    const er = document.createElement('div');
+    er.className = 'brush erase' + (state.brush === '__ERASE__' ? ' active' : '');
+    const ed = document.createElement('span'); ed.className = 'dot';
+    const et = document.createElement('span'); et.textContent = 'Erase';
+    const ek = document.createElement('span'); ek.className = 'k'; ek.textContent = '0';
+    er.appendChild(ed); er.appendChild(et); er.appendChild(ek);
+    er.onclick = () => { state.brush = (state.brush === '__ERASE__' ? null : '__ERASE__'); renderBrushes(); };
+    box.appendChild(er);
+  }
+
+  // ---------- file gathering ----------
+  async function gatherFromDirHandle(dir) {
+    const out = [];
+    async function walk(handle, prefix) {
+      for await (const [name, h] of handle.entries()) {
+        const rel = prefix ? prefix + '/' + name : name;
+        if (h.kind === 'file') out.push({ name, path: rel, getFile: () => h.getFile() });
+        else if (h.kind === 'directory') await walk(h, rel);
+      }
+    }
+    await walk(dir, dir.name || '');   // include the chosen folder's own name in the path
+    return out;
+  }
+  function gatherFromFileList(list) {
+    return Array.from(list).map(f => ({ name: f.name, path: f.webkitRelativePath || f.name, getFile: async () => f }));
+  }
+
+  const natCmp = (a, b) => (a.path || a.name).localeCompare((b.path || b.name), undefined, { numeric: true, sensitivity: 'base' });
+  const isVideo = e => VIDEO_EXT.includes(e.name.split('.').pop().toLowerCase());
+  const baseNoExt = n => n.replace(/\.[^.]+$/, '');
+  const parentName = pth => { const p = pth.split('/'); return p.length >= 2 ? p[p.length - 2] : ''; };
+  // canonical "video key" shared by an slp and its video, ignoring folder + trailing suffixes/extensions
+  function slpVideoKey(slpName) {
+    let s = slpName.replace(/\.slp$/i, '')
+      .replace(/\.(tracked|predictions|analysis|proofread|proofed|inference)$/i, '')
+      .replace(/\.(mp4|mov|avi|mkv|webm|m4v)$/i, '');
+    return s.toLowerCase();
+  }
+
+  function pairOneVideo(v) {
+    const vids = state.videoPool;
+    if (!vids.length) return null;
+    const key = v.videoKey;
+    // candidates whose basename (minus extension) equals the slp's video key
+    let cands = vids.filter(vd => baseNoExt(vd.name).toLowerCase() === key);
+    // also allow the exact basename recorded inside the slp
+    if (v.videoFilename) {
+      const exact = vids.filter(vd => vd.name.toLowerCase() === v.videoFilename.toLowerCase());
+      cands = [...new Set([...exact, ...cands])];
+    }
+    if (!cands.length) return null;
+    if (cands.length === 1) return cands[0];
+    // disambiguate by matching parent-folder name (e.g. experiment_235_clean)
+    const pn = parentName(v.slpName);
+    return cands.find(vd => parentName(vd.path || vd.name) === pn) || cands[0];
+  }
+
+  function pairAndRender() {
+    state.videos.forEach(v => {
+      if (v.error) return;
+      v.allVideos = state.videoPool;
+      if (!v.videoManual) v.videoEntry = pairOneVideo(v);
+      v.thumbed = false;
+    });
+    const nTracks = state.videos.reduce((a, v) => a + v.tracks.length, 0);
+    const nPaired = state.videos.filter(v => v.videoEntry).length;
+    setLoadStatus(`${state.videos.length} SLP file(s), ${nTracks} tracks · ${state.videoPool.length} video(s) available · ${nPaired}/${state.videos.length} paired.`);
+    if (state.videos.length) { $('#toolbar').style.display = 'flex'; $('#howto').style.display = 'block'; }
+    renderResults();
+    refreshAssignments();
+    applyPending();
+  }
+
+  function addVideos(entries) {
+    const vids = entries.filter(isVideo);
+    const seen = new Set(state.videoPool.map(v => v.path || v.name));
+    vids.forEach(v => { const k = v.path || v.name; if (!seen.has(k)) { seen.add(k); state.videoPool.push(v); } });
+    state.videoPool.sort(natCmp);
+  }
+
+  async function loadSlps(entries) {
+    await ensureH5();
+    const slps = entries.filter(e => e.name.toLowerCase().endsWith('.slp')).sort(natCmp);
+    if (!slps.length) { setLoadStatus('No .slp files found in that selection.', true); return; }
+    // if the same pick also contained videos, fold them into the pool
+    addVideos(entries);
+    setLoadStatus(`Parsing ${slps.length} .slp file(s)…`);
+    state.videos = [];
+    for (const slp of slps) {
+      const path = slp.path || slp.name;
+      try {
+        const buf = await (await slp.getFile()).arrayBuffer();
+        const p = parseSLP(buf);
+        const tracks = [...p.perTrack.keys()].sort((a, b) => a - b).map(ti => ({
+          index: ti, name: p.tracks[ti] || ('track_' + ti), all: p.perTrack.get(ti),
+        }));
+        state.videos.push({
+          slpName: path, videoFilename: p.videoFilename,
+          videoKey: slpVideoKey(slp.name), videoEntry: null, videoManual: false, allVideos: state.videoPool,
+          W: p.W, H: p.H, nFrames: p.nFrames, fps: null, tracks, thumbed: false,
+        });
+      } catch (err) {
+        console.error(err);
+        state.videos.push({ slpName: path, error: err.message, tracks: [] });
+      }
+    }
+    pairAndRender();
+  }
+  function setLoadStatus(msg, err) { const el = $('#loadStatus'); el.textContent = msg; el.className = 'status' + (err ? ' err' : ''); }
+
+  // ---------- rendering results ----------
+  function renderResults() {
+    const root = $('#results'); root.innerHTML = '';
+    if (!state.globals.length) {
+      const w = document.createElement('div'); w.className = 'step';
+      w.innerHTML = '<span class="hint">Add some global identities in step 1 to start assigning.</span>';
+      root.appendChild(w);
+    }
+    state.videos.forEach((v, vi) => {
+      const sec = document.createElement('div'); sec.className = 'video-sec'; sec.dataset.vi = vi;
+      const head = document.createElement('div'); head.className = 'video-head';
+      const nm = document.createElement('span'); nm.className = 'name'; nm.textContent = v.slpName;
+      head.appendChild(nm);
+      if (v.error) {
+        const e = document.createElement('span'); e.className = 'badge warn'; e.textContent = 'parse error: ' + v.error;
+        head.appendChild(e); sec.appendChild(head); root.appendChild(sec); return;
+      }
+      const meta = document.createElement('span'); meta.className = 'meta';
+      meta.textContent = `${v.W}×${v.H} · ${v.nFrames} frames · ${v.tracks.length} tracks`;
+      head.appendChild(meta);
+      // video pairing control
+      const vsel = document.createElement('select');
+      const optNone = document.createElement('option'); optNone.value = ''; optNone.textContent = '— no video —';
+      vsel.appendChild(optNone);
+      (v.allVideos || []).forEach(vd => {
+        const vp = vd.path || vd.name;
+        const o = document.createElement('option'); o.value = vp; o.textContent = vp; o.title = vp;
+        if (v.videoEntry && (v.videoEntry.path || v.videoEntry.name) === vp) o.selected = true;
+        vsel.appendChild(o);
+      });
+      vsel.onchange = () => {
+        v.videoEntry = (v.allVideos || []).find(x => (x.path || x.name) === vsel.value) || null;
+        v.videoManual = true; v.thumbed = false; renderThumbsFor(v, sec);
+      };
+      head.appendChild(vsel);
+      if (!v.videoEntry) {
+        const b = document.createElement('span'); b.className = 'badge warn'; b.textContent = 'video not matched';
+        head.appendChild(b);
+      }
+      const dupBadge = document.createElement('span'); dupBadge.className = 'badge'; dupBadge.dataset.dup = '1';
+      dupBadge.style.display = 'none'; head.appendChild(dupBadge);
+      sec.appendChild(head);
+
+      const cards = document.createElement('div'); cards.className = 'cards';
+      v.tracks.forEach(t => cards.appendChild(makeCard(v, t)));
+      sec.appendChild(cards);
+      root.appendChild(sec);
+    });
+
+    // lazy-render thumbnails as sections scroll into view
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((ents) => {
+        ents.forEach(e => {
+          if (e.isIntersecting) {
+            const v = state.videos[+e.target.dataset.vi];
+            if (v && !v.error && !v.thumbed) renderThumbsFor(v, e.target);
+            io.unobserve(e.target);
+          }
+        });
+      }, { rootMargin: '300px' });
+      root.querySelectorAll('.video-sec').forEach(s => io.observe(s));
+    }
+  }
+
+  function makeCard(v, t) {
+    const card = document.createElement('div');
+    card.className = 'card'; card.dataset.key = keyOf(v.slpName, t.index);
+    const top = document.createElement('div'); top.className = 'card-top';
+    const tn = document.createElement('span'); tn.className = 'tname'; tn.textContent = t.name;
+    const al = document.createElement('span'); al.className = 'assign-label'; al.dataset.role = 'label';
+    al.title = 'Click to choose an identity';
+    const alt = document.createElement('span'); alt.dataset.role = 'labeltext'; alt.textContent = 'unassigned';
+    const car = document.createElement('span'); car.className = 'caret'; car.textContent = '▾';
+    al.appendChild(alt); al.appendChild(car);
+    al.onclick = (e) => { e.stopPropagation(); openIdMenu(e, v, t); };
+    top.appendChild(tn); top.appendChild(al); card.appendChild(top);
+
+    const thumbs = document.createElement('div'); thumbs.className = 'thumbs'; thumbs.dataset.role = 'thumbs';
+    t.samples = pickSamples(t.all, clampFrames());
+    t.samples.forEach(s => {
+      const th = document.createElement('div'); th.className = 'thumb loading';
+      const c = document.createElement('canvas'); c.width = 240; c.height = 240;
+      const fr = document.createElement('span'); fr.className = 'fr'; fr.textContent = s.frameIdx;
+      th.appendChild(c); th.appendChild(fr);
+      th.onclick = (ev) => { ev.stopPropagation(); openFrameView(v, t, s); };
+      thumbs.appendChild(th);
+    });
+    card.appendChild(thumbs);
+
+    const act = document.createElement('div'); act.className = 'card-actions';
+    const clr = document.createElement('button'); clr.className = 'ghost'; clr.textContent = 'Clear';
+    clr.onclick = (e) => { e.stopPropagation(); assignTrack(v, t, null); };
+    const re = document.createElement('button'); re.className = 'ghost'; re.textContent = '↻ Other frames';
+    re.onclick = (e) => { e.stopPropagation(); reshuffle(v, t, card); };
+    act.appendChild(clr); act.appendChild(re); card.appendChild(act);
+
+    card.onclick = (e) => {
+      const cur = state.assign.get(keyOf(v.slpName, t.index));
+      if (state.brush === '__ERASE__') { assignTrack(v, t, null); return; }
+      if (state.brush) { assignTrack(v, t, cur === state.brush ? null : state.brush); return; }
+      // no brush active → open the per-card picker so a click still does something
+      e.stopPropagation();
+      openIdMenu({ currentTarget: card.querySelector('[data-role=label]') }, v, t);
+    };
+    card.onmouseenter = () => { card._hover = true; };
+    card.onmouseleave = () => { card._hover = false; };
+    return card;
+  }
+
+  function reshuffle(v, t, card) {
+    const arr = t.all.filter(s => s.nvis >= 2);
+    arr.sort((a, b) => a.frameIdx - b.frameIdx);
+    const K = clampFrames();
+    // random spread: jitter the quantile picks
+    const out = [], seen = new Set();
+    for (let i = 0; i < K && arr.length; i++) {
+      let idx = Math.floor((arr.length) * ((i + Math.random()) / K));
+      idx = Math.min(arr.length - 1, Math.max(0, idx));
+      let tries = 0;
+      while (seen.has(arr[idx].frameIdx) && tries++ < 5) idx = Math.floor(Math.random() * arr.length);
+      seen.add(arr[idx].frameIdx); out.push(arr[idx]);
+    }
+    t.samples = out;
+    const thumbs = card.querySelector('[data-role=thumbs]'); thumbs.innerHTML = '';
+    t.samples.forEach(s => {
+      const th = document.createElement('div'); th.className = 'thumb loading';
+      const c = document.createElement('canvas'); c.width = 240; c.height = 240;
+      const fr = document.createElement('span'); fr.className = 'fr'; fr.textContent = s.frameIdx;
+      th.appendChild(c); th.appendChild(fr);
+      th.onclick = (ev) => { ev.stopPropagation(); openFrameView(v, t, s); };
+      thumbs.appendChild(th);
+    });
+    v.thumbed = false;
+    const sec = card.closest('.video-sec');
+    renderThumbsFor(v, sec, t);
+  }
+  function clampFrames() { return Math.min(8, Math.max(1, parseInt($('#framesPer').value) || 4)); }
+
+  // ---------- assignment ----------
+  function assignTrack(v, t, name) {
+    const k = keyOf(v.slpName, t.index);
+    if (name) state.assign.set(k, name); else state.assign.delete(k);
+    refreshAssignments();
+  }
+  function refreshAssignments() {
+    // per card visuals
+    document.querySelectorAll('.card').forEach(card => {
+      const k = card.dataset.key; const name = state.assign.get(k);
+      const label = card.querySelector('[data-role=label]');
+      const alt = label.querySelector('[data-role=labeltext]');
+      if (name && state.globals.some(g => g.name === name)) {
+        const col = colorFor(name);
+        card.classList.add('assigned'); card.style.setProperty('--acol', col);
+        alt.innerHTML = ''; const d = document.createElement('span'); d.className = 'dot'; d.style.background = col;
+        const tx = document.createElement('span'); tx.textContent = name; alt.appendChild(d); alt.appendChild(tx);
+      } else {
+        card.classList.remove('assigned'); card.classList.remove('dup');
+        alt.textContent = 'unassigned';
+      }
+    });
+    // duplicate-within-video detection (two local tracks -> same global in one video is impossible)
+    let total = 0, done = 0;
+    state.videos.forEach((v, vi) => {
+      if (v.error) return;
+      const counts = new Map();
+      v.tracks.forEach(t => {
+        total++; const n = state.assign.get(keyOf(v.slpName, t.index));
+        if (n) { done++; counts.set(n, (counts.get(n) || 0) + 1); }
+      });
+      const dups = new Set([...counts.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+      const sec = document.querySelector(`.video-sec[data-vi="${vi}"]`);
+      if (!sec) return;
+      v.tracks.forEach(t => {
+        const card = sec.querySelector(`.card[data-key="${cssEsc(keyOf(v.slpName, t.index))}"]`);
+        if (!card) return;
+        const n = state.assign.get(keyOf(v.slpName, t.index));
+        card.classList.toggle('dup', !!(n && dups.has(n)));
+      });
+      const badge = sec.querySelector('[data-dup]');
+      if (badge) {
+        if (dups.size) { badge.style.display = ''; badge.className = 'badge warn'; badge.textContent = '⚠ same ID on 2+ tracks'; }
+        else if (v.tracks.length && done) { badge.style.display = ''; badge.className = 'badge ok'; badge.textContent = 'no conflicts'; }
+        else { badge.style.display = 'none'; }
+      }
+    });
+    $('#progress').innerHTML = `<b>${done}</b> / ${total} tracks assigned`;
+  }
+  function cssEsc(s) { return (window.CSS && CSS.escape) ? CSS.escape(s) : s.replace(/["\\]/g, '\\$&'); }
+
+  // ---------- per-card identity picker (popup menu) ----------
+  let menuEl = null;
+  function ensureMenu() {
+    if (menuEl) return menuEl;
+    menuEl = document.createElement('div'); menuEl.className = 'idmenu';
+    document.body.appendChild(menuEl);
+    document.addEventListener('click', (e) => {
+      if (menuEl.classList.contains('show') && !menuEl.contains(e.target)) closeIdMenu();
+    });
+    window.addEventListener('resize', closeIdMenu);
+    window.addEventListener('scroll', closeIdMenu, true);
+    return menuEl;
+  }
+  function closeIdMenu() { if (menuEl) menuEl.classList.remove('show'); }
+  function openIdMenu(ev, v, t) {
+    const m = ensureMenu(); m.innerHTML = '';
+    const cur = state.assign.get(keyOf(v.slpName, t.index));
+    const head = document.createElement('div'); head.className = 'idmenu-head';
+    head.textContent = t.name + '  ·  ' + (v.slpName.split('/').pop());
+    m.appendChild(head);
+    if (!state.globals.length) {
+      const none = document.createElement('div'); none.className = 'idmenu-empty';
+      none.textContent = 'Add identities in step 1 first.';
+      m.appendChild(none);
+    } else {
+      state.globals.forEach(g => {
+        const it = document.createElement('div'); it.className = 'item' + (cur === g.name ? ' current' : '');
+        const d = document.createElement('span'); d.className = 'dot'; d.style.background = g.color;
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = g.name;
+        it.appendChild(d); it.appendChild(nm);
+        if (cur === g.name) { const ck = document.createElement('span'); ck.className = 'ck'; ck.textContent = '✓'; it.appendChild(ck); }
+        it.onclick = (e) => { e.stopPropagation(); assignTrack(v, t, g.name); closeIdMenu(); };
+        m.appendChild(it);
+      });
+      const sep = document.createElement('div'); sep.className = 'sep'; m.appendChild(sep);
+    }
+    const clr = document.createElement('div'); clr.className = 'item clear' + (cur ? '' : ' current');
+    clr.textContent = 'Unassigned';
+    clr.onclick = (e) => { e.stopPropagation(); assignTrack(v, t, null); closeIdMenu(); };
+    m.appendChild(clr);
+
+    m.classList.add('show');
+    const r = ev.currentTarget.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+    let left = window.scrollX + r.left;
+    let top = window.scrollY + r.bottom + 4;
+    if (left + m.offsetWidth > window.scrollX + vw - 8) left = window.scrollX + vw - m.offsetWidth - 8;
+    if (r.bottom + m.offsetHeight > vh - 8) top = window.scrollY + r.top - m.offsetHeight - 4;
+    m.style.left = Math.max(window.scrollX + 8, left) + 'px'; m.style.top = top + 'px';
+  }
+
+  // ---------- video metadata (dimensions + frame rate) ----------
+  // Many .slp files don't store the video shape/fps, so derive them from the actual video.
+  function measureFps(video) {
+    return new Promise((resolve) => {
+      if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return resolve(null);
+      let first = null, last = null, frames = 0, done = false;
+      const finish = (val) => { if (done) return; done = true; try { video.pause(); } catch (e) {} resolve(val); };
+      const cb = (now, meta) => {
+        const mt = meta.mediaTime;
+        if (first === null) first = mt;
+        last = mt; frames++;
+        if (last - first >= 0.4 && frames >= 2) return finish((frames - 1) / (last - first));
+        if (frames > 240) return finish((frames - 1) / Math.max(1e-3, last - first));
+        video.requestVideoFrameCallback(cb);
+      };
+      video.requestVideoFrameCallback(cb);
+      const p = video.play(); if (p && p.catch) p.catch(() => finish(null));
+      setTimeout(() => finish(frames >= 2 && last > first ? (frames - 1) / (last - first) : null), 3000);
+    });
+  }
+  async function resolveVideoMeta(v, video, sec) {
+    if (!v.W || !v.H) { v.W = video.videoWidth; v.H = video.videoHeight; }
+    if (!v.fps) {
+      if (v.nFrames > 1 && video.duration > 0) v.fps = v.nFrames / video.duration;
+      else {
+        const m = await measureFps(video);
+        v.fps = (m && isFinite(m) && m > 0) ? m : 30;
+        try { video.currentTime = 0; } catch (e) {}
+        if (!(v.nFrames > 1) && video.duration > 0) v.nFrames = Math.round(video.duration * v.fps);
+      }
+    }
+    if (sec) {
+      const meta = sec.querySelector('.meta');
+      if (meta) meta.textContent = `${v.W}×${v.H} · ${v.nFrames || '?'} frames · ${v.tracks.length} tracks · ${v.fps ? v.fps.toFixed(1) + ' fps' : ''}`;
+    }
+  }
+
+  // ---------- thumbnails (seek video, crop to bbox) ----------
+  async function renderThumbsFor(v, sec, onlyTrack) {
+    if (!v.videoEntry) {
+      sec.querySelectorAll('.thumb.loading').forEach(t => {
+        t.classList.remove('loading');
+        const ctx = t.querySelector('canvas').getContext('2d');
+        ctx.fillStyle = '#222'; ctx.fillRect(0, 0, 240, 240);
+        ctx.fillStyle = '#666'; ctx.font = '12px system-ui'; ctx.textAlign = 'center';
+        ctx.fillText('no video', 120, 124);
+      });
+      return;
+    }
+    v.thumbed = true;
+    let url;
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto';
+    try {
+      url = URL.createObjectURL(await v.videoEntry.getFile());
+      video.src = url;
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = res;
+        video.onerror = () => rej(new Error('could not load video'));
+        setTimeout(() => rej(new Error('video load timeout')), 20000);
+      });
+    } catch (err) {
+      if (url) URL.revokeObjectURL(url);
+      sec.querySelectorAll('.thumb.loading').forEach(t => t.classList.remove('loading'));
+      return;
+    }
+    const vw = video.videoWidth, vh = video.videoHeight;
+    await resolveVideoMeta(v, video, sec);
+    const fps = v.fps || 30;
+    const sx = v.W ? vw / v.W : 1, sy = v.H ? vh / v.H : 1;
+
+    // build task queue
+    const tasks = [];
+    v.tracks.forEach(t => {
+      if (onlyTrack && t !== onlyTrack) return;
+      const card = sec.querySelector(`.card[data-key="${cssEsc(keyOf(v.slpName, t.index))}"]`);
+      if (!card) return;
+      const canvases = card.querySelectorAll('.thumb canvas');
+      (t.samples || []).forEach((s, i) => { if (canvases[i]) tasks.push({ s, canvas: canvases[i] }); });
+    });
+    tasks.sort((a, b) => a.s.frameIdx - b.s.frameIdx); // monotonic seeks are faster
+
+    for (const task of tasks) {
+      try {
+        await seekTo(video, (task.s.frameIdx + 0.5) / fps);
+        drawCrop(video, task.canvas, task.s.bbox, sx, sy, vw, vh);
+        task.canvas.parentElement.classList.remove('loading');
+      } catch (e) { task.canvas.parentElement.classList.remove('loading'); }
+    }
+    URL.revokeObjectURL(url); video.removeAttribute('src'); video.load();
+  }
+
+  function seekTo(video, t) {
+    return new Promise((res) => {
+      const done = () => { video.removeEventListener('seeked', done); res(); };
+      video.addEventListener('seeked', done);
+      const dur = isFinite(video.duration) ? video.duration : t + 1;
+      video.currentTime = Math.min(Math.max(t, 0), Math.max(0, dur - 1e-3));
+    });
+  }
+  function drawCrop(video, canvas, bbox, sx, sy, vw, vh) {
+    let [x0, y0, x1, y1] = bbox;
+    x0 *= sx; x1 *= sx; y0 *= sy; y1 *= sy;
+    let cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    let size = Math.max(x1 - x0, y1 - y0) * 1.6;
+    size = Math.max(size, Math.min(vw, vh) / 8);   // don't over-zoom tiny detections
+    size = Math.min(size, Math.min(vw, vh));
+    let sxp = cx - size / 2, syp = cy - size / 2;
+    sxp = Math.max(0, Math.min(sxp, vw - size));
+    syp = Math.max(0, Math.min(syp, vh - size));
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#111'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    try { ctx.drawImage(video, sxp, syp, size, size, 0, 0, canvas.width, canvas.height); } catch (e) {}
+  }
+
+  // ---------- expanded frame view (full frame + circled individual + blown-up crop) ----------
+  let frameViewToken = 0;
+  async function openFrameView(v, t, s) {
+    const token = ++frameViewToken;
+    const lb = $('#lightbox'), fc = $('#lbFrame'), cc = $('#lbCrop'), cap = $('#lbCap');
+    lb.classList.add('show');
+    cap.textContent = 'Loading frame ' + s.frameIdx + '…';
+    const name = state.assign.get(keyOf(v.slpName, t.index));
+    if (!v.videoEntry) { cap.textContent = 'No video paired for ' + v.slpName + ' — pick one from the dropdown to see frames.'; return; }
+
+    let url = null; const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.preload = 'auto';
+    try {
+      url = URL.createObjectURL(await v.videoEntry.getFile());
+      video.src = url;
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = res;
+        video.onerror = () => rej(new Error('could not load video'));
+        setTimeout(() => rej(new Error('video load timeout')), 20000);
+      });
+      if (token !== frameViewToken) return; // superseded by a newer click
+      const vw = video.videoWidth, vh = video.videoHeight;
+      await resolveVideoMeta(v, video);
+      const fps = v.fps || 30;
+      const sx = v.W ? vw / v.W : 1, sy = v.H ? vh / v.H : 1;
+      await seekTo(video, (s.frameIdx + 0.5) / fps);
+      if (token !== frameViewToken) return;
+
+      // full frame
+      fc.width = vw; fc.height = vh;
+      const g = fc.getContext('2d');
+      g.drawImage(video, 0, 0, vw, vh);
+
+      // circle the individual (true size = scale cue)
+      let [x0, y0, x1, y1] = s.bbox; x0 *= sx; x1 *= sx; y0 *= sy; y1 *= sy;
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      const rx = Math.max((x1 - x0) / 2 * 1.5, 12), ry = Math.max((y1 - y0) / 2 * 1.5, 12);
+      const col = name ? colorFor(name) : '#ffd400';
+      // dark underlay for contrast
+      g.lineWidth = Math.max(3, vw / 200); g.strokeStyle = 'rgba(0,0,0,.55)';
+      g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+      g.lineWidth = Math.max(2, vw / 320); g.strokeStyle = col;
+      g.beginPath(); g.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2); g.stroke();
+      // dashed locator ring if the individual is small in-frame (helps find pups)
+      if (Math.max(rx, ry) < vw / 26) {
+        const R = vw / 22;
+        g.save(); g.globalAlpha = 0.55; g.setLineDash([9, 8]);
+        g.lineWidth = Math.max(1.5, vw / 500); g.strokeStyle = col;
+        g.beginPath(); g.ellipse(cx, cy, R, R, 0, 0, Math.PI * 2); g.stroke(); g.restore();
+      }
+
+      // blown-up crop
+      cc.width = 640; cc.height = 640;
+      drawCrop(video, cc, s.bbox, sx, sy, vw, vh);
+
+      const bw = Math.round(x1 - x0), bh = Math.round(y1 - y0);
+      const pct = ((bw * bh) / (vw * vh) * 100);
+      cap.innerHTML = '';
+      const line1 = document.createElement('div');
+      line1.textContent = `${t.name}${name ? ' → ' + name : ''} · frame ${s.frameIdx}`;
+      const line2 = document.createElement('div'); line2.style.color = '#8a90a8';
+      line2.textContent = `body box ≈ ${bw}×${bh} px  ·  ${pct.toFixed(2)}% of the ${vw}×${vh} frame`;
+      const line3 = document.createElement('div'); line3.style.color = '#6b7089'; line3.style.fontSize = '12px';
+      line3.textContent = v.slpName;
+      cap.appendChild(line1); cap.appendChild(line2); cap.appendChild(line3);
+    } catch (err) {
+      if (token === frameViewToken) cap.textContent = 'Could not load this frame: ' + err.message;
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+      video.removeAttribute('src'); try { video.load(); } catch (e) {}
+    }
+  }
+  function closeFrameView() { frameViewToken++; $('#lightbox').classList.remove('show'); }
+  $('#lightbox').onclick = (e) => { if (e.target === $('#lightbox')) closeFrameView(); };
+  $('#lbClose').onclick = closeFrameView;
+
+  // ---------- CSV ----------
+  function exportCSV() {
+    const rows = [['video_file', 'slp_file', 'local_track_index', 'local_track_name', 'global_identity']];
+    state.videos.forEach(v => {
+      if (v.error) return;
+      v.tracks.forEach(t => {
+        rows.push([
+          v.videoEntry ? (v.videoEntry.path || v.videoEntry.name) : '',
+          v.slpName, t.index, t.name,
+          state.assign.get(keyOf(v.slpName, t.index)) || '',
+        ]);
+      });
+    });
+    const csv = rows.map(r => r.map(csvCell).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'track_identity_map.csv'; a.click(); URL.revokeObjectURL(a.href);
+  }
+  function csvCell(v) { v = String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+
+  function importCSV(text) {
+    const rows = parseCSV(text); if (!rows.length) return;
+    const head = rows[0].map(h => h.trim().toLowerCase());
+    const iSlp = head.indexOf('slp_file'), iIdx = head.indexOf('local_track_index'),
+          iName = head.indexOf('local_track_name'), iG = head.indexOf('global_identity');
+    if (iSlp < 0 || iG < 0) { setLoadStatus('CSV missing slp_file / global_identity columns.', true); return; }
+    let applied = 0;
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r]; if (!row.length) continue;
+      const slp = row[iSlp], g = (row[iG] || '').trim();
+      if (!slp || !g) continue;
+      ensureGlobal(g);
+      // add to names textarea if new
+      const cur = $('#namesInput').value.split('\n').map(s => s.trim());
+      if (!cur.includes(g)) $('#namesInput').value = ($('#namesInput').value.trim() ? $('#namesInput').value.trim() + '\n' : '') + g;
+      // find matching track (by index, else name)
+      const v = state.videos.find(v => v.slpName === slp);
+      if (v) {
+        let t = iIdx >= 0 ? v.tracks.find(t => String(t.index) === String(row[iIdx]).trim()) : null;
+        if (!t && iName >= 0) t = v.tracks.find(t => t.name === row[iName]);
+        if (t) { state.assign.set(keyOf(slp, t.index), g); applied++; }
+      } else {
+        // no data loaded yet — stash for when it loads
+        pendingCSV.push({ slp, idx: iIdx >= 0 ? String(row[iIdx]).trim() : null, name: iName >= 0 ? row[iName] : null, g });
+      }
+    }
+    renderSwatches(); renderBrushes(); refreshAssignments();
+    setLoadStatus(`Imported CSV — applied ${applied} assignment(s)${pendingCSV.length ? ', rest will apply once data loads' : ''}.`);
+  }
+  let pendingCSV = [];
+  function applyPending() {
+    if (!pendingCSV.length) return;
+    const keep = [];
+    pendingCSV.forEach(p => {
+      const v = state.videos.find(v => v.slpName === p.slp);
+      if (!v) { keep.push(p); return; }
+      let t = p.idx != null ? v.tracks.find(t => String(t.index) === p.idx) : null;
+      if (!t && p.name) t = v.tracks.find(t => t.name === p.name);
+      if (t) { ensureGlobal(p.g); state.assign.set(keyOf(p.slp, t.index), p.g); }
+    });
+    pendingCSV = keep; renderSwatches(); renderBrushes(); refreshAssignments();
+  }
+  function parseCSV(text) {
+    const rows = []; let row = [], cur = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+        else if (c === '"') q = false; else cur += c;
+      } else {
+        if (c === '"') q = true;
+        else if (c === ',') { row.push(cur); cur = ''; }
+        else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+        else if (c === '\r') {} else cur += c;
+      }
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim() !== ''));
+  }
+
+  // ---------- events ----------
+  $('#setNamesBtn').onclick = setNamesFromText;
+  $('#framesPer').onchange = () => { /* affects next render / reshuffle */ };
+  $('#exportBtn').onclick = exportCSV;
+  $('#thumbsBtn').onclick = () => {
+    document.querySelectorAll('.video-sec').forEach(sec => {
+      const v = state.videos[+sec.dataset.vi];
+      if (v && !v.error && !v.thumbed) renderThumbsFor(v, sec);
+    });
+  };
+  async function pickDir(fsaHandler, fallbackInput) {
+    if (!('showDirectoryPicker' in window)) { $(fallbackInput).click(); return; }
+    try {
+      const dir = await window.showDirectoryPicker();
+      setLoadStatus('Scanning folder…');
+      const entries = await gatherFromDirHandle(dir);
+      await fsaHandler(entries);
+    } catch (err) { if (err.name !== 'AbortError') setLoadStatus('Error: ' + err.message, true); }
+  }
+  $('#slpFolderBtn').onclick = () => pickDir(loadSlps, '#slpDirInput');
+  $('#slpDirInput').onchange = async (e) => {
+    if (!e.target.files.length) return;
+    setLoadStatus('Scanning folder…');
+    await loadSlps(gatherFromFileList(e.target.files));
+  };
+  $('#videoFolderBtn').onclick = () => pickDir(async (entries) => {
+    addVideos(entries);
+    if (!state.videos.length) setLoadStatus(`${state.videoPool.length} video(s) loaded. Now choose your SLP folder.`);
+    else pairAndRender();
+  }, '#videoDirInput');
+  $('#videoDirInput').onchange = async (e) => {
+    if (!e.target.files.length) return;
+    addVideos(gatherFromFileList(e.target.files));
+    if (!state.videos.length) setLoadStatus(`${state.videoPool.length} video(s) loaded. Now choose your SLP folder.`);
+    else pairAndRender();
+  };
+  $('#filesBtn').onclick = () => $('#fileInput').click();
+  $('#fileInput').onchange = async (e) => {
+    if (!e.target.files.length) return;
+    const entries = gatherFromFileList(e.target.files);
+    if (entries.some(x => x.name.toLowerCase().endsWith('.slp'))) await loadSlps(entries);
+    else { addVideos(entries); if (state.videos.length) pairAndRender(); else setLoadStatus(`${state.videoPool.length} video(s) loaded. Now choose your SLP folder or files.`); }
+  };
+  $('#importBtn').onclick = () => $('#csvInput').click();
+  $('#csvInput').onchange = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader(); rd.onload = () => importCSV(rd.result); rd.readAsText(f);
+  };
+  document.addEventListener('keydown', (e) => {
+    if (/input|textarea|select/i.test(document.activeElement.tagName)) return;
+    if (e.key >= '1' && e.key <= '9') {
+      const i = +e.key - 1;
+      if (state.globals[i]) {
+        // if hovering a card, assign; else set brush
+        const hov = [...document.querySelectorAll('.card')].find(c => c._hover);
+        if (hov) { const [slp, ti] = parseKey(hov.dataset.key); const v = state.videos.find(v => v.slpName === slp);
+          const t = v && v.tracks.find(t => t.index == ti); if (t) assignTrack(v, t, state.globals[i].name); }
+        else { state.brush = state.globals[i].name; renderBrushes(); }
+      }
+    } else if (e.key === '0') {
+      const hov = [...document.querySelectorAll('.card')].find(c => c._hover);
+      if (hov) { const [slp, ti] = parseKey(hov.dataset.key); const v = state.videos.find(v => v.slpName === slp);
+        const t = v && v.tracks.find(t => t.index == ti); if (t) assignTrack(v, t, null); }
+      else { state.brush = '__ERASE__'; renderBrushes(); }
+    } else if (e.key === 'Escape') { closeFrameView(); closeIdMenu(); }
+  });
+
+  // restore identity names from URL
+  const m = /names=([^&]*)/.exec(location.hash);
+  if (m) {
+    const names = decodeURIComponent(m[1]).split(',').map(s => s.trim()).filter(Boolean);
+    if (names.length) { $('#namesInput').value = names.join('\n'); setNamesFromText(); }
+  }
+  renderBrushes();
+})();
+</script>
+</body>
+</html>
