@@ -32,6 +32,7 @@ Self-contained HTML tools and applets for the web.
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
 - [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
 - [Salk Email Signature](salk-signature/) - Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail
+- [Global Track Matcher](global-track-matcher/) - create an association list connecting identities in proofread .slp files to a global identity
 
 ## About
 
