@@ -11,6 +11,7 @@ Self-contained HTML tools and applets for the web.
 - [GitHub Discussion to Markdown](github-discussion-markdown/) - Convert GitHub discussions to structured markdown
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
+- [Pose Subspace Trip](pose-subspace-trip/) - Drive trippy 3D visualizations (pose constellation or ray-marched fractal) with your body via a pose-driven PCA subspace
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 - [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
@@ -30,6 +31,7 @@ Self-contained HTML tools and applets for the web.
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
 - [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
+- [Salk Email Signature](salk-signature/) - Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail
 - [Postprocess Filter Tuner](postprocess-filter-tuner/) - Tune sleap-nn post-inference FilterConfig knobs against ground truth, visualize the bad-removed vs. good-lost tradeoff, and export the config
 
 ## About

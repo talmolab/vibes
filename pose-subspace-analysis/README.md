@@ -8,12 +8,14 @@ Interactive webcam-based tool for exploring pose and hand keypoint manifolds usi
 
 - **Live pose/hand detection** - MediaPipe Pose and Hand Landmarker models with configurable complexity (lite/full/heavy)
 - **Multi-keypoint modes** - Track full body pose, individual hands (left/right), or both hands simultaneously
+- **Display modes** - Standard video + skeleton overlay, or point-light display (Johansson-style white Gaussian glows on black, optional connections) for studying motion structure free of visual context
 - **Frame capture** - Build training datasets from live webcam feed with visual gallery
 - **Feature engineering** - Compute pairwise distances, pairwise angles, or normalized coordinates
 - **Real-time PCA** - 2D subspace projection using power iteration algorithm with variance explained
 - **Live pose matching** - Projects current pose onto learned subspace and shows closest training frame
 - **Interactive visualization** - Hover over PCA scatter points to preview corresponding frames
 - **Color-coded gallery** - Each captured frame assigned a unique color for easy tracking across plot and gallery
+- **Flexible layout** - Full-width page with toggle between side-by-side panels and stacked (full-width video on top)
 
 ## Usage
 
@@ -24,13 +26,17 @@ Interactive webcam-based tool for exploring pose and hand keypoint manifolds usi
    - **Pairwise Distances** - All Euclidean distances between keypoint pairs (rotation/translation invariant)
    - **Pairwise Angles** - All angles between keypoint pairs (translation invariant)
    - **Normalized Keypoints** - Raw coordinates centered and scaled by bounding box
-5. **Capture Frame** to add current pose to training set (minimum 3 frames required for PCA)
-6. Watch the PCA plot update in real-time:
+5. Choose **Display** mode:
+   - **Video + Keypoints** (default) - colored skeleton on the live webcam image
+   - **Point Light** - keypoints rendered as white Gaussian glows on black; toggle **Show connections** to show or hide skeleton lines
+6. Optionally toggle **Stack panels (full-width video)** at the top of the page to switch between side-by-side and stacked layouts
+7. **Capture Frame** to add current pose to training set (minimum 3 frames required for PCA)
+8. Watch the PCA plot update in real-time:
    - Training frames shown as colored dots matching gallery borders
    - Live pose shown as pink dot
    - Closest training frame displays below plot
-7. Hover over PCA scatter points to preview corresponding frames in tooltip
-8. Remove unwanted frames by clicking the × button in gallery (colors auto-regenerate)
+9. Hover over PCA scatter points to preview corresponding frames in tooltip
+10. Remove unwanted frames by clicking the × button in gallery (colors auto-regenerate)
 
 ## Technical Details
 
