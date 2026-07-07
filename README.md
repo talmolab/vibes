@@ -32,6 +32,7 @@ Self-contained HTML tools and applets for the web.
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
 - [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
 - [Salk Email Signature](salk-signature/) - Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail
+- [Postprocess Filter Tuner](postprocess-filter-tuner/) - Tune sleap-nn post-inference FilterConfig knobs against ground truth, visualize the bad-removed vs. good-lost tradeoff, and export the config
 
 ## About
 

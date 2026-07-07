@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SLEAP-NN Postprocess Filter Tuner</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "h5wasm": "https://unpkg.com/h5wasm@0.8.8/dist/esm/hdf5_hl.js",
+            "yaml": "https://esm.sh/yaml@2.6.1",
+            "skia-canvas": "data:text/javascript,export class Canvas{}",
+            "child_process": "data:text/javascript,export function spawn(){}"
+        }
+    }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <style>
+        * { box-sizing: border-box; }
+        :root {
+            --bg: #f6f7f9;
+            --card: #ffffff;
+            --line: #e3e6ea;
+            --ink: #1b2733;
+            --muted: #6b7785;
+            --brand: #4f46e5;
+            --good: #16a34a;
+            --bad: #dc2626;
+            --warn: #d97706;
+        }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 24px;
+            line-height: 1.55;
+            background: var(--bg);
+            color: var(--ink);
+        }
+        h1 { margin-bottom: 0.2rem; font-size: 1.6rem; }
+        h2 { font-size: 1.05rem; margin: 0 0 12px; }
+        .description { color: var(--muted); margin-top: 0; }
+        a { color: var(--brand); }
+        .card {
+            background: var(--card);
+            padding: 18px 20px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            box-shadow: 0 1px 2px rgba(16,24,40,0.04);
+            margin: 16px 0;
+        }
+        .note {
+            font-size: 0.85rem;
+            color: var(--muted);
+            background: #fbfaf4;
+            border: 1px solid #efe7cf;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .drops {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .drop {
+            border: 2px dashed var(--line);
+            border-radius: 8px;
+            padding: 14px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color .15s, background .15s;
+            font-size: 0.9rem;
+        }
+        .drop.over { border-color: var(--brand); background: #f5f4ff; }
+        .drop.loaded { border-style: solid; border-color: var(--good); background: #f2fbf5; }
+        .drop b { display: block; margin-bottom: 2px; }
+        .drop small { color: var(--muted); }
+        input[type=file] { display: none; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+        @media (max-width: 640px) { .controls, .drops { grid-template-columns: 1fr; } }
+        .ctrl label { display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; }
+        .ctrl label span.val { color: var(--brand); font-variant-numeric: tabular-nums; }
+        .ctrl small { color: var(--muted); font-size: 0.78rem; }
+        input[type=range] { width: 100%; margin: 4px 0 0; }
+        input[type=number], select {
+            width: 100%; padding: 8px 10px; border: 1px solid var(--line);
+            border-radius: 6px; font-size: 16px; margin-top: 4px; background: #fff;
+        }
+        .row { display: flex; align-items: center; gap: 8px; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+        .stat { background: #f8f9fb; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+        .stat .k { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+        .stat .v { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .stat .sub { font-size: 0.75rem; color: var(--muted); }
+        .tradebar { display: flex; height: 26px; border-radius: 6px; overflow: hidden; margin: 8px 0 4px; background: #eef0f3; font-size: 0.72rem; }
+        .tradebar div { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; white-space: nowrap; }
+        .legend { display: flex; gap: 16px; font-size: 0.8rem; color: var(--muted); flex-wrap: wrap; }
+        .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+        button {
+            background: var(--brand); color: #fff; border: none; padding: 9px 16px;
+            border-radius: 7px; font-size: 14px; cursor: pointer; font-weight: 600;
+        }
+        button:hover { background: #4338ca; }
+        button.ghost { background: #fff; color: var(--brand); border: 1px solid var(--line); }
+        pre { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 13px; }
+        .hidden { display: none; }
+        .muted { color: var(--muted); }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+        th:first-child, td:first-child { text-align: left; }
+
+        /* grouped filter subsections */
+        .grouphead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+            font-weight: 700; margin: 4px 0 2px; grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 12px; }
+        .grouphead:first-child { border-top: none; padding-top: 0; }
+        .ctrl { position: relative; }
+        .ctrl label .info { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px;
+            border-radius: 50%; background: var(--line); color: var(--muted); font-size: 10px; font-weight: 700; cursor: help; margin-left: 5px; }
+        .ctrl .tip { display: none; position: absolute; z-index: 20; left: 0; top: 100%; margin-top: 2px; width: 100%;
+            background: #0f172a; color: #e2e8f0; font-size: 0.75rem; font-weight: 400; line-height: 1.4;
+            padding: 8px 10px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+        .ctrl .info:hover + .tip, .ctrl .tip:hover { display: block; }
+        .ctrl .method { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 0.8rem; color: var(--muted); }
+        .ctrl .method select { width: auto; margin-top: 0; padding: 3px 6px; font-size: 14px; }
+        details.adv { margin-top: 14px; }
+        details.adv > summary { cursor: pointer; font-size: 0.9rem; font-weight: 600; color: var(--brand); }
+        details.note-d { background: #fbfaf4; border: 1px solid #efe7cf; border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+        details.note-d > summary { cursor: pointer; font-size: 0.82rem; color: var(--muted); font-weight: 600; }
+        details.note-d[open] > summary { margin-bottom: 6px; }
+        details.note-d p { margin: 0; font-size: 0.82rem; color: var(--muted); }
+
+        /* metric hierarchy */
+        .mgroup { margin-top: 6px; }
+        .mgroup + .mgroup { margin-top: 18px; }
+        .mgroup .ghead { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+        .hero { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline; margin-bottom: 10px; }
+        .hero .big { display: flex; flex-direction: column; }
+        .hero .big .v { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.05; }
+        .hero .big .k { font-size: 0.72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .chip { background: #f8f9fb; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 0.82rem; }
+        .chip b { font-variant-numeric: tabular-nums; }
+        .conf { font-size: 0.8rem; color: var(--muted); }
+        .conf .tp { color: var(--good); font-weight: 700; }
+        .conf .fp { color: var(--warn); font-weight: 700; }
+        .conf .fn { color: var(--bad); font-weight: 700; }
+
+        /* frame inspector */
+        .inspect-wrap { border: 1px solid var(--line); border-radius: 8px; background: #0f172a; overflow: hidden; }
+        #frameCanvas { display: block; width: 100%; height: auto; background: #0f172a; }
+        .inspect-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+        .inspect-bar button { padding: 6px 12px; font-size: 13px; }
+        .inspect-bar .fmeta { font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+        /* before/after test comparison */
+        .beforeafter { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 14px; }
+        @media (max-width: 700px) { .beforeafter { grid-template-columns: 1fr; } }
+        .ba-head { font-size: 0.8rem; font-weight: 700; padding: 6px 10px; border-radius: 6px; margin-bottom: 10px;
+            background: #f1f5f9; color: var(--muted); border: 1px solid var(--line); }
+        .ba-head.ba-after { background: #f2fbf5; color: var(--good); border-color: #bbf7d0; }
+    </style>
+</head>
+<body>
+    <h1>SLEAP-NN Postprocess Filter Tuner</h1>
+    <p class="description">Tune <a href="https://github.com/talmolab/sleap-nn" target="_blank">sleap-nn</a> post-inference <code>FilterConfig</code> knobs against ground truth &mdash; see how many bad predictions you remove vs. how many good ones you lose &mdash; then export the config and apply it to a test set.</p>
+
+    <div class="card">
+        <h2>1. Load validation pair (.slp)</h2>
+        <div class="drops">
+            <div class="drop" id="dropGT">
+                <b>Ground truth</b>
+                <small>labels_gt.val.slp</small>
+            </div>
+            <div class="drop" id="dropPR">
+                <b>Predictions</b>
+                <small>labels_pr.val.slp</small>
+            </div>
+        </div>
+        <input type="file" id="fileGT" accept=".slp">
+        <input type="file" id="filePR" accept=".slp">
+        <p id="loadMsg" class="muted" style="margin:10px 0 0; font-size:0.85rem;"></p>
+    </div>
+
+    <div class="card hidden" id="mainCard">
+        <h2>2. Filters</h2>
+        <details class="note-d">
+            <summary>Which knobs, and why only these?</summary>
+            <p>These mirror sleap-nn's post-inference <code>FilterConfig</code> and run on the already-predicted scores/coords, so they reproduce inference exactly. Inference-time knobs (<code>peak_threshold</code>, <code>integral_refinement</code>, <code>center_nms_kernel</code>) act on confidence maps and <b>cannot</b> be reproduced from a .slp &mdash; they're intentionally omitted.</p>
+        </details>
+        <div class="controls" id="controls"></div>
+        <details class="adv">
+            <summary>Matching &amp; scoring parameters</summary>
+            <div class="controls" style="margin-top:12px;">
+                <div class="ctrl" id="matchOksCtrl">
+                    <label>Min match OKS <span class="val" id="matchOksVal"></span></label>
+                    <input type="range" id="matchOks" min="0" max="0.9" step="0.05">
+                    <small>sleap-nn <code>match_threshold</code> (keypoint models): min OKS for a pred to match a GT (greedy, by instance score). 0 = default.</small>
+                </div>
+                <div class="ctrl" id="matchDistCtrl">
+                    <label>Centroid match distance (px) <span class="val" id="matchDistVal"></span></label>
+                    <input type="range" id="matchDist" min="5" max="150" step="1">
+                    <small>Max pixel distance for a centroid to match a GT (Hungarian). Drives the centroid-detection view and is the primary matcher for centroid-only models. Default 50.</small>
+                </div>
+                <div class="ctrl">
+                    <label>PCK / "good" distance (px) <span class="val" id="pckThrVal"></span></label>
+                    <input type="range" id="pckThr" min="1" max="50" step="1">
+                    <small>A keypoint within this distance of GT is "correct". Drives PCK and the good-vs-error split.</small>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <div class="card hidden" id="metricsCard">
+        <h2>3. Metrics at current filter</h2>
+        <div id="metricsGrid"></div>
+
+        <h2 style="margin-top:22px;">Predictions dropped by filtering</h2>
+        <p class="muted" style="font-size:0.85rem;margin:0 0 6px;">Of the predictions removed vs. the raw predictions: how many were errors correctly removed vs. good predictions lost.</p>
+        <div class="row" id="tradeUnitRow" style="margin:0 0 8px;gap:6px;">
+            <span class="muted" style="font-size:0.8rem;">Count by:</span>
+            <label style="font-size:0.85rem;"><input type="radio" name="tradeUnit" value="keypoints" checked> keypoints</label>
+            <label style="font-size:0.85rem;"><input type="radio" name="tradeUnit" value="instances"> instances</label>
+            <small class="muted" id="tradeUnitHint"></small>
+        </div>
+        <div class="tradebar" id="tradebar"></div>
+        <div class="legend">
+            <span><i style="background:var(--good)"></i>Errors correctly removed (were far from GT)</span>
+            <span><i style="background:var(--bad)"></i>Good predictions lost (were close to GT)</span>
+        </div>
+    </div>
+
+    <div class="card hidden" id="inspectCard">
+        <h2>4. Inspect frames</h2>
+        <p class="muted" style="font-size:0.85rem;margin:0 0 8px;">Predicted poses on each frame, colored by what the current filters do to them. Ground-truth poses are drawn faintly for reference.</p>
+        <div class="inspect-bar">
+            <button id="frmPrev" class="ghost">&#9664; Prev</button>
+            <button id="frmNext" class="ghost">Next &#9654;</button>
+            <button id="frmNextDrop">Next with a drop &#9654;</button>
+            <label class="fmeta" style="margin-left:auto;"><input type="checkbox" id="frmShowImg" checked> show image</label>
+            <label class="fmeta"><input type="checkbox" id="frmOnlyDrops"> only frames with drops</label>
+        </div>
+        <div class="inspect-wrap"><canvas id="frameCanvas" width="900" height="620"></canvas></div>
+        <div class="fmeta" id="frameMeta" style="margin-top:8px;"></div>
+        <div class="legend" style="margin-top:8px;">
+            <span><i style="background:#22c55e"></i>Kept</span>
+            <span><i style="background:#dc2626"></i>Dropped &mdash; good instance lost</span>
+            <span><i style="background:#f59e0b"></i>Dropped &mdash; error correctly removed</span>
+            <span><i style="background:#38bdf8"></i>Ground truth</span>
+        </div>
+    </div>
+
+    <div class="card hidden" id="sweepCard">
+        <h2>5. Sweep a knob</h2>
+        <div class="row" style="margin-bottom:12px;">
+            <select id="sweepKnob" style="max-width:280px;"></select>
+            <button id="sweepBtn">Sweep</button>
+        </div>
+        <canvas id="sweepChart" height="150"></canvas>
+        <p class="muted" style="font-size:0.8rem;margin-top:8px;">Other knobs held at their current values. Drag the slider above to a value read off this curve.</p>
+    </div>
+
+    <div class="card hidden" id="exportCard">
+        <h2>6. Export</h2>
+        <div class="row" style="margin-bottom:10px;">
+            <button id="copyBtn" class="ghost">Copy FilterConfig YAML</button>
+        </div>
+        <pre id="exportYaml"></pre>
+    </div>
+
+    <div class="card hidden" id="testCard">
+        <h2>7. Apply to a held-out test pair</h2>
+        <p class="muted" style="font-size:0.85rem;margin:0 0 10px;">Load a separate test pair (its own ground truth + predictions) to see how the tuned <code>FilterConfig</code> generalizes. Metrics are shown <b>before</b> (raw predictions) and <b>after</b> (current filters), computed on the test data alone.</p>
+        <div class="drops">
+            <div class="drop" id="dropTestGT"><b>Test ground truth</b><small>labels_gt.test.slp</small></div>
+            <div class="drop" id="dropTestPR"><b>Test predictions</b><small>labels_pr.test.slp</small></div>
+        </div>
+        <input type="file" id="fileTestGT" accept=".slp">
+        <input type="file" id="fileTestPR" accept=".slp">
+        <p id="testMsg" class="muted" style="margin:10px 0 0;font-size:0.85rem;"></p>
+        <div id="testResult" class="hidden">
+            <div class="beforeafter">
+                <div><div class="ba-head">Before &mdash; raw predictions</div><div id="testGridBefore"></div></div>
+                <div><div class="ba-head ba-after">After &mdash; tuned filters</div><div id="testGridAfter"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { loadSlp } from 'https://cdn.jsdelivr.net/npm/@talmolab/sleap-io.js@0.1.9/dist/index.js';
+
+        // ---- Filter definitions (mirrors sleap_nn.inference.filters.FilterConfig) ----
+        const FILTERS = [
+            { group: 'Keypoint-level', key: 'min_peak_value',           label: 'min_peak_value',           min: 0, max: 1,   step: 0.01, def: 0,   fmt: v => v.toFixed(2), desc: 'NaN-out individual keypoints scoring below this. Does not drop instances.' },
+            { group: 'Instance-level', key: 'min_instance_score',       label: 'min_instance_score',       min: 0, max: 1,   step: 0.01, def: 0,   fmt: v => v.toFixed(2), desc: 'Drop whole instances below this instance score.' },
+            { group: 'Instance-level', key: 'min_mean_node_score',      label: 'min_mean_node_score',      min: 0, max: 1,   step: 0.01, def: 0,   fmt: v => v.toFixed(2), desc: 'Drop instances below this mean visible-node score.' },
+            { group: 'Instance-level', key: 'min_visible_nodes',        label: 'min_visible_nodes',        min: 0, max: 20,  step: 1,    def: 0,   fmt: v => String(v), desc: 'Drop instances with fewer than this many visible keypoints.' },
+            { group: 'Instance-level', key: 'min_visible_node_fraction',label: 'min_visible_node_fraction',min: 0, max: 1,   step: 0.05, def: 0,   fmt: v => v.toFixed(2), desc: 'Drop instances below this fraction of visible keypoints.' },
+            { group: 'Deduplication',  key: 'overlapping_threshold',    label: 'overlap NMS threshold',    min: 0, max: 1,   step: 0.05, def: 1,   fmt: v => v>=1?'off':v.toFixed(2), desc: 'Below 1: greedily drop the lower-scored of two overlapping instances when their similarity (bbox IoU or keypoint OKS, per method) exceeds this.' },
+            { group: 'Deduplication',  key: 'min_centroid_distance',    label: 'min_centroid_distance',    min: 0, max: 100, step: 1,    def: 0,   fmt: v => String(v), desc: 'Greedy centroid de-dup radius (px): drop the lower-scored of two instances whose centroids are closer than this.' },
+        ];
+        const cfg = {};
+        FILTERS.forEach(f => cfg[f.key] = f.def);
+        cfg.overlapping_method = 'iou';  // overlap-NMS similarity: 'iou' (bbox) | 'oks' (keypoint)
+        cfg.match_oks = 0;        // keypoint mode: OKS match threshold
+        cfg.match_dist_px = 50;   // centroid mode: pixel match distance
+        cfg.pck_thr = 10;
+        let MODE = 'keypoint';    // 'keypoint' (OKS) | 'centroid' (pixel distance)
+
+        // ---- State ----
+        let VAL = null;   // {frames: Map, nNodes, nodeNames}
+        let nNodes = 0;
+        let EDGES = [];        // skeleton edges as [srcIdx, dstIdx] pairs (for the frame inspector)
+        let FRAME_KEYS = [];   // aligned frame keys, in load order
+        let frmPtr = 0;        // pointer into FRAME_KEYS
+
+        // ---- SLP extraction -> per-frame instance arrays ----
+        function extractFrames(labels) {
+            const frames = new Map();
+            const vids = labels.videos;
+            for (const lf of labels.labeledFrames) {
+                const vIdx = vids.indexOf(lf.video);
+                const key = vIdx + ':' + lf.frameIdx;
+                const insts = lf.instances.map(inst => {
+                    const isPred = typeof inst.score === 'number';
+                    const arr = isPred
+                        ? inst.numpy({ scores: true, invisibleAsNaN: false })
+                        : inst.numpy({ invisibleAsNaN: true });
+                    const pts = arr.map(r => [r[0], r[1]]);
+                    const scores = arr.map(r => isPred ? (r[2] ?? 0) : 1);
+                    return { pts, scores, score: isPred ? inst.score : 1, pred: isPred };
+                });
+                frames.set(key, insts);
+            }
+            return frames;
+        }
+
+        // ---- Geometry helpers ----
+        const isVis = p => Number.isFinite(p[0]) && Number.isFinite(p[1]);
+        function centroid(pts) {
+            let sx = 0, sy = 0, n = 0;
+            for (const p of pts) if (isVis(p)) { sx += p[0]; sy += p[1]; n++; }
+            return n ? [sx / n, sy / n] : null;
+        }
+        function dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1]); }
+        function bbox(pts) {
+            let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
+            for (const p of pts) if (isVis(p)) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); n++; }
+            return n ? [x0, y0, x1, y1] : null;
+        }
+        // overlap-NMS OKS — ports FilterPipeline._oks (inference/filters.py), which is DISTINCT
+        // from the eval OKS (compute_oks): scale is the bbox *area* of instance `a`'s own visible
+        // keypoints, falloff constant kappa=0.1, mean over nodes visible in BOTH. Asymmetric in a/b
+        // via the scale, so callers pass (candidate, kept) to match sleap-nn's greedy order.
+        const OVERLAP_KAPPA = 0.1;
+        function overlapOks(a, b) {
+            let na = 0; for (const p of a) if (isVis(p)) na++;
+            if (na < 2) return 0;
+            const B = bbox(a);
+            const scaleSq = (B[2] - B[0]) * (B[3] - B[1]);
+            if (scaleSq <= 0) return 0;
+            let sum = 0, n = 0;
+            for (let k = 0; k < a.length; k++) {
+                if (isVis(a[k]) && isVis(b[k])) {
+                    const d2 = (a[k][0] - b[k][0]) ** 2 + (a[k][1] - b[k][1]) ** 2;
+                    sum += Math.exp(-d2 / (2 * scaleSq * OVERLAP_KAPPA * OVERLAP_KAPPA));
+                    n++;
+                }
+            }
+            return n ? sum / n : 0;
+        }
+        function bboxIoU(a, b) {
+            const A = bbox(a), B = bbox(b);
+            if (!A || !B) return 0;
+            const ix = Math.max(0, Math.min(A[2], B[2]) - Math.max(A[0], B[0]));
+            const iy = Math.max(0, Math.min(A[3], B[3]) - Math.max(A[1], B[1]));
+            const inter = ix * iy;
+            const ua = (A[2] - A[0]) * (A[3] - A[1]) + (B[2] - B[0]) * (B[3] - B[1]) - inter;
+            return ua > 0 ? inter / ua : 0;
+        }
+
+        // ---- Apply filters to a single frame's predicted instances ----
+        function applyFilters(insts, c) {
+            // deep-ish copy (points get NaN-ed); `orig` = index in the raw list
+            let out = insts.map((i, idx) => ({ pts: i.pts.map(p => p.slice()), scores: i.scores.slice(), score: i.score, orig: idx }));
+            // 1. min_peak_value -> NaN low keypoints
+            if (c.min_peak_value > 0) {
+                for (const inst of out)
+                    for (let k = 0; k < inst.pts.length; k++)
+                        if (inst.scores[k] < c.min_peak_value) inst.pts[k] = [NaN, NaN];
+            }
+            // 2. node-count filters
+            out = out.filter(inst => {
+                const vis = inst.pts.filter(isVis).length;
+                if (vis < c.min_visible_nodes) return false;
+                if (inst.pts.length && vis / inst.pts.length < c.min_visible_node_fraction) return false;
+                return true;
+            });
+            // 3. score filters
+            out = out.filter(inst => {
+                if (inst.score < c.min_instance_score) return false;
+                let s = 0, n = 0;
+                for (let k = 0; k < inst.pts.length; k++) if (isVis(inst.pts[k])) { s += inst.scores[k]; n++; }
+                const mean = n ? s / n : 0;
+                if (mean < c.min_mean_node_score) return false;
+                return true;
+            });
+            // 4. overlap NMS (bbox IoU or keypoint OKS) — greedy by instance score.
+            // Ports _filter_overlapping: sort by score desc; a candidate is dropped if its
+            // similarity to any ALREADY-KEPT instance exceeds the threshold. OKS is asymmetric,
+            // so similarity is measured as sim(candidate, kept) — scale from the candidate.
+            if (c.overlapping_threshold < 1) {
+                const order = out.map((_, i) => i).sort((a, b) => out[b].score - out[a].score);
+                const sim = c.overlapping_method === 'oks'
+                    ? (cand, kept) => overlapOks(out[cand].pts, out[kept].pts)
+                    : (cand, kept) => bboxIoU(out[cand].pts, out[kept].pts);
+                const keptIdx = [];
+                for (const idx of order) {
+                    let drop = false;
+                    for (const k of keptIdx) if (sim(idx, k) > c.overlapping_threshold) { drop = true; break; }
+                    if (!drop) keptIdx.push(idx);
+                }
+                const keepSet = new Set(keptIdx);
+                out = out.filter((_, i) => keepSet.has(i));
+            }
+            // 5. centroid de-dup
+            if (c.min_centroid_distance > 0) {
+                const order = out.map((_, i) => i).sort((a, b) => out[b].score - out[a].score);
+                const cents = out.map(i => centroid(i.pts));
+                const keep = [], dead = new Set();
+                for (const i of order) {
+                    if (dead.has(i)) continue;
+                    keep.push(i);
+                    for (const j of order) if (j !== i && !dead.has(j) && cents[i] && cents[j] && dist(cents[i], cents[j]) < c.min_centroid_distance) dead.add(j);
+                }
+                out = out.filter((_, i) => keep.includes(i));
+            }
+            return out;
+        }
+
+        // ---- OKS (ports sleap_nn.evaluation.compute_oks / compute_instance_area) ----
+        // cocoeval form, scalar stddev, scale = GT bbox area. Matches evaluation.py.
+        const OKS_STDDEV = 0.025;
+        function instanceArea(pts) { // compute_instance_area: nan-aware bbox area
+            const b = bbox(pts);
+            return b ? (b[2] - b[0]) * (b[3] - b[1]) : NaN;
+        }
+        function oksPair(gt, pr) {
+            const area = instanceArea(gt);
+            if (!Number.isFinite(area)) return 0;
+            const norm = ((2 * OKS_STDDEV) ** 2) * 2 * (area + Number.EPSILON); // spread * scale_factor
+            let sumKs = 0, nVis = 0;
+            for (let k = 0; k < gt.length; k++) {
+                if (!isVis(gt[k])) continue;            // missing GT node -> ks 0, excluded
+                nVis++;
+                if (!isVis(pr[k])) continue;            // missing PR node -> distance inf -> ks 0
+                const d2 = (gt[k][0] - pr[k][0]) ** 2 + (gt[k][1] - pr[k][1]) ** 2;
+                sumKs += Math.exp(-(d2 / norm));
+            }
+            return nVis ? sumKs / nVis : 0;
+        }
+
+        // ---- Greedy OKS match (ports evaluation.match_instances) ----
+        // Preds sorted by instance score desc; each greedily takes the best available
+        // GT by OKS. oks <= threshold is not a match. Unmatched preds = FP, GT = FN.
+        function matchFrameOKS(preds, gts, minOks) {
+            const order = preds.map((_, i) => i).sort((a, b) => preds[b].score - preds[a].score);
+            const availGT = gts.map((_, i) => i);
+            const pairs = [];
+            for (const pi of order) {
+                if (!availGT.length) break;
+                let best = -1, bestOks = -Infinity;
+                for (const gi of availGT) {
+                    let o = oksPair(gts[gi].pts, preds[pi].pts);
+                    if (o <= minOks) continue;          // oks <= threshold -> nan (no match)
+                    if (o > bestOks) { bestOks = o; best = gi; }
+                }
+                if (best < 0) continue;                 // no valid GT -> this pred is a FP
+                pairs.push([pi, best, bestOks]);        // 3rd element: the matched OKS (for VOC mAP / mOKS)
+                availGT.splice(availGT.indexOf(best), 1);
+            }
+            return { pairs, fn: availGT.length, matchedPred: pairs.length };
+        }
+
+        // ---- VOC OKS mAP + mOKS (ports evaluation.Evaluator.voc_metrics / mOKS) ----
+        // positive pairs = greedy OKS matches (match_threshold=0, i.e. cfg.match_oks); each carries
+        // its detection score + matched OKS. mAP = mean 101-pt-interpolated precision over OKS
+        // thresholds 0.5:0.05:0.95; npig = total GT (matched + false negatives). NaN when no GT.
+        const MAP_OKS_THR = Array.from({ length: 10 }, (_, i) => +(0.5 + 0.05 * i).toFixed(2));
+        const MAP_RECALL_THR = Array.from({ length: 101 }, (_, i) => i / 100);
+        function searchLeft(arr, val) {   // first index with arr[idx] >= val (arr non-decreasing)
+            let lo = 0, hi = arr.length;
+            while (lo < hi) { const mid = (lo + hi) >> 1; if (arr[mid] < val) lo = mid + 1; else hi = mid; }
+            return lo;
+        }
+        function vocAP(detScores, matchScores, npig) {
+            if (npig <= 0) return { mAP: NaN, ap50: NaN, ap75: NaN };
+            const idx = detScores.map((_, i) => i).sort((a, b) => (detScores[b] - detScores[a]) || (a - b));
+            const ms = idx.map(i => matchScores[i]);
+            const apByThr = {};
+            let mapSum = 0;
+            for (const t of MAP_OKS_THR) {
+                const pr = new Array(ms.length), rc = new Array(ms.length);
+                let tp = 0, fp = 0;
+                for (let i = 0; i < ms.length; i++) { if (ms[i] >= t) tp++; else fp++; rc[i] = tp / npig; pr[i] = tp / (tp + fp); }
+                for (let i = pr.length - 1; i > 0; i--) if (pr[i] > pr[i - 1]) pr[i - 1] = pr[i];  // monotone
+                let apSum = 0;
+                for (const r of MAP_RECALL_THR) { const j = searchLeft(rc, r); apSum += (j < pr.length ? pr[j] : 0); }
+                const ap = apSum / MAP_RECALL_THR.length;
+                apByThr[t] = ap; mapSum += ap;
+            }
+            return { mAP: mapSum / MAP_OKS_THR.length, ap50: apByThr[0.5], ap75: apByThr[0.75] };
+        }
+
+        // numpy-style linear-interpolation percentile over a sorted ascending array
+        function percentile(sorted, q) {
+            if (!sorted.length) return NaN;
+            const idx = q * (sorted.length - 1), lo = Math.floor(idx), hi = Math.ceil(idx);
+            return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+        }
+
+        // ---- Optimal assignment (Hungarian, minimize). Small n. Used for centroid mode. ----
+        function hungarian(cost) {
+            const n = cost.length, m = cost[0]?.length || 0;
+            if (!n || !m) return [];
+            const N = Math.max(n, m), BIG = 1e12;
+            const c = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (_, j) => (i < n && j < m) ? cost[i][j] : BIG));
+            const u = new Array(N + 1).fill(0), v = new Array(N + 1).fill(0), p = new Array(N + 1).fill(0), way = new Array(N + 1).fill(0);
+            for (let i = 1; i <= N; i++) {
+                p[0] = i; let j0 = 0;
+                const minv = new Array(N + 1).fill(Infinity), used = new Array(N + 1).fill(false);
+                do {
+                    used[j0] = true; const i0 = p[j0]; let delta = Infinity, j1 = -1;
+                    for (let j = 1; j <= N; j++) if (!used[j]) {
+                        const cur = c[i0 - 1][j - 1] - u[i0] - v[j];
+                        if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+                        if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+                    }
+                    for (let j = 0; j <= N; j++) { if (used[j]) { u[p[j]] += delta; v[j] -= delta; } else minv[j] -= delta; }
+                    j0 = j1;
+                } while (p[j0] !== 0);
+                do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+            }
+            const res = [];
+            for (let j = 1; j <= N; j++) if (p[j] <= n && j <= m) res.push([p[j] - 1, j - 1]);
+            return res; // [predIdx, gtIdx]
+        }
+
+        // ---- Centroid matching (ports evaluation.match_centroids + compute_gt_centroids) ----
+        // Each instance collapses to its centroid (anchor=None -> mean of visible nodes).
+        // Hungarian on pixel distance, matches beyond max_distance dropped.
+        function matchFrameCentroid(preds, gts, maxDist) {
+            const pc = preds.map(i => centroid(i.pts)), gc = gts.map(i => centroid(i.pts));
+            const pv = pc.map((c, i) => c ? i : -1).filter(i => i >= 0);
+            const gv = gc.map((c, i) => c ? i : -1).filter(i => i >= 0);
+            if (!pv.length || !gv.length) return { pairs: [], fn: gv.length, matchedPred: 0 };
+            const cost = pv.map(pi => gv.map(gi => dist(pc[pi], gc[gi])));
+            const asg = hungarian(cost);
+            const pairs = []; let matched = 0;
+            for (const [a, b] of asg) {
+                const pi = pv[a], gi = gv[b];
+                if (cost[a][b] <= maxDist) { pairs.push([pi, gi, cost[a][b]]); matched++; }
+            }
+            return { pairs, fn: gv.length - matched, matchedPred: matched };
+        }
+
+        // ---- Centroid-mode evaluation (detection + distance only, per match_method="centroid") ----
+        function evaluateCentroid(val, c) {
+            let nTP = 0, nFP = 0, nFN = 0;
+            const dists = [];
+            let goodLost = 0, errRemoved = 0, keptGood = 0, keptBad = 0;
+            for (const [key, gts] of val.gt) {
+                const rawPreds = val.pr.get(key) || [];
+                const preds = applyFilters(rawPreds, c);
+                const { pairs, fn, matchedPred } = matchFrameCentroid(preds, gts, c.match_dist_px);
+                nTP += pairs.length; nFN += fn; nFP += preds.length - matchedPred;
+                for (const [, , d] of pairs) dists.push(d);
+                // instance-level tradeoff: raw correspondence, classify dropped detections
+                const raw = matchFrameCentroid(rawPreds, gts, c.match_dist_px);
+                const survivors = new Set(preds.map(i => i.orig));
+                const matchedRaw = new Set(raw.pairs.map(p => p[0]));
+                for (let pi = 0; pi < rawPreds.length; pi++) {
+                    const good = matchedRaw.has(pi);        // raw pred was a true detection
+                    const survives = survivors.has(pi);
+                    if (survives) { good ? keptGood++ : keptBad++; }
+                    else { good ? goodLost++ : errRemoved++; }
+                }
+            }
+            const prec = nTP + nFP ? nTP / (nTP + nFP) : 0;
+            const rec = nTP + nFN ? nTP / (nTP + nFN) : 0;
+            dists.sort((a, b) => a - b);
+            return {
+                mode: 'centroid', tp: nTP, fp: nFP, fn: nFN, prec, rec,
+                f1: prec + rec ? 2 * prec * rec / (prec + rec) : 0,
+                p50: percentile(dists, 0.5), p90: percentile(dists, 0.9),
+                goodLost, errRemoved, keptGood, keptBad,
+                // centroid mode: 1 node per instance, so instance counts == keypoint counts
+                iGoodLost: goodLost, iErrRemoved: errRemoved, iKeptGood: keptGood, iKeptBad: keptBad,
+            };
+        }
+
+        // ---- Full evaluation over all frames (faithful to sleap_nn.evaluation.Evaluator) ----
+        function evaluate(val, c) {
+            if (MODE === 'centroid') return evaluateCentroid(val, c);
+            let nTP = 0, nFP = 0, nFN = 0;
+            let cTP = 0, cFP = 0, cFN = 0;                 // centroid-detection view (stage-1 detection quality)
+            const finiteDists = [];
+            let pckHit = 0, pckSlots = 0;                 // sleap PCK: denom = all matched-pair node slots
+            let visTP = 0, visFP = 0, visFN = 0;          // visibility_metrics confusion
+            let goodLost = 0, errRemoved = 0, keptGood = 0, keptBad = 0;
+            let iGoodLost = 0, iErrRemoved = 0, iKeptGood = 0, iKeptBad = 0;  // instance-level tradeoff
+            const vocDet = [], vocOks = []; let npig = 0;  // VOC mAP / mOKS accumulators
+            for (const [key, gts] of val.gt) {
+                const rawPreds = val.pr.get(key) || [];
+                const preds = applyFilters(rawPreds, c);
+                const { pairs, fn, matchedPred } = matchFrameOKS(preds, gts, c.match_oks);
+                nTP += pairs.length; nFN += fn; nFP += preds.length - matchedPred;
+                npig += gts.length;
+                for (const [pi, , oks] of pairs) { vocDet.push(preds[pi].score); vocOks.push(oks); }
+                // Centroid-distance detection (same TP/FP/FN, but matched by centroid pixel
+                // distance instead of OKS) — isolates "found the animals" from keypoint accuracy.
+                const cm = matchFrameCentroid(preds, gts, c.match_dist_px);
+                cTP += cm.pairs.length; cFN += cm.fn; cFP += preds.length - cm.matchedPred;
+
+                for (const [pi, gi] of pairs) {
+                    const pp = preds[pi].pts, gg = gts[gi].pts;
+                    for (let k = 0; k < nNodes; k++) {
+                        pckSlots++;                        // every node slot of a matched pair (incl. missing)
+                        const gv = isVis(gg[k]), pv = isVis(pp[k]);
+                        if (gv && pv) visTP++; else if (gv && !pv) visFN++; else if (!gv && pv) visFP++;
+                        if (gv && pv) {
+                            const d = dist(pp[k], gg[k]);
+                            finiteDists.push(d);
+                            if (d < c.pck_thr) pckHit++;   // strict <, missing (inf) never counts
+                        }
+                    }
+                }
+
+                // tradeoff: fix correspondence via RAW-pred OKS matching, classify dropped keypoints
+                const rawMatch = matchFrameOKS(rawPreds, gts, c.match_oks);
+                const byOrig = new Map(preds.map(inst => [inst.orig, inst]));
+                // instance-level: a raw instance matched to a GT (OKS) is a true detection;
+                // dropping a true one = good lost, dropping an unmatched one = error removed.
+                const matchedRawInst = new Set(rawMatch.pairs.map(p => p[0]));
+                for (let pi = 0; pi < rawPreds.length; pi++) {
+                    const good = matchedRawInst.has(pi);
+                    const survives = byOrig.has(pi);
+                    if (survives) { good ? iKeptGood++ : iKeptBad++; }
+                    else { good ? iGoodLost++ : iErrRemoved++; }
+                }
+                for (const [pi, gi] of rawMatch.pairs) {
+                    const rp = rawPreds[pi].pts, gg = gts[gi].pts;
+                    const survivor = byOrig.get(pi);       // filtered version of this raw instance (or dropped)
+                    const fp2 = survivor ? survivor.pts : null;
+                    for (let k = 0; k < nNodes; k++) {
+                        if (!isVis(gg[k]) || !isVis(rp[k])) continue;
+                        const rawGood = dist(rp[k], gg[k]) < c.pck_thr;
+                        const survives = fp2 && isVis(fp2[k]);
+                        if (survives) { if (rawGood) keptGood++; else keptBad++; }
+                        else { if (rawGood) goodLost++; else errRemoved++; }
+                    }
+                }
+            }
+            const prec = nTP + nFP ? nTP / (nTP + nFP) : 0;
+            const rec = nTP + nFN ? nTP / (nTP + nFN) : 0;
+            finiteDists.sort((a, b) => a - b);
+            const cprec = cTP + cFP ? cTP / (cTP + cFP) : 0, crec = cTP + cFN ? cTP / (cTP + cFN) : 0;
+            const voc = vocAP(vocDet, vocOks, npig);
+            const mOKS = vocOks.length ? vocOks.reduce((s, x) => s + x, 0) / vocOks.length : NaN;
+            return {
+                mode: 'keypoint',
+                tp: nTP, fp: nFP, fn: nFN, prec, rec, f1: prec + rec ? 2 * prec * rec / (prec + rec) : 0,
+                ctp: cTP, cfp: cFP, cfn: cFN, cprec, crec,
+                mAP: voc.mAP, ap50: voc.ap50, ap75: voc.ap75, mOKS,
+                pck: pckSlots ? pckHit / pckSlots : 0,
+                p50: percentile(finiteDists, 0.5), p90: percentile(finiteDists, 0.9),
+                visRec: visTP + visFN ? visTP / (visTP + visFN) : 0,
+                visPrec: visTP + visFP ? visTP / (visTP + visFP) : 0,
+                goodLost, errRemoved, keptGood, keptBad,
+                iGoodLost, iErrRemoved, iKeptGood, iKeptBad,
+            };
+        }
+
+        // ---- UI: build filter controls ----
+        const controlsEl = document.getElementById('controls');
+        let lastGroup = null;
+        FILTERS.forEach(f => {
+            if (f.group !== lastGroup) {
+                const h = document.createElement('div');
+                h.className = 'grouphead';
+                h.textContent = f.group;
+                controlsEl.appendChild(h);
+                lastGroup = f.group;
+            }
+            const d = document.createElement('div');
+            d.className = 'ctrl';
+            const methodSel = f.key === 'overlapping_threshold'
+                ? `<div class="method">method
+                     <select id="overlapMethod"><option value="iou">iou (bbox)</option><option value="oks">oks (keypoint)</option></select></div>`
+                : '';
+            d.innerHTML = `<label><span>${f.label} <span class="info">i</span><span class="tip">${f.desc}</span></span><span class="val" id="v_${f.key}"></span></label>
+                <input type="range" id="r_${f.key}" min="${f.min}" max="${f.max}" step="${f.step}">${methodSel}`;
+            controlsEl.appendChild(d);
+        });
+        function syncControls() {
+            FILTERS.forEach(f => {
+                const r = document.getElementById('r_' + f.key);
+                r.value = cfg[f.key];
+                document.getElementById('v_' + f.key).textContent = f.fmt(cfg[f.key]);
+            });
+            document.getElementById('matchOks').value = cfg.match_oks;
+            document.getElementById('matchOksVal').textContent = cfg.match_oks.toFixed(2);
+            document.getElementById('matchDist').value = cfg.match_dist_px;
+            document.getElementById('matchDistVal').textContent = cfg.match_dist_px;
+            document.getElementById('pckThr').value = cfg.pck_thr;
+            document.getElementById('pckThrVal').textContent = cfg.pck_thr;
+            document.getElementById('overlapMethod').value = cfg.overlapping_method;
+            // OKS control only for keypoint models; centroid-distance control shown in both
+            // (primary matcher for centroid-only, centroid-detection view for keypoint models).
+            document.getElementById('matchOksCtrl').classList.toggle('hidden', MODE === 'centroid');
+        }
+        FILTERS.forEach(f => {
+            document.getElementById('r_' + f.key).addEventListener('input', e => {
+                cfg[f.key] = parseFloat(e.target.value);
+                document.getElementById('v_' + f.key).textContent = f.fmt(cfg[f.key]);
+                refresh();
+            });
+        });
+        document.getElementById('matchOks').addEventListener('input', e => { cfg.match_oks = +e.target.value; document.getElementById('matchOksVal').textContent = (+e.target.value).toFixed(2); refresh(); });
+        document.getElementById('matchDist').addEventListener('input', e => { cfg.match_dist_px = +e.target.value; document.getElementById('matchDistVal').textContent = e.target.value; refresh(); });
+        document.getElementById('pckThr').addEventListener('input', e => { cfg.pck_thr = +e.target.value; document.getElementById('pckThrVal').textContent = e.target.value; refresh(); });
+        document.getElementById('overlapMethod').addEventListener('change', e => { cfg.overlapping_method = e.target.value; refresh(); });
+
+        // ---- Render metrics ----
+        function stat(k, v, sub) { return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`; }
+        function pctStr(x) { return isFinite(x) ? (x * 100).toFixed(1) + '%' : '–'; }
+        function pxStr(x) { return isFinite(x) ? x.toFixed(1) + ' px' : '–'; }
+
+        function big(v, k) { return `<div class="big"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+        function chip(k, v) { return `<span class="chip">${k} <b>${v}</b></span>`; }
+        function conf(label, tp, fp, fn, extra) {
+            return `<div class="conf">${label} &nbsp;·&nbsp; <span class="tp">${tp} TP</span> / <span class="fp">${fp} FP</span> / <span class="fn">${fn} FN</span>${extra ? ' &nbsp;·&nbsp; ' + extra : ''}</div>`;
+        }
+        function renderMetrics(el, m) {
+            if (m.mode === 'centroid') {
+                el.innerHTML =
+                    `<div class="mgroup"><div class="ghead">Detection — did we find the right animals?</div>
+                        <div class="hero">${big(pctStr(m.f1), 'F1')}<div class="chips">${chip('Precision', pctStr(m.prec))}${chip('Recall', pctStr(m.rec))}</div></div>
+                        ${conf('centroid ≤' + cfg.match_dist_px + 'px', m.tp, m.fp, m.fn)}</div>
+                     <div class="mgroup"><div class="ghead">Localization</div>
+                        <div class="hero">${big(pxStr(m.p50), 'Median centroid error')}</div>
+                        <div class="chips">${chip('p90 error', pxStr(m.p90))}${chip('PCK / OKS', 'n/a — 1 node')}</div></div>`;
+                return;
+            }
+            el.innerHTML =
+                `<div class="mgroup"><div class="ghead">Detection — did we find the right animals?</div>
+                    <div class="hero">${big(pctStr(m.f1), 'F1 (OKS)')}<div class="chips">${chip('Precision', pctStr(m.prec))}${chip('Recall', pctStr(m.rec))}</div></div>
+                    ${conf('OKS &gt;' + cfg.match_oks.toFixed(2) + ' (pose-aware)', m.tp, m.fp, m.fn)}
+                    ${conf('centroid ≤' + cfg.match_dist_px + 'px (stage-1, pose-agnostic)', m.ctp, m.cfp, m.cfn, 'P/R ' + pctStr(m.cprec) + ' / ' + pctStr(m.crec))}</div>
+                 <div class="mgroup"><div class="ghead">Pose quality — VOC OKS mAP (COCO-style, OKS @ 0.5:0.05:0.95)</div>
+                    <div class="hero">${big(pctStr(m.mAP), 'mAP')}<div class="chips">${chip('mOKS', isFinite(m.mOKS) ? m.mOKS.toFixed(3) : '–')}${chip('AP@0.50', pctStr(m.ap50))}${chip('AP@0.75', pctStr(m.ap75))}</div></div></div>
+                 <div class="mgroup"><div class="ghead">Localization — how accurate are the keypoints?</div>
+                    <div class="hero">${big(pctStr(m.pck), 'PCK@' + cfg.pck_thr + 'px')}${big(pxStr(m.p50), 'Median error')}</div>
+                    <div class="chips">${chip('p90 error', pxStr(m.p90))}${chip('Node-visibility recall', pctStr(m.visRec))}${chip('precision', pctStr(m.visPrec))}</div></div>`;
+        }
+
+        function renderTradebar(m) {
+            const bar = document.getElementById('tradebar');
+            const byInst = document.querySelector('input[name="tradeUnit"]:checked').value === 'instances';
+            // centroid mode is inherently instance-level (1 node/inst) — hide the toggle, always "detections"
+            const centroid = m.mode === 'centroid';
+            document.getElementById('tradeUnitRow').style.display = centroid ? 'none' : '';
+            const g = byInst ? m.iErrRemoved : m.errRemoved;
+            const b = byInst ? m.iGoodLost : m.goodLost;
+            const unit = centroid ? 'detections' : (byInst ? 'instances' : 'keypoints');
+            document.getElementById('tradeUnitHint').textContent = byInst
+                ? '(whole instances dropped: matched-to-GT = lost, unmatched = removed)'
+                : '(individual keypoints, incl. min_peak_value NaN-outs)';
+            if (!(g + b)) { bar.innerHTML = `<div style="background:#cbd5e1;color:#475569;flex:1">No ${unit} dropped</div>`; return; }
+            bar.innerHTML =
+                `<div style="background:var(--good);flex:${g || 0.0001}">${g ? g + ' removed' : ''}</div>` +
+                `<div style="background:var(--bad);flex:${b || 0.0001}">${b ? b + ' lost' : ''}</div>`;
+        }
+
+        function refresh() {
+            if (!VAL) return;
+            const m = evaluate(VAL, cfg);
+            renderMetrics(document.getElementById('metricsGrid'), m);
+            renderTradebar(m);
+            document.getElementById('exportYaml').textContent = toYaml(cfg);
+            if (FRAME_KEYS.length) drawFrame();
+            updateTestAfter();
+        }
+        document.querySelectorAll('input[name="tradeUnit"]').forEach(r =>
+            r.addEventListener('change', refresh));
+
+        function toYaml(c) {
+            const lines = ['# sleap_nn.inference.filters.FilterConfig'];
+            FILTERS.forEach(f => {
+                if (f.key === 'overlapping_threshold') {
+                    if (c.overlapping_threshold < 1) { lines.push('overlapping: true'); lines.push('overlapping_method: ' + c.overlapping_method); lines.push('overlapping_threshold: ' + c.overlapping_threshold); }
+                } else if (c[f.key] !== f.def) {
+                    lines.push(`${f.key}: ${c[f.key]}`);
+                }
+            });
+            if (lines.length === 1) lines.push('# (all defaults — no-op filter)');
+            return lines.join('\n');
+        }
+
+        // ---- Sweep ----
+        let chart = null;
+        function buildSweepOptions() {
+            const sel = document.getElementById('sweepKnob');
+            sel.innerHTML = FILTERS.map(f => `<option value="${f.key}">${f.label}</option>`).join('');
+        }
+        document.getElementById('sweepBtn').addEventListener('click', runSweep);
+        function runSweep() {
+            if (!VAL) return;
+            const key = document.getElementById('sweepKnob').value;
+            const f = FILTERS.find(x => x.key === key);
+            const steps = 21;
+            const xs = [], prec = [], rec = [], pck = [], err = [];
+            const tmp = { ...cfg };
+            for (let i = 0; i < steps; i++) {
+                const v = f.min + (f.max - f.min) * i / (steps - 1);
+                tmp[key] = f.step >= 1 ? Math.round(v) : v;
+                const m = evaluate(VAL, tmp);
+                xs.push(f.fmt(tmp[key])); prec.push(m.prec * 100); rec.push(m.rec * 100); pck.push(isFinite(m.pck) ? m.pck * 100 : null); err.push(m.p50);
+            }
+            if (chart) chart.destroy();
+            const datasets = [
+                { label: 'Precision %', data: prec, borderColor: '#4f46e5', yAxisID: 'y', tension: .2 },
+                { label: 'Recall %', data: rec, borderColor: '#16a34a', yAxisID: 'y', tension: .2 },
+                { label: 'Median err (px)', data: err, borderColor: '#dc2626', yAxisID: 'y1', tension: .2, borderDash: [5, 4] },
+            ];
+            if (MODE !== 'centroid') datasets.splice(2, 0, { label: 'PCK %', data: pck, borderColor: '#0891b2', yAxisID: 'y', tension: .2 });
+            chart = new Chart(document.getElementById('sweepChart'), {
+                type: 'line',
+                data: { labels: xs, datasets },
+                options: {
+                    responsive: true, interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { title: { display: true, text: f.label } },
+                        y: { position: 'left', min: 0, max: 100, title: { display: true, text: '%' } },
+                        y1: { position: 'right', min: 0, title: { display: true, text: 'px' }, grid: { drawOnChartArea: false } },
+                    },
+                },
+            });
+        }
+
+        // ---- Frame inspector ----
+        const FATE_COLOR = { kept: '#22c55e', lost: '#dc2626', removed: '#f59e0b' };
+        // Classify each RAW predicted instance in a frame by what the current filters do to it.
+        function frameFates(key) {
+            const gts = VAL.gt.get(key) || [];
+            const rawPreds = VAL.pr.get(key) || [];
+            const preds = applyFilters(rawPreds, cfg);
+            const survivorByOrig = new Map(preds.map(p => [p.orig, p]));
+            const matchedRaw = MODE === 'centroid'
+                ? new Set(matchFrameCentroid(rawPreds, gts, cfg.match_dist_px).pairs.map(p => p[0]))
+                : new Set(matchFrameOKS(rawPreds, gts, cfg.match_oks).pairs.map(p => p[0]));
+            const insts = rawPreds.map((rp, i) => {
+                const survivor = survivorByOrig.get(i);
+                const fate = survivor ? 'kept' : (matchedRaw.has(i) ? 'lost' : 'removed');
+                return { pts: survivor ? survivor.pts : rp.pts, fate };
+            });
+            return { gts, insts };
+        }
+        function hasDrop(key) { return frameFates(key).insts.some(p => p.fate !== 'kept'); }
+
+        function drawInstance(ctx, pts, tf, color, lw, alpha, r) {
+            ctx.globalAlpha = alpha; ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw;
+            for (const [s, d] of EDGES) {
+                if (isVis(pts[s]) && isVis(pts[d])) {
+                    const a = tf(pts[s]), b = tf(pts[d]);
+                    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+                }
+            }
+            for (const p of pts) if (isVis(p)) { const q = tf(p); ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, 7); ctx.fill(); }
+            ctx.globalAlpha = 1;
+        }
+
+        // Decoded embedded-frame images, keyed by "vIdx:frameIdx" (null = no image available).
+        const imgCache = new Map();
+        async function ensureImage(key) {
+            if (imgCache.has(key)) return imgCache.get(key);
+            let bmp = null;
+            try {
+                const [vIdx, fIdx] = key.split(':').map(Number);
+                const video = gtLabels && gtLabels.videos && gtLabels.videos[vIdx];
+                if (video && video.backend && video.backend.getFrame) {
+                    const img = await video.backend.getFrame(fIdx);
+                    if (img instanceof ImageBitmap) bmp = img;
+                    else if (typeof ImageData !== 'undefined' && img instanceof ImageData) bmp = await createImageBitmap(img);
+                    else if (img instanceof Uint8Array || img instanceof ArrayBuffer) bmp = await createImageBitmap(new Blob([img]));
+                }
+            } catch (e) { bmp = null; }
+            if (imgCache.size > 24) { const k0 = imgCache.keys().next().value; const old = imgCache.get(k0); if (old && old.close) old.close(); imgCache.delete(k0); }
+            imgCache.set(key, bmp);
+            return bmp;
+        }
+
+        let drawSeq = 0;
+        async function drawFrame() {
+            if (!VAL || !FRAME_KEYS.length) return;
+            const seq = ++drawSeq;
+            const canvas = document.getElementById('frameCanvas');
+            const ctx = canvas.getContext('2d');
+            const W = canvas.width, H = canvas.height;
+            const key = FRAME_KEYS[frmPtr];
+            const { gts, insts } = frameFates(key);
+            updateFrameMeta(key, insts, gts);   // sync — don't wait on the image decode
+            const showImg = document.getElementById('frmShowImg').checked;
+            const bmp = showImg ? await ensureImage(key) : null;
+            if (seq !== drawSeq) return;   // a newer draw superseded this one
+            ctx.clearRect(0, 0, W, H);
+
+            // Coordinate frame: if we have the image, fit to full image pixels (keypoints are in
+            // that same space); otherwise fit to the union bbox of visible keypoints, padded.
+            let x0, y0, x1, y1, pad = 0;
+            if (bmp) { x0 = 0; y0 = 0; x1 = bmp.width; y1 = bmp.height; }
+            else {
+                x0 = Infinity; y0 = Infinity; x1 = -Infinity; y1 = -Infinity;
+                const acc = p => { if (isVis(p)) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); } };
+                gts.forEach(g => g.pts.forEach(acc)); insts.forEach(i => i.pts.forEach(acc));
+                if (!isFinite(x0)) { ctx.fillStyle = '#64748b'; ctx.font = '15px system-ui'; ctx.fillText('No visible keypoints in this frame', 20, 30); updateFrameMeta(key, insts, gts); return; }
+                const bw = (x1 - x0) || 1, bh = (y1 - y0) || 1; pad = 0.08;
+                x0 -= bw * pad; x1 += bw * pad; y0 -= bh * pad; y1 += bh * pad;
+            }
+            const s = Math.min(W / (x1 - x0), H / (y1 - y0));
+            const ox = (W - s * (x1 - x0)) / 2, oy = (H - s * (y1 - y0)) / 2;
+            const tf = p => [ox + (p[0] - x0) * s, oy + (p[1] - y0) * s];
+            if (bmp) ctx.drawImage(bmp, ox, oy, bmp.width * s, bmp.height * s);
+
+            gts.forEach(g => drawInstance(ctx, g.pts, tf, '#38bdf8', 1.5, bmp ? 0.85 : 0.6, 2.5));   // GT reference (cyan)
+            insts.filter(i => i.fate === 'kept').forEach(i => drawInstance(ctx, i.pts, tf, FATE_COLOR.kept, 2, 0.95, 3.5));
+            insts.filter(i => i.fate !== 'kept').forEach(i => drawInstance(ctx, i.pts, tf, FATE_COLOR[i.fate], 2.5, 1, 4)); // dropped on top
+        }
+        function updateFrameMeta(key, insts, gts) {
+            const [vIdx, fIdx] = key.split(':');
+            const k = insts.filter(i => i.fate === 'kept').length;
+            const lost = insts.filter(i => i.fate === 'lost').length;
+            const rem = insts.filter(i => i.fate === 'removed').length;
+            document.getElementById('frameMeta').innerHTML =
+                `<b>video ${vIdx}, frame ${fIdx}</b> &nbsp;·&nbsp; ${gts.length} GT &nbsp;·&nbsp; ${insts.length} predicted → ` +
+                `<span style="color:${FATE_COLOR.kept}">${k} kept</span>, ` +
+                `<span style="color:${FATE_COLOR.lost}">${lost} lost</span>, ` +
+                `<span style="color:${FATE_COLOR.removed}">${rem} removed</span> ` +
+                `&nbsp;·&nbsp; frame ${frmPtr + 1} / ${FRAME_KEYS.length}`;
+        }
+        function stepFrame(dir) {
+            const onlyDrops = document.getElementById('frmOnlyDrops').checked;
+            let i = frmPtr;
+            for (let n = 0; n < FRAME_KEYS.length; n++) {
+                i = (i + dir + FRAME_KEYS.length) % FRAME_KEYS.length;
+                if (!onlyDrops || hasDrop(FRAME_KEYS[i])) { frmPtr = i; break; }
+            }
+            drawFrame();
+        }
+        function jumpToDrop() {
+            for (let n = 1; n <= FRAME_KEYS.length; n++) {
+                const i = (frmPtr + n) % FRAME_KEYS.length;
+                if (hasDrop(FRAME_KEYS[i])) { frmPtr = i; break; }
+            }
+            drawFrame();
+        }
+        function initInspector() {
+            frmPtr = 0;
+            const firstDrop = FRAME_KEYS.findIndex(hasDrop);
+            if (firstDrop >= 0) frmPtr = firstDrop;
+            drawFrame();
+        }
+        document.getElementById('frmPrev').addEventListener('click', () => stepFrame(-1));
+        document.getElementById('frmNext').addEventListener('click', () => stepFrame(1));
+        document.getElementById('frmNextDrop').addEventListener('click', jumpToDrop);
+        document.getElementById('frmOnlyDrops').addEventListener('change', () => {
+            if (document.getElementById('frmOnlyDrops').checked && !hasDrop(FRAME_KEYS[frmPtr])) jumpToDrop();
+            else drawFrame();
+        });
+        document.getElementById('frmShowImg').addEventListener('change', drawFrame);
+
+        // ---- File loading ----
+        async function readSlp(file, openVideos = false) {
+            // GT is loaded with openVideos:true so embedded pkg images can be shown in the inspector.
+            const labels = await loadSlp(file, { openVideos });
+            return labels;
+        }
+        function status(msg) { document.getElementById('loadMsg').textContent = msg; }
+
+        let gtLabels = null, prLabels = null;
+        // Detect output type from the prediction skeleton: a 1-node skeleton is a
+        // centroid-only model -> pixel-distance matching (sleap-nn match_method="centroid").
+        // Any multi-node skeleton (single-instance / bottom-up / top-down / centered-instance)
+        // -> OKS matching (match_method="oks").
+        function detectMode(labels) {
+            const n = (labels.skeletons[0]?.nodes.length) || 0;
+            return n <= 1 ? 'centroid' : 'keypoint';
+        }
+        async function tryBuildVal() {
+            if (!gtLabels || !prLabels) return;
+            MODE = detectMode(prLabels);
+            const sk = prLabels.skeletons[0] || gtLabels.skeletons[0];
+            nNodes = sk.nodes.length;
+            EDGES = (sk.edges || []).map(e => [sk.nodes.indexOf(e.source ?? e[0]), sk.nodes.indexOf(e.destination ?? e.target ?? e[1])]).filter(([a, b]) => a >= 0 && b >= 0);
+            const gt = extractFrames(gtLabels), pr = extractFrames(prLabels);
+            VAL = { gt, pr };
+            FRAME_KEYS = [...gt.keys()].filter(k => pr.has(k));
+            const nMatch = FRAME_KEYS.length;
+            const modeLabel = MODE === 'centroid'
+                ? 'centroid-only model → pixel-distance matching (detection + distance metrics)'
+                : 'keypoint model → OKS matching (single-instance / bottom-up / top-down)';
+            status(`Loaded ${gt.size} GT frames, ${pr.size} pred frames (${nMatch} aligned), ${nNodes} pred node${nNodes === 1 ? '' : 's'}. Detected: ${modeLabel}.`);
+            ['mainCard', 'metricsCard', 'inspectCard', 'sweepCard', 'exportCard', 'testCard'].forEach(id => document.getElementById(id).classList.remove('hidden'));
+            syncControls(); buildSweepOptions(); refresh(); runSweep(); initInspector();
+        }
+
+        function wireDrop(dropId, fileId, onLoad, openVideos = false) {
+            const drop = document.getElementById(dropId), input = document.getElementById(fileId);
+            drop.addEventListener('click', () => input.click());
+            drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+            drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+            drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]); });
+            input.addEventListener('change', e => { if (e.target.files[0]) handle(e.target.files[0]); });
+            async function handle(file) {
+                status('Loading ' + file.name + '…');
+                try { const labels = await readSlp(file, openVideos); drop.classList.add('loaded'); drop.querySelector('small').textContent = file.name; onLoad(labels); }
+                catch (err) { status('Error: ' + err.message); }
+            }
+        }
+        // GT with openVideos:true → embedded pkg frames are available to the inspector.
+        wireDrop('dropGT', 'fileGT', l => { gtLabels = l; imgCache.clear(); tryBuildVal(); }, true);
+        wireDrop('dropPR', 'filePR', l => { prLabels = l; tryBuildVal(); });
+
+        // ---- Export copy ----
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const text = document.getElementById('exportYaml').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const b = document.getElementById('copyBtn'); b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy FilterConfig YAML', 1500);
+            }).catch(() => {});
+        });
+
+        // ---- Test pair (independent held-out data; before vs after the tuned filters) ----
+        let testGT = null, testPR = null, testVAL = null, testNNodes = 0, testMode = 'keypoint';
+        function testStatus(msg) { document.getElementById('testMsg').textContent = msg; }
+        // "before" = raw predictions (all FilterConfig knobs at default/off); "after" = tuned cfg.
+        // Both share the same matching/PCK params so the only difference is the filtering.
+        function rawConfig() {
+            const raw = { ...cfg };
+            FILTERS.forEach(f => raw[f.key] = f.def);
+            return raw;
+        }
+        // Evaluate the test pair under the test skeleton's node-count/mode, restoring val state after.
+        function evalTest(c) {
+            const savedN = nNodes, savedMode = MODE;
+            nNodes = testNNodes; MODE = testMode;
+            const m = evaluate(testVAL, c);
+            nNodes = savedN; MODE = savedMode;
+            return m;
+        }
+        function prepareTest() {
+            if (!testGT || !testPR) return;
+            testVAL = { gt: extractFrames(testGT), pr: extractFrames(testPR) };
+            const nAligned = [...testVAL.gt.keys()].filter(k => testVAL.pr.has(k)).length;
+            if (!nAligned) { testVAL = null; document.getElementById('testResult').classList.add('hidden'); testStatus('No frames align between the test GT and predictions (matched by video + frame index). Check they come from the same test set.'); return; }
+            testNNodes = (testPR.skeletons[0] || testGT.skeletons[0]).nodes.length;
+            testMode = detectMode(testPR);
+            renderMetrics(document.getElementById('testGridBefore'), evalTest(rawConfig()));  // raw — fixed
+            document.getElementById('testResult').classList.remove('hidden');
+            testStatus(`Test set: ${testVAL.gt.size} GT frames, ${testVAL.pr.size} pred frames (${nAligned} aligned). "After" tracks your current FilterConfig live.`);
+            updateTestAfter();
+        }
+        function updateTestAfter() {   // re-render only the "after" panel; called live on filter changes
+            if (!testVAL) return;
+            renderMetrics(document.getElementById('testGridAfter'), evalTest(cfg));
+        }
+        wireDrop('dropTestGT', 'fileTestGT', l => { testGT = l; prepareTest(); });
+        wireDrop('dropTestPR', 'fileTestPR', l => { testPR = l; prepareTest(); });
+    </script>
+</body>
+</html>
