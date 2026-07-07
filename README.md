@@ -30,6 +30,7 @@ Self-contained HTML tools and applets for the web.
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
 - [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
+- [Postprocess Filter Tuner](postprocess-filter-tuner/) - Tune sleap-nn post-inference FilterConfig knobs against ground truth, visualize the bad-removed vs. good-lost tradeoff, and export the config
 
 ## About
 
