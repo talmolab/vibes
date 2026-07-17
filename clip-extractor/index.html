@@ -244,18 +244,27 @@
         </div>
 
         <div class="panel" id="txPanel">
-            <h2>4 &middot; Transmit <span class="badge warn">protocol TBD</span></h2>
+            <h2>4 &middot; Transmit <span class="badge" id="txBadge">Pozu /clips</span></h2>
+            <div class="row">
+                <div class="flex1"><label class="field">Author (free text)</label>
+                    <input type="text" id="author" placeholder="Name / lab"></div>
+                <div class="flex1"><label class="field">Original filename</label>
+                    <input type="text" id="origFilename" placeholder="video.mp4"></div>
+            </div>
             <label class="field">POST endpoint (leave blank for dry-run only)</label>
             <input type="url" id="endpoint" placeholder="https://backend.example/api/clips">
+            <label class="hint" style="display:block;margin-top:4px"><input type="checkbox" id="useProxy" checked style="width:auto;margin:0 5px 0 0">Route via <a href="https://github.com/talmolab/nocors" target="_blank" rel="noopener">nocors</a> proxy (needed cross-origin from *.tlab.sh)</label>
             <label class="field">Extra headers (JSON, optional &mdash; e.g. auth)</label>
             <textarea id="headers" placeholder='{ "Authorization": "Bearer &hellip;" }'></textarea>
             <div class="row" style="margin-top:8px">
                 <span class="hint">Packaging</span>
                 <div class="seg" id="pkgSeg">
-                    <button data-pkg="multipart" class="active">multipart/form-data</button>
-                    <button data-pkg="json">JSON + base64</button>
+                    <button data-pkg="pozu" class="active">Pozu /clips</button>
+                    <button data-pkg="multipart">multipart</button>
+                    <button data-pkg="json">JSON+base64</button>
                 </div>
             </div>
+            <div class="hint" id="pkgNote" style="margin-top:6px"></div>
             <div class="row" style="margin-top:12px">
                 <button id="btnPreview" class="sec" disabled>Preview request</button>
                 <button id="btnSend" disabled>Send POST</button>
@@ -278,6 +287,15 @@ const FFMPEG_JS_CDN = FFMPEG_JS_BASE + '/ffmpeg.js';
 const FFMPEG_WORKER_CHUNK = FFMPEG_JS_BASE + '/814.ffmpeg.js';
 const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
 let ffmpegInstance = null, ffLog = null, ffProg = null;
+
+// Pozu backend (pozu-project/pozu-backend PR #28): POST /api/v1/clips accepts a
+// JSON body { mp4: <base64>, filename?, author?, timestamp? }, vets the MP4 with
+// ffprobe, and uploads it to DANDI synchronously. No auth required.
+const POZU_ENDPOINT = 'https://pozu-codycbakerphd.pythonanywhere.com/api/v1/clips';
+// The backend only allows the pozu-project.github.io origin, so a cross-origin
+// POST from vibes.tlab.sh is CORS-blocked; route through the tlab nocors proxy
+// (whitelisted for *.tlab.sh) instead.
+const NOCORS_PROXY = 'https://nocors.tlab.sh/';
 
 function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
@@ -328,7 +346,7 @@ const state = {
     playing: false, speed: 1,
     pose: null,             // { skeleton:{nodes,edges}, tracks:[], byFrame: Map }
     labels: null,
-    out: 'clip', trim: 'precise', fmt: 'image/png', pkg: 'multipart',
+    out: 'clip', trim: 'precise', fmt: 'image/png', pkg: 'pozu',
     extracted: null,        // { kind, blob?, frames?:[{source_frame,blob}], name, ext, mime }
     curBitmap: null,
 };
@@ -417,6 +435,7 @@ async function loadVideo(source, name, url = null) {
         state.sourceUrl = url;
         // loadVideo fully owns source state: clear any prior local File on a URL load
         state.sourceFile = (source instanceof Blob) ? source : null;
+        $('origFilename').value = name;
         state.cur = 0; state.inF = null; state.outF = null;
         invalidateExtraction(true);
         view.width = state.width; view.height = state.height;
@@ -640,6 +659,7 @@ function buildAnnotations() {
         format: 'sleap-clip-annotations/v1',
         clip: {
             source: state.sourceName, source_url: state.sourceUrl,
+            original_filename: filenameVal(), author: authorVal() || null,
             in_frame: lo, out_frame: hi, num_frames: hi - lo + 1,
             fps: state.fps, width: state.width, height: state.height,
             extracted_at: new Date().toISOString(),
@@ -781,11 +801,14 @@ function blobToBase64(blob) {
         r.readAsDataURL(blob);
     });
 }
+const authorVal = () => $('author').value.trim();
+const filenameVal = () => $('origFilename').value.trim() || state.sourceName || null;
 function metadataObj() {
     const [lo, hi] = selRange();
     const ex = state.extracted;
     return {
         source: state.sourceName, source_url: state.sourceUrl,
+        original_filename: filenameVal(), author: authorVal() || null,
         in_frame: lo, out_frame: hi, num_frames: hi - lo + 1,
         fps: state.fps, width: state.width, height: state.height,
         media_kind: ex ? ex.kind : null,
@@ -800,6 +823,15 @@ async function buildPayload() {
     const meta = metadataObj();
     const ann = buildAnnotations();
     const ex = state.extracted;
+    if (state.pkg === 'pozu') {
+        // Pozu /clips contract (PR #28): { mp4: base64, filename?, author?, timestamp? }.
+        // Endpoint accepts a single MP4 only — no frames, no annotations.
+        if (ex.kind !== 'clip') throw new Error('The Pozu /clips endpoint accepts a single MP4 clip only — set Extract output to “MP4 clip”.');
+        const obj = { mp4: await blobToBase64(ex.blob), filename: filenameVal() || ex.name, timestamp: new Date().toISOString() };
+        const author = authorVal();
+        if (author) obj.author = author;
+        return { type: 'pozu', body: JSON.stringify(obj), obj, meta, ann, contentType: 'application/json' };
+    }
     if (state.pkg === 'multipart') {
         const fd = new FormData();
         fd.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }), 'metadata.json');
@@ -820,14 +852,23 @@ function parseHeaders() {
     if (!raw) return {};
     try { return JSON.parse(raw); } catch (e) { throw new Error('Headers must be valid JSON'); }
 }
+function targetUrl() {
+    const raw = $('endpoint').value.trim();
+    if (!raw) return null;
+    return $('useProxy').checked ? NOCORS_PROXY + raw : raw;
+}
 async function previewRequest() {
     try {
         const p = await buildPayload();
-        const url = $('endpoint').value.trim() || '(dry-run — no endpoint set)';
-        const headers = parseHeaders();
+        const url = targetUrl() || '(dry-run — no endpoint set)';
+        const headers = parseHeaders();   // extra user headers only; Content-Type is shown per-branch below
         let lines = [`POST ${url}`, ''];
         Object.entries(headers).forEach(([k, v]) => lines.push(`${k}: ${v}`));
-        if (p.type === 'multipart') {
+        if (p.type === 'pozu') {
+            lines.push(`Content-Type: application/json`, `Body size: ${bytes(new Blob([p.body]).size)}`, '');
+            lines.push(JSON.stringify({ ...p.obj, mp4: `…(${p.obj.mp4.length} base64 chars = ${bytes(state.extracted.blob.size)} MP4)…` }, null, 2));
+            lines.push('', 'Note: /clips takes the MP4 only — annotations are not sent (use Download for annotations.json).');
+        } else if (p.type === 'multipart') {
             lines.push('Content-Type: multipart/form-data (boundary set by browser)', '', 'Parts:');
             for (const [k, v] of p.body.entries()) {
                 const size = v instanceof Blob ? ` (${bytes(v.size)}, ${v.type || 'binary'})` : '';
@@ -848,22 +889,33 @@ async function previewRequest() {
     } catch (e) { $('txNote').textContent = 'Preview error: ' + e.message; }
 }
 async function sendRequest() {
-    const url = $('endpoint').value.trim();
-    if (!url) { $('txNote').textContent = 'Set an endpoint URL to send (or use Preview / Download).'; return; }
+    if (!$('endpoint').value.trim()) { $('txNote').textContent = 'Set an endpoint URL to send (or use Preview / Download).'; return; }
     $('btnSend').disabled = true; $('txNote').textContent = 'Building payload…';
     try {
         const p = await buildPayload();
+        const url = targetUrl();
         const headers = parseHeaders();
         if (p.contentType) headers['Content-Type'] = p.contentType;
         $('txNote').textContent = 'Sending…';
         const resp = await fetch(url, { method: 'POST', headers, body: p.body });
         const text = await resp.text();
+        let parsed = null; try { parsed = JSON.parse(text); } catch (e) {}
         $('txPreview').style.display = 'block';
         $('txPreview').textContent = `HTTP ${resp.status} ${resp.statusText}\n\n${text.slice(0, 2000)}`;
-        $('txNote').textContent = resp.ok ? '✓ Sent.' : '⚠ Server returned an error status.';
-        log(`POST ${url} → ${resp.status}`, resp.ok ? 'ok' : 'warn');
+        if (resp.ok && p.type === 'pozu' && parsed && parsed.submission_id) {
+            $('txNote').textContent = `✓ Uploaded — submission ${parsed.submission_id}, ${parsed.clip_file} (${bytes(parsed.clip_size_bytes)})`;
+        } else if (resp.ok) {
+            $('txNote').textContent = '✓ Sent.';
+        } else {
+            const msg = parsed && parsed.message ? parsed.message : `HTTP ${resp.status}`;
+            const hint = resp.status === 502 ? ' (DANDI upload failed — the clip is still here; retry.)'
+                : resp.status === 413 ? ' (payload too large.)' : '';
+            $('txNote').textContent = `⚠ ${msg}${hint}`;
+        }
+        log(`POST → ${resp.status}`, resp.ok ? 'ok' : 'warn');
     } catch (e) {
-        $('txNote').textContent = 'Send failed: ' + e.message + ' (CORS? endpoint offline? See console.)';
+        const proxied = $('useProxy').checked;
+        $('txNote').textContent = 'Send failed: ' + e.message + (proxied ? ' (proxy only serves *.tlab.sh origins; on the deployed vibe this works.)' : ' (CORS — enable the nocors proxy, or the backend must allow this origin.)');
         log('POST failed: ' + e.message, 'err');
         console.error(e);
     } finally { $('btnSend').disabled = false; }
@@ -891,6 +943,21 @@ function updatePayloadButtons() {
     $('btnPreview').disabled = !has;
     $('btnSend').disabled = !has;
     $('btnDownload').disabled = !has;
+}
+function updatePkgNote() {
+    const el = $('pkgNote');
+    if (!el) return;
+    if (state.pkg === 'pozu') {
+        el.textContent = state.out === 'clip'
+            ? 'Pozu /clips: POSTs { mp4 (base64), filename, author, timestamp } as JSON; the backend validates the MP4 with ffprobe and uploads it to DANDI. Annotations are not sent — download them separately.'
+            : '⚠ Pozu /clips accepts a single MP4 clip only — set the Extract output to “MP4 clip”.';
+    } else if (state.pkg === 'multipart') {
+        el.textContent = 'Generic multipart/form-data: media + annotations.json + metadata.json parts.';
+    } else {
+        el.textContent = 'Generic application/json with base64 media + annotations + metadata.';
+    }
+    $('txBadge').textContent = state.pkg === 'pozu' ? 'Pozu /clips' : 'generic';
+    $('txBadge').className = 'badge' + (state.pkg === 'pozu' ? ' on' : '');
 }
 // Any change to the selection range or source invalidates a prior extraction, so the
 // payload (built live from the current selection) can never disagree with the media bytes.
@@ -947,10 +1014,11 @@ wireSeg('outSeg', 'out', () => {
     $('clipOpts').style.display = clip ? 'block' : 'none';
     $('framesOpts').style.display = clip ? 'none' : 'block';
     $('btnExtract').textContent = clip ? 'Extract clip' : 'Extract frames';
+    updatePkgNote();
 });
 wireSeg('trimSeg', 'trim', updateFfCmd);
 wireSeg('fmtSeg', 'fmt', () => { $('jpgQWrap').style.display = state.fmt === 'image/jpeg' ? 'inline' : 'none'; });
-wireSeg('pkgSeg', 'pkg');
+wireSeg('pkgSeg', 'pkg', updatePkgNote);
 
 // Transport buttons
 $('btnPlay').addEventListener('click', togglePlay);
@@ -1028,9 +1096,16 @@ $('btnSend').addEventListener('click', sendRequest);
 $('btnDownload').addEventListener('click', downloadPayload);
 $('dlAnn').addEventListener('click', () => dl(new Blob([JSON.stringify(buildAnnotations(), null, 2)], { type: 'application/json' }), 'annotations.json'));
 
-// URL params: ?url=<video>&slp=<slp>
+// Transmit defaults: prefill the Pozu endpoint and remember the author locally.
+$('endpoint').value = POZU_ENDPOINT;
+$('author').value = localStorage.getItem('clipex_author') || '';
+$('author').addEventListener('input', e => localStorage.setItem('clipex_author', e.target.value));
+updatePkgNote();
+
+// URL params: ?url=<video>&slp=<slp>&endpoint=<url>
 (function initFromHash() {
     const p = new URLSearchParams(location.search);
+    if (p.get('endpoint')) $('endpoint').value = p.get('endpoint');
     if (p.get('url')) { const u = p.get('url'); $('videoUrl').value = u; loadVideo(u, u.split('/').pop() || 'video.mp4', u); }
     if (p.get('slp')) { const s = p.get('slp'); $('slpUrl').value = s; setTimeout(() => loadSlp(s, s.split('/').pop() || 'labels.slp'), 600); }
 })();
