@@ -17,6 +17,7 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
   - **mediabunny / WebCodecs (fast)** - hardware-accelerated, no CRF (bitrate/quality-preset only), surfaced honestly as an approximation
 - **Encode Test (A/B)** - encodes just a short window (1-10s) of the video at the chosen CRF/preset, then decodes the original and the result side-by-side with synchronized pixel-level zoom & pan and a scrub slider, so you can judge a quality setting before committing to a full re-encode
 - **Always emits a CLI command** - a live, editable `ffmpeg` command mirroring [sleap-io](https://github.com/talmolab/sleap-io)'s `reencode`, for anyone who wants to run it locally, headless, or in batch
+- **Report / Export** - compiles metadata, the codec explainer, the atom map, GOP/keyframe stats, the seeking test and Encode Test results (if run), and the CLI command into one report — copy as Markdown, download a `.md` file, or print to PDF via the browser's native print dialog
 
 ## Usage
 
@@ -26,6 +27,7 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 4. Tune CRF, preset, keyframe interval, B-frames, faststart, and audio handling in the **Re-encode** tab
 5. Copy the generated `ffmpeg` command, or click **Encode (exact)** / **Encode (fast)** to transcode in-browser and save the result
 6. Try different CRF/preset values on a short clip in the **Encode Test** tab and compare against the original side-by-side before running the full encode
+7. Head to the **Report** tab to copy/download a Markdown summary of everything above, or print it to PDF
 
 ## Dependencies (CDN)
 
