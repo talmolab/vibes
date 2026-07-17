@@ -547,8 +547,11 @@ function renderFrame() {
 // Transport / seeking
 // ============================================================
 let seeking = false, pendingSeek = null;
+// Shift-held seeking extends the selection to cover the frames scrubbed over.
+let shiftHeld = false, shiftAnchor = null;
 async function seek(frame, force = false) {
     frame = Math.max(0, Math.min(state.totalFrames - 1, frame | 0));
+    if (shiftHeld) growSelection(frame);
     if (frame === state.cur && !force && state.curBitmap) return;
     state.cur = frame;
     if (seeking) { pendingSeek = frame; updateSelUI(); return; }
@@ -606,6 +609,23 @@ function selRange() {
     const a = state.inF != null ? state.inF : 0;
     const b = state.outF != null ? state.outF : state.totalFrames - 1;
     return [Math.min(a, b), Math.max(a, b)];
+}
+// Grow the selection to include `target` (used while shift-seeking). Seeds from
+// the shift-press frame when nothing is selected yet; only ever extends.
+function growSelection(target) {
+    let lo, hi;
+    if (state.inF == null && state.outF == null) {
+        const anchor = shiftAnchor != null ? shiftAnchor : state.cur;
+        lo = Math.min(anchor, target); hi = Math.max(anchor, target);
+    } else {
+        const a = state.inF != null ? state.inF : state.outF;
+        const b = state.outF != null ? state.outF : state.inF;
+        lo = Math.min(a, b, target); hi = Math.max(a, b, target);
+    }
+    if (lo === state.inF && hi === state.outF) return;   // no change
+    state.inF = lo; state.outF = hi;
+    invalidateExtraction();
+    updateSelUI();
 }
 function updateSelUI() {
     $('frameSlider').value = state.cur;
@@ -1033,13 +1053,28 @@ $('btnSetOut').addEventListener('click', () => { state.outF = state.cur; if (sta
 $('btnClearSel').addEventListener('click', () => { state.inF = null; state.outF = null; invalidateExtraction(); updateSelUI(); });
 $('showPose').addEventListener('change', renderFrame);
 
-// Keyboard
+// Track Shift globally (regardless of focus) so shift-seeking extends the range.
+// Anchor at the current frame when Shift is first pressed.
+window.addEventListener('keydown', e => { if (e.key === 'Shift' && !shiftHeld) { shiftHeld = true; shiftAnchor = state.cur; } });
+window.addEventListener('keyup', e => { if (e.key === 'Shift') { shiftHeld = false; shiftAnchor = null; } });
+window.addEventListener('blur', () => { shiftHeld = false; shiftAnchor = null; });
+
+// Keyboard shortcuts. The seek slider (<input type=range>) is allowed through so
+// [ ] I O / space work while it's focused; only text fields, checkboxes, and
+// selects suppress them.
 window.addEventListener('keydown', e => {
-    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+    const t = e.target, tag = t.tagName;
+    if (tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (tag === 'INPUT' && t.type !== 'range') return;
     if (!state.backend) return;
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-    else if (e.code === 'ArrowLeft') { stopPlay(); seek(state.cur - (e.shiftKey ? 10 : 1)); }
-    else if (e.code === 'ArrowRight') { stopPlay(); seek(state.cur + (e.shiftKey ? 10 : 1)); }
+    else if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+        // On the slider itself the native arrow keys already step it (which seeks
+        // via the input handler); handling it again here would double-step.
+        if (t === $('frameSlider')) return;
+        e.preventDefault(); stopPlay();
+        seek(state.cur + (e.code === 'ArrowRight' ? 1 : -1));
+    }
     else if (e.key === 'i' || e.key === 'I' || e.key === '[') $('btnSetIn').click();
     else if (e.key === 'o' || e.key === 'O' || e.key === ']') $('btnSetOut').click();
 });
