@@ -174,8 +174,20 @@ table.data th { color: #888; font-weight: 600; font-size: 11px; text-transform: 
     padding: 2px 8px; border-radius: 4px; pointer-events: none; max-width: calc(100% - 16px);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Pixel grid: NOT css-transformed like the canvas — background-size/position
+   are recomputed in raw CSS px on every zoom/pan instead, so the hairlines
+   stay a crisp 1 screen-px wide at any zoom rather than fattening with it. */
+.compare-pane .pixel-grid {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; opacity: 0; transition: opacity 0.1s;
+    background-image:
+        linear-gradient(to right, rgba(255,255,255,0.35) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.35) 1px, transparent 1px);
+}
+.compare-pane .pixel-grid.visible { opacity: 1; }
 .compare-controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
 .compare-controls input[type="range"] { flex: 1; min-width: 150px; margin-bottom: 0; }
+.zoom-buttons { display: flex; gap: 6px; }
 
 footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
 footer a { color: #6c9fff; text-decoration: none; }
@@ -1949,10 +1961,14 @@ function renderCompareResult(resultSec, vt, encodedSize) {
     origPane.append(h('span', 'pane-label', 'Original'));
     const origCanvas = h('canvas'); origCanvas.width = vt.codedWidth; origCanvas.height = vt.codedHeight;
     origPane.append(origCanvas);
+    const origGrid = h('div', 'pixel-grid');
+    origPane.append(origGrid);
     const encPane = h('div', 'compare-pane');
     encPane.append(h('span', 'pane-label', `Encoded (${cli.quality === 'custom' ? 'CRF ' + cli.crf : cli.quality}, ${cli.preset})`));
     const encCanvas = h('canvas'); encCanvas.width = vt.codedWidth; encCanvas.height = vt.codedHeight;
     encPane.append(encCanvas);
+    const encGrid = h('div', 'pixel-grid');
+    encPane.append(encGrid);
     const ar = `${vt.codedWidth} / ${vt.codedHeight}`;
     origPane.style.aspectRatio = ar;
     encPane.style.aspectRatio = ar;
@@ -1962,13 +1978,17 @@ function renderCompareResult(resultSec, vt, encodedSize) {
     const controls = h('div', 'compare-controls');
     const scrub = h('input'); scrub.type = 'range'; scrub.min = '0'; scrub.max = '1000'; scrub.value = '0';
     const scrubLabel = h('span', 'progress-label', '0.00s');
-    const resetBtn = h('button', 'btn sm sec', 'Reset Zoom'); resetBtn.type = 'button';
-    controls.append(scrub, scrubLabel, resetBtn);
+    const zoomBtns = h('div', 'zoom-buttons');
+    const fitBtn = h('button', 'btn sm sec', 'Fit'); fitBtn.type = 'button';
+    const actualBtn = h('button', 'btn sm sec', 'Actual Size (100%)'); actualBtn.type = 'button';
+    zoomBtns.append(fitBtn, actualBtn);
+    controls.append(scrub, scrubLabel, zoomBtns);
     resultSec.append(controls);
-    resultSec.append(h('div', 'progress-label', 'Scroll to zoom toward the cursor, drag to pan — both panes move together. Slide to scrub the test segment.'));
+    resultSec.append(h('div', 'progress-label', 'Scroll to zoom toward the cursor, drag to pan — both panes move together. Slide to scrub the test segment. A pixel grid appears once zoomed in far enough.'));
 
-    const zoomPan = attachSyncedZoomPan(stage, [origCanvas, encCanvas]);
-    resetBtn.addEventListener('click', () => zoomPan.reset());
+    const zoomPan = attachSyncedZoomPan(stage, [origCanvas, encCanvas], [origGrid, encGrid]);
+    fitBtn.addEventListener('click', () => zoomPan.fit());
+    actualBtn.addEventListener('click', () => zoomPan.actualSize());
 
     const drawFrame = (canvas, frame) => {
         if (!frame) return;
@@ -2016,19 +2036,52 @@ window.addEventListener('touchmove', e => {
 }, { passive: true });
 window.addEventListener('touchend', () => { activeZoomDrag = null; });
 
-function attachSyncedZoomPan(stageEl, canvases) {
+// Pixel grid appears once a source pixel renders at least this many CSS px wide.
+const PIXEL_GRID_THRESHOLD = 8;
+
+function attachSyncedZoomPan(stageEl, canvases, grids) {
     const zoom = { scale: 1, tx: 0, ty: 0 };
     encodeTest.zoom = zoom;
+
+    // The grid overlay is deliberately NOT css-transformed like the canvas —
+    // background-size/position are computed fresh in raw CSS px on every
+    // change instead, so its hairlines stay a crisp 1 screen-px wide at any
+    // zoom level rather than fattening along with the content.
+    const updateGrids = () => {
+        if (!grids) return;
+        canvases.forEach((canvas, i) => {
+            const grid = grids[i];
+            const paneRect = canvas.parentElement.getBoundingClientRect();
+            const pxW = (paneRect.width / canvas.width) * zoom.scale;
+            const pxH = (paneRect.height / canvas.height) * zoom.scale;
+            const visible = pxW >= PIXEL_GRID_THRESHOLD && pxH >= PIXEL_GRID_THRESHOLD;
+            grid.classList.toggle('visible', visible);
+            if (visible) {
+                grid.style.backgroundSize = `${pxW}px ${pxH}px`;
+                grid.style.backgroundPosition = `${zoom.tx}px ${zoom.ty}px`;
+            }
+        });
+    };
+
     const apply = () => {
         const t = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`;
         canvases.forEach(c => { c.style.transform = t; });
+        updateGrids();
     };
+
+    const setScale = (newScale, anchorX, anchorY) => {
+        zoom.tx = anchorX - (anchorX - zoom.tx) * (newScale / zoom.scale);
+        zoom.ty = anchorY - (anchorY - zoom.ty) * (newScale / zoom.scale);
+        zoom.scale = newScale;
+        apply();
+    };
+
     stageEl.addEventListener('wheel', e => {
         e.preventDefault();
         const rect = canvases[0].getBoundingClientRect();
         const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        const newScale = Math.min(20, Math.max(1, zoom.scale * factor));
+        const newScale = Math.min(50, Math.max(0.2, zoom.scale * factor));
         zoom.tx = cx - (cx - zoom.tx) * (newScale / zoom.scale);
         zoom.ty = cy - (cy - zoom.ty) * (newScale / zoom.scale);
         zoom.scale = newScale;
@@ -2038,7 +2091,17 @@ function attachSyncedZoomPan(stageEl, canvases) {
     stageEl.addEventListener('touchstart', e => {
         if (e.touches.length === 1) activeZoomDrag = { lastX: e.touches[0].clientX, lastY: e.touches[0].clientY, zoom, apply };
     }, { passive: true });
-    return { state: zoom, reset: () => { zoom.scale = 1; zoom.tx = 0; zoom.ty = 0; apply(); } };
+
+    return {
+        state: zoom,
+        fit: () => { zoom.scale = 1; zoom.tx = 0; zoom.ty = 0; apply(); },
+        // 1 source pixel = 1 CSS px, centered on whatever's currently in the middle of the pane.
+        actualSize: () => {
+            const paneRect = canvases[0].parentElement.getBoundingClientRect();
+            const newScale = canvases[0].width / paneRect.width;
+            setScale(newScale, paneRect.width / 2, paneRect.height / 2);
+        },
+    };
 }
 
 // ============================================
