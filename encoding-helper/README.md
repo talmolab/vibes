@@ -9,20 +9,23 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 ## Features
 
 - **Inspect** - rich metadata plus a visual MP4 **atom map** (`ftyp`/`moov`/`mdat`/`moof`, byte offsets & sizes, moov-before-mdat "faststart" detection) and per-frame GOP/I-frame/B-frame structure
+- **Identify the codec** - infers the codec family from the container (H.264/AVC, H.265/HEVC, VP8/VP9, AV1, AAC, Opus, FLAC, MP3, AC-3/E-AC-3, PCM) and decodes its embedded profile/level/tier straight out of the RFC 6381 codec string, with a short explainer on what that codec actually is and why you'd (not) choose it
 - **Teach** - interactive explanations tied to the loaded file: CRF vs. bitrate, x264 presets, GOP/keyframe interval, I/P/B frames, `yuv420p` chroma subsampling, even-dimension requirements, and the moov-atom/faststart tradeoff
-- **Measure** - empirical seeking tests (nearest-keyframe distance per timestamp, decode wall-clock, keyframe-interval histogram) plus before/after compression stats
+- **Measure** - empirical seeking tests (nearest-keyframe distance per timestamp, decode wall-clock, keyframe-interval histogram) with a scatter plot of distance vs. decode time, plus before/after compression stats
 - **Re-encode** - H.264/MP4 directly in the browser, saved back to disk via the File System Access API, with two engines:
   - **ffmpeg.wasm (exact)** - runs the literal CRF/preset command, byte-for-byte equivalent to the CLI, lazy-loaded (~30 MB), GPL
   - **mediabunny / WebCodecs (fast)** - hardware-accelerated, no CRF (bitrate/quality-preset only), surfaced honestly as an approximation
+- **Encode Test (A/B)** - encodes just a short window (1-10s) of the video at the chosen CRF/preset, then decodes the original and the result side-by-side with synchronized pixel-level zoom & pan and a scrub slider, so you can judge a quality setting before committing to a full re-encode
 - **Always emits a CLI command** - a live, editable `ffmpeg` command mirroring [sleap-io](https://github.com/talmolab/sleap-io)'s `reencode`, for anyone who wants to run it locally, headless, or in batch
 
 ## Usage
 
 1. Load a video via drag-and-drop, the file picker, or **Load Sample** (bundled `mice.mp4`)
-2. Explore the **Inspect** tab for metadata, the atom map, and GOP/frame structure
-3. Run the **Seeking Test** to measure nearest-keyframe distance and decode latency across the timeline
+2. Explore the **Inspect** tab for metadata, the codec explainer, the atom map, and GOP/frame structure
+3. Run the **Seeking Test** to measure nearest-keyframe distance and decode latency across the timeline (and see it plotted)
 4. Tune CRF, preset, keyframe interval, B-frames, faststart, and audio handling in the **Re-encode** tab
 5. Copy the generated `ffmpeg` command, or click **Encode (exact)** / **Encode (fast)** to transcode in-browser and save the result
+6. Try different CRF/preset values on a short clip in the **Encode Test** tab and compare against the original side-by-side before running the full encode
 
 ## Dependencies (CDN)
 
