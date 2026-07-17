@@ -32,6 +32,7 @@ Self-contained HTML tools and applets for the web.
 - [GPU Dashboard](gpu-dashboard/) <a href="gpu-dashboard/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Monitor GPUs across multiple workstations with real-time stats and inference progress tracking</span>
 - [Lab Camera Planner](lab-camera-planner/) <a href="lab-camera-planner/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard</span>
 - [Salk Email Signature](salk-signature/) <a href="salk-signature/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail</span>
+- [Encoding Helper](encoding-helper/) <a href="encoding-helper/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Didactic in-browser video encoding lab: MP4 atom map, GOP/keyframe analysis, seeking tests, and H.264 re-encoding with a live ffmpeg CLI command builder</span>
 - [Clip Extractor](clip-extractor/) <a href="clip-extractor/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Load a video (URL or local) ± a SLEAP .slp, select an in/out range, extract it as an MP4 clip (ffmpeg.wasm) or frame images with SLP-free annotation JSON, and package it for a backend POST</span>
 
 ## About
