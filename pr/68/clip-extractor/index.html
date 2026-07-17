@@ -136,8 +136,8 @@
                     </select>
                 </label>
                 <span style="flex:1"></span>
-                <button id="btnSetIn" class="sec small" title="Set in point (I)" disabled>[ Set In</button>
-                <button id="btnSetOut" class="sec small" title="Set out point (O)" disabled>Set Out ]</button>
+                <button id="btnSetIn" class="sec small" title="Set in point ([ or I)" disabled>[ Set In</button>
+                <button id="btnSetOut" class="sec small" title="Set out point (] or O)" disabled>Set Out ]</button>
             </div>
 
             <div class="seltimes">
@@ -1040,8 +1040,8 @@ window.addEventListener('keydown', e => {
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
     else if (e.code === 'ArrowLeft') { stopPlay(); seek(state.cur - (e.shiftKey ? 10 : 1)); }
     else if (e.code === 'ArrowRight') { stopPlay(); seek(state.cur + (e.shiftKey ? 10 : 1)); }
-    else if (e.key === 'i' || e.key === 'I') $('btnSetIn').click();
-    else if (e.key === 'o' || e.key === 'O') $('btnSetOut').click();
+    else if (e.key === 'i' || e.key === 'I' || e.key === '[') $('btnSetIn').click();
+    else if (e.key === 'o' || e.key === 'O' || e.key === ']') $('btnSetOut').click();
 });
 
 // Source loaders
