@@ -133,6 +133,10 @@ details.teach-more summary { cursor: pointer; color: #6c9fff; font-size: 12px; }
 .hist .bar { flex: 1; background: #6c9fff; border-radius: 2px 2px 0 0; min-height: 2px; }
 .hist .bar.tall { background: #fbbf24; }
 
+.seek-scatter { width: 100%; height: auto; max-width: 600px; display: block; margin: 4px 0 14px; font-family: system-ui, -apple-system, sans-serif; }
+.seek-scatter g { cursor: default; }
+.seek-scatter g:hover circle:last-child { fill: #8fb4ff; }
+
 /* Progress */
 .progress-wrap { background: #444; border-radius: 4px; height: 10px; overflow: hidden; margin: 8px 0; }
 .progress-wrap .fill { height: 100%; background: #6c9fff; width: 0%; transition: width 0.15s; }
@@ -158,6 +162,20 @@ table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.data th, table.data td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #333; }
 table.data th { color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; }
 .scroll-x { overflow-x: auto; }
+
+/* Encode Test: side-by-side zoom/pan comparison */
+.compare-stage { display: flex; gap: 8px; margin: 10px 0; cursor: grab; }
+.compare-stage:active { cursor: grabbing; }
+.compare-pane { flex: 1; min-width: 0; position: relative; overflow: hidden; background: #000; border-radius: 6px; }
+.compare-pane canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; }
+.compare-pane .pane-label {
+    position: absolute; top: 6px; left: 8px; z-index: 2;
+    background: rgba(0,0,0,0.6); color: #fff; font-size: 11px;
+    padding: 2px 8px; border-radius: 4px; pointer-events: none; max-width: calc(100% - 16px);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.compare-controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+.compare-controls input[type="range"] { flex: 1; min-width: 150px; margin-bottom: 0; }
 
 footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
 footer a { color: #6c9fff; text-decoration: none; }
@@ -208,6 +226,7 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
         <button class="tab" data-tab="atoms" type="button">Atom Map</button>
         <button class="tab" data-tab="seek" type="button">GOP &amp; Seeking</button>
         <button class="tab" data-tab="encode" type="button">Re-encode &amp; CLI</button>
+        <button class="tab" data-tab="compare" type="button">Encode Test</button>
     </div>
 
     <!-- ============================================ -->
@@ -229,6 +248,11 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
     <!-- Tab: Re-encode & CLI -->
     <!-- ============================================ -->
     <div class="tab-panel" id="panel-encode"></div>
+
+    <!-- ============================================ -->
+    <!-- Tab: Encode Test (side-by-side CRF/preset comparison) -->
+    <!-- ============================================ -->
+    <div class="tab-panel" id="panel-compare"></div>
 </div>
 
 <footer>
@@ -292,6 +316,17 @@ const cli = {
     faststart: false,
     audioMode: 'copy',          // copy | strip
     fps: null,                  // override, null = source fps
+};
+
+const encodeTest = {
+    startTime: 0,       // seconds into the source video
+    duration: 3,        // seconds, length of the test segment
+    running: false,
+    originalSink: null, // mediabunny CanvasSink over the source video track
+    encodedSink: null,  // mediabunny CanvasSink over the freshly-encoded segment
+    encodedInput: null, // mediabunny Input kept alive so encodedSink stays valid
+    segDuration: 0,     // actual decodable duration of the last encoded segment
+    zoom: null,         // shared {scale, tx, ty} pan/zoom state for both canvases
 };
 
 // ============================================
@@ -541,17 +576,136 @@ async function ensureMediabunny() {
     return mb;
 }
 
-function codecProfileInfo(codecString) {
-    // avc1.PPCCLL / avc3.PPCCLL -> profile_idc (PP) + level_idc (LL), both hex.
-    const m = /^avc[13]\.([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(codecString || '');
-    if (!m) return null;
-    const profileIdc = parseInt(m[1], 16);
-    const levelIdc = parseInt(m[3], 16);
-    const PROFILES = { 66: 'Baseline', 77: 'Main', 88: 'Extended', 100: 'High', 110: 'High 10', 122: 'High 4:2:2', 244: 'High 4:4:4 Predictive' };
-    return {
-        profile: PROFILES[profileIdc] || `Profile 0x${m[1]}`,
-        level: (levelIdc / 10).toFixed(1),
-    };
+// ============================================
+// Codec knowledge base — infers codec family from mediabunny's short
+// codec id (the same identifiers it accepts in Conversion's `codec:`
+// option) and parses profile/level/tier out of the RFC 6381 codec
+// parameter string (e.g. "avc1.640028") when the format is known.
+// ============================================
+const CODEC_KB = {
+    avc: {
+        family: 'H.264 / AVC', fullName: 'Advanced Video Coding', year: 2003,
+        description: 'The most widely supported video codec in existence &mdash; nearly every browser, phone, and hardware decoder handles it natively. Block-based motion compensation with in-loop deblocking; this is the codec sleap-io\'s <code>reencode</code> baseline targets specifically for its universal compatibility and predictable I/P/B-frame random access.',
+        parse: cs => {
+            const m = /^avc[13]\.([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(cs || '');
+            if (!m) return [];
+            const profileIdc = parseInt(m[1], 16), levelIdc = parseInt(m[3], 16);
+            const PROFILES = { 66: 'Baseline', 77: 'Main', 88: 'Extended', 100: 'High', 110: 'High 10', 122: 'High 4:2:2', 244: 'High 4:4:4 Predictive' };
+            return [
+                { label: 'Profile', value: PROFILES[profileIdc] || `0x${m[1]}` },
+                { label: 'Level', value: (levelIdc / 10).toFixed(1) },
+            ];
+        },
+    },
+    hevc: {
+        family: 'H.265 / HEVC', fullName: 'High Efficiency Video Coding', year: 2013,
+        description: 'Roughly 2&times; more efficient than H.264 at equal visual quality, using larger coding-tree blocks and richer intra/inter prediction &mdash; at the cost of much slower encoding and patchier hardware decode support (older devices and some browsers can\'t play it back at all, which is a poor fit for a shared QC/annotation pipeline).',
+        parse: cs => {
+            const m = /^(?:hev1|hvc1)\.[ABC]?(\d+)\.[0-9A-Fa-f]+\.([LH])(\d+)/.exec(cs || '');
+            if (!m) return [];
+            const PROFILES = { 1: 'Main', 2: 'Main 10', 3: 'Main Still Picture', 4: 'Range Extensions' };
+            return [
+                { label: 'Profile', value: PROFILES[+m[1]] || `Profile ${m[1]}` },
+                { label: 'Tier', value: m[2] === 'H' ? 'High' : 'Main' },
+                { label: 'Level', value: (parseInt(m[3], 10) / 30).toFixed(1) },
+            ];
+        },
+    },
+    vp9: {
+        family: 'VP9', fullName: 'VP9', year: 2013,
+        description: 'An open, royalty-free codec from Google built as a free alternative to H.265, with broadly similar compression efficiency. Well supported in Chrome/Firefox and common in WebM, but not universal on iOS/Safari or older hardware decoders.',
+        parse: cs => {
+            const m = /^vp0?9\.(\d{2})\.(\d{2})\.(\d{2})/.exec(cs || '');
+            if (!m) return [];
+            return [
+                { label: 'Profile', value: parseInt(m[1], 10) },
+                { label: 'Level', value: (parseInt(m[2], 10) / 10).toFixed(1) },
+                { label: 'Bit depth', value: parseInt(m[3], 10) + '-bit' },
+            ];
+        },
+    },
+    av1: {
+        family: 'AV1', fullName: 'AOMedia Video 1', year: 2018,
+        description: 'The newest royalty-free, open codec, developed by the Alliance for Open Media (Google, Netflix, Amazon, Mozilla, and others). Roughly 30% more efficient than HEVC/VP9 at equal quality and historically very slow to encode, with hardware decode support still spreading &mdash; increasingly used for high-volume streaming where the bitrate savings outweigh the encoding cost.',
+        parse: cs => {
+            const m = /^av01\.(\d)\.(\d{2})([MH])\.(\d{2})/.exec(cs || '');
+            if (!m) return [];
+            const PROFILES = ['Main', 'High', 'Professional'];
+            // AV1's level field is an index into a fixed table, not level×10 like VP9 —
+            // levels 2.0-2.3, 3.0-3.3, ... 7.0-7.3 map to consecutive indices 0-23.
+            const AV1_LEVELS = ['2.0', '2.1', '2.2', '2.3', '3.0', '3.1', '3.2', '3.3', '4.0', '4.1', '4.2', '4.3', '5.0', '5.1', '5.2', '5.3', '6.0', '6.1', '6.2', '6.3', '7.0', '7.1', '7.2', '7.3'];
+            return [
+                { label: 'Profile', value: PROFILES[+m[1]] || m[1] },
+                { label: 'Level', value: AV1_LEVELS[parseInt(m[2], 10)] || m[2] },
+                { label: 'Tier', value: m[3] === 'M' ? 'Main' : 'High' },
+                { label: 'Bit depth', value: parseInt(m[4], 10) + '-bit' },
+            ];
+        },
+    },
+    vp8: {
+        family: 'VP8', fullName: 'VP8', year: 2008,
+        description: 'An earlier royalty-free codec from On2/Google, roughly comparable in efficiency to H.264. Mostly superseded by VP9 today, but still seen in WebRTC and some legacy WebM files.',
+        parse: () => [],
+    },
+    prores: {
+        family: 'Apple ProRes', fullName: 'ProRes', year: 2007,
+        description: 'A high-bitrate, intraframe-only professional mezzanine codec &mdash; every frame is a keyframe, so it\'s trivially and instantly seekable, at the cost of much larger files. Meant for editing workflows, not final delivery.',
+        parse: () => [],
+    },
+    aac: {
+        family: 'AAC', fullName: 'Advanced Audio Coding', year: 1997,
+        description: 'The default audio codec paired with H.264/MP4 video; a more efficient successor to MP3 at the same bitrate, with near-universal hardware and browser support.',
+        parse: cs => {
+            const m = /^mp4a\.40\.(\d+)/.exec(cs || '');
+            if (!m) return [];
+            const OTI = { 2: 'AAC-LC (Low Complexity)', 5: 'HE-AAC (SBR)', 29: 'HE-AAC v2 (SBR + PS)', 4: 'AAC LTP', 42: 'xHE-AAC' };
+            return [{ label: 'Profile', value: OTI[+m[1]] || `Object type ${m[1]}` }];
+        },
+    },
+    opus: {
+        family: 'Opus', fullName: 'Opus', year: 2012,
+        description: 'A modern, royalty-free, low-latency codec tuned for both speech and music &mdash; the default for WebRTC and increasingly used for general-purpose streaming audio.',
+        parse: () => [],
+    },
+    mp3: {
+        family: 'MP3', fullName: 'MPEG-1/2 Audio Layer III', year: 1993,
+        description: 'The classic lossy audio format. Universally compatible, but less efficient than AAC or Opus at the same bitrate.',
+        parse: () => [],
+    },
+    vorbis: {
+        family: 'Vorbis', fullName: 'Ogg Vorbis', year: 2000,
+        description: 'A royalty-free codec and the predecessor to Opus, commonly paired with VP8/VP9 in WebM and OGG containers.',
+        parse: () => [],
+    },
+    flac: {
+        family: 'FLAC', fullName: 'Free Lossless Audio Codec', year: 2001,
+        description: 'Lossless compression &mdash; bit-exact reconstruction of the original samples, at roughly 50&ndash;60% the size of raw PCM. Not used for lossy delivery, but common for archival audio.',
+        parse: () => [],
+    },
+    ac3: {
+        family: 'Dolby Digital (AC-3)', fullName: 'Dolby Digital', year: 1991,
+        description: 'A perceptual multichannel (up to 5.1) audio codec common in broadcast, DVD, and streaming.',
+        parse: () => [],
+    },
+    eac3: {
+        family: 'Dolby Digital Plus (E-AC-3)', fullName: 'Enhanced AC-3', year: 2005,
+        description: 'An extension of AC-3 with higher efficiency and up to 7.1 channels; common in modern streaming and broadcast.',
+        parse: () => [],
+    },
+};
+
+function describeCodec(shortCodec, codecString) {
+    if (!shortCodec) return null;
+    if (shortCodec.startsWith('pcm-') || shortCodec === 'ulaw' || shortCodec === 'alaw') {
+        return {
+            family: 'PCM (uncompressed)', fullName: 'Pulse-Code Modulation', year: null,
+            description: 'Raw, uncompressed audio samples &mdash; no encoding at all. Simple and lossless, but large; mostly seen in short clips or intermediate/editing files rather than delivery formats.',
+            details: [],
+        };
+    }
+    const info = CODEC_KB[shortCodec];
+    if (!info) return null;
+    return { family: info.family, fullName: info.fullName, year: info.year, description: info.description, details: info.parse(codecString) };
 }
 
 async function loadMediabunnyMetadata(input) {
@@ -576,6 +730,7 @@ async function loadMediabunnyMetadata(input) {
         const d = {
             kind: t.isVideoTrack() ? 'video' : (t.isAudioTrack() ? 'audio' : 'other'),
             codec: String(t.codec || 'unknown'), codecString,
+            codecInfo: describeCodec(t.codec, codecString),
             packetCount: stats ? stats.packetCount : null,
             packetRate: stats ? stats.averagePacketRate : null,
             bitrate: stats ? stats.averageBitrate : null,
@@ -589,7 +744,6 @@ async function loadMediabunnyMetadata(input) {
                 codedWidth: t.codedWidth, codedHeight: t.codedHeight,
                 displayWidth: t.displayWidth, displayHeight: t.displayHeight,
                 rotation: t.rotation, colorSpace: color, hdr,
-                profile: codecProfileInfo(codecString),
             });
             result.fps = d.packetRate;
         }
@@ -660,6 +814,7 @@ async function loadSource(kind, payload) {
         renderAtomMap();
         renderSeekTab();
         renderEncodeTab();
+        renderEncodeTestTab();
         showMiniLoaded(source.name, source.size);
     } catch (err) {
         console.error('[encoding-helper] load failed:', err);
@@ -682,6 +837,9 @@ function resetState() {
     state.samples = []; state.timescale = 1; state.keyframeDecodeIndices = []; state.gopLengths = []; state.hasBFrames = false;
     state.presentationOrder = []; state.keyframeTimestampsSec = [];
     state.seekResults = null; state.reencodeResult = null;
+    encodeTest.startTime = 0; encodeTest.duration = 3; encodeTest.running = false;
+    encodeTest.originalSink = null; encodeTest.encodedSink = null; encodeTest.encodedInput = null;
+    encodeTest.segDuration = 0; encodeTest.zoom = null;
 }
 
 function setLoadingUi(loading, text) {
@@ -832,10 +990,12 @@ function renderInspect() {
             gridItem('Bitrate', fmtBits(vt.bitrate)),
         );
         if (vt.rotation) g.append(gridItem('Rotation', vt.rotation + '°'));
-        if (vt.profile) g.append(gridItem('H.264 Profile', `${vt.profile.profile} @ L${vt.profile.level}`));
+        if (vt.codecInfo) vt.codecInfo.details.forEach(d => g.append(gridItem(d.label, d.value)));
         if (vt.colorSpace) g.append(gridItem('Color Space', [vt.colorSpace.primaries, vt.colorSpace.transfer, vt.colorSpace.matrix].filter(Boolean).join(' / ') || '–', { sm: true }));
         if (vt.hdr) g.append(gridItem('HDR', 'Yes'));
         sec.append(g);
+        const vtCodecBox = codecTeachBox(vt.codecInfo);
+        if (vtCodecBox) sec.append(vtCodecBox);
 
         const evenW = vt.codedWidth % 2 === 0, evenH = vt.codedHeight % 2 === 0;
         sec.append(teachBox(
@@ -859,7 +1019,10 @@ function renderInspect() {
             gridItem('Channels', at.channels != null ? at.channels : '–'),
             gridItem('Bitrate', fmtBits(at.bitrate)),
         );
+        if (at.codecInfo) at.codecInfo.details.forEach(d => g.append(gridItem(d.label, d.value)));
         sec.append(g);
+        const atCodecBox = codecTeachBox(at.codecInfo);
+        if (atCodecBox) sec.append(atCodecBox);
         panel.append(sec);
     }
 
@@ -889,6 +1052,16 @@ function teachBox(html) {
     const d = h('div', 'teach');
     d.innerHTML = html;
     return d;
+}
+
+function codecTeachBox(codecInfo) {
+    if (!codecInfo) return null;
+    const detailsStr = codecInfo.details && codecInfo.details.length
+        ? '<br>' + codecInfo.details.map(d => `<b>${d.label}:</b> ${d.value}`).join(' &nbsp;&middot;&nbsp; ')
+        : '';
+    const yearStr = codecInfo.year ? ` (${codecInfo.year})` : '';
+    const nameStr = codecInfo.fullName && codecInfo.fullName !== codecInfo.family ? ` &mdash; ${codecInfo.fullName}` : '';
+    return teachBox(`<b>${codecInfo.family}</b>${yearStr}${nameStr}. ${codecInfo.description}${detailsStr}`);
 }
 
 // ============================================
@@ -1053,6 +1226,12 @@ function renderSeekResults(results) {
     );
     wrap.append(g);
 
+    const scatter = renderSeekScatter(results);
+    if (scatter) {
+        wrap.append(h('div', 'progress-label', 'Keyframe distance vs. decode time — hover a point for its timestamp'));
+        wrap.append(scatter);
+    }
+
     const scroll = h('div', 'scroll-x');
     const table = h('table', 'data');
     const thead = h('thead');
@@ -1075,6 +1254,67 @@ function renderSeekResults(results) {
     table.append(tbody);
     scroll.append(table);
     wrap.append(scroll);
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    return el;
+}
+
+// Scatter plot: keyframe distance (x) vs. decode time (y), one point per
+// sampled timestamp. A single series, so no legend is needed — the section
+// title and axis labels already say what's plotted.
+function renderSeekScatter(results) {
+    const pts = results.filter(r => r.dist != null);
+    if (pts.length < 2) return null;
+    const W = 600, H = 280, ML = 56, MR = 16, MT = 16, MB = 40;
+    const plotW = W - ML - MR, plotH = H - MT - MB;
+    const maxX = Math.max(...pts.map(r => r.dist)) * 1.08 || 1;
+    const maxY = Math.max(...pts.map(r => r.decodeMs)) * 1.08 || 1;
+    const xScale = x => ML + (x / maxX) * plotW;
+    const yScale = y => MT + plotH - (y / maxY) * plotH;
+
+    const svg = svgEl('svg', {
+        viewBox: `0 0 ${W} ${H}`, class: 'seek-scatter',
+        role: 'img', 'aria-label': 'Scatter plot of keyframe distance versus decode time, one point per sampled timestamp',
+    });
+
+    const STEPS = 4;
+    for (let i = 0; i <= STEPS; i++) {
+        const gx = ML + (plotW * i) / STEPS;
+        const gy = MT + (plotH * i) / STEPS;
+        svg.append(svgEl('line', { x1: gx, y1: MT, x2: gx, y2: MT + plotH, stroke: '#333', 'stroke-width': 1 }));
+        svg.append(svgEl('line', { x1: ML, y1: gy, x2: ML + plotW, y2: gy, stroke: '#333', 'stroke-width': 1 }));
+        const xLabel = svgEl('text', { x: gx, y: MT + plotH + 16, fill: '#888', 'font-size': 10, 'text-anchor': 'middle' });
+        xLabel.textContent = ((maxX * i) / STEPS).toFixed(2);
+        svg.append(xLabel);
+        const yLabel = svgEl('text', { x: ML - 8, y: MT + plotH - (plotH * i) / STEPS + 3, fill: '#888', 'font-size': 10, 'text-anchor': 'end' });
+        yLabel.textContent = String(Math.round((maxY * i) / STEPS));
+        svg.append(yLabel);
+    }
+    svg.append(svgEl('line', { x1: ML, y1: MT, x2: ML, y2: MT + plotH, stroke: '#444', 'stroke-width': 1 }));
+    svg.append(svgEl('line', { x1: ML, y1: MT + plotH, x2: ML + plotW, y2: MT + plotH, stroke: '#444', 'stroke-width': 1 }));
+
+    const xTitle = svgEl('text', { x: ML + plotW / 2, y: H - 4, fill: '#999', 'font-size': 11, 'text-anchor': 'middle' });
+    xTitle.textContent = 'Keyframe distance (s)';
+    svg.append(xTitle);
+    const yTitle = svgEl('text', { x: 12, y: MT + plotH / 2, fill: '#999', 'font-size': 11, 'text-anchor': 'middle', transform: `rotate(-90 12 ${MT + plotH / 2})` });
+    yTitle.textContent = 'Decode time (ms)';
+    svg.append(yTitle);
+
+    pts.forEach(r => {
+        const cx = xScale(r.dist), cy = yScale(r.decodeMs);
+        const g = svgEl('g');
+        const title = svgEl('title');
+        title.textContent = `t=${r.t.toFixed(2)}s  ·  distance=${r.dist.toFixed(3)}s  ·  decode=${r.decodeMs.toFixed(1)}ms`;
+        g.append(title);
+        g.append(svgEl('circle', { cx, cy, r: 12, fill: 'transparent' }));
+        g.append(svgEl('circle', { cx, cy, r: 5, fill: '#6c9fff', stroke: '#252540', 'stroke-width': 2 }));
+        svg.append(g);
+    });
+    return svg;
 }
 
 // ============================================
@@ -1119,6 +1359,43 @@ function formatCliCommand(args) {
     }
     if (line.trim()) lines.push(line);
     return lines.join('\n');
+}
+
+function currentVideoInfo() {
+    const vt = state.tracks && state.tracks.find(t => t.kind === 'video');
+    if (!vt) return null;
+    return { fps: state.fps, width: vt.codedWidth, height: vt.codedHeight };
+}
+
+// Recomputes the CLI preview from the shared `cli` state. Both the CLI
+// Command Builder and Encode Test tabs call this after any quality/preset
+// edit, so the command shown stays current no matter which tab was used.
+function refreshCliCommand() {
+    const info = currentVideoInfo();
+    if (!info) return;
+    const args = buildFfmpegArgs(cli, info);
+    const cmdPre = document.getElementById('cmdPre');
+    if (cmdPre) cmdPre.textContent = formatCliCommand(args);
+    const hint = document.getElementById('gopHint');
+    if (hint) hint.textContent = `GOP size = round(interval × fps) = round(${cli.keyframeInterval} × ${(cli.fps || info.fps || 30).toFixed(2)}) = ${computeGop(cli, cli.fps || info.fps || 30)} frames`;
+}
+
+// Quality/CRF/preset controls exist in both the CLI Command Builder and the
+// Encode Test tab, bound to the same `cli` object — this keeps both sets of
+// controls (and the CLI preview) showing the same values after either edits.
+function syncQualityControls() {
+    for (const prefix of ['cli', 'et']) {
+        const qSel = document.getElementById(prefix + 'Quality');
+        if (qSel) qSel.value = cli.quality;
+        const crfField = document.getElementById(prefix + 'Crf');
+        if (crfField) {
+            crfField.value = cli.crf;
+            crfField.parentElement.style.display = cli.quality === 'custom' ? '' : 'none';
+        }
+        const presetSel = document.getElementById(prefix + 'Preset');
+        if (presetSel) presetSel.value = cli.preset;
+    }
+    refreshCliCommand();
 }
 
 // ============================================
@@ -1191,32 +1468,21 @@ function renderEncodeTab() {
     builderSec.append(copyBtn);
     panel.append(builderSec);
 
-    function refreshCommand() {
-        const args = buildFfmpegArgs(cli, info);
-        cmdPre.textContent = formatCliCommand(args);
-        const hint = document.getElementById('gopHint');
-        if (hint) hint.textContent = `GOP size = round(interval × fps) = round(${cli.keyframeInterval} × ${(cli.fps || info.fps || 30).toFixed(2)}) = ${computeGop(cli, cli.fps || info.fps || 30)} frames`;
-    }
-
     const bindNumber = (id, key, isFloat) => document.getElementById(id).addEventListener('input', e => {
         const v = e.target.value;
         cli[key] = v === '' ? null : (isFloat ? parseFloat(v) : parseInt(v, 10));
-        refreshCommand();
+        refreshCliCommand();
     });
-    document.getElementById('cliQuality').addEventListener('change', e => {
-        cli.quality = e.target.value;
-        crfField.style.display = cli.quality === 'custom' ? '' : 'none';
-        refreshCommand();
-    });
-    bindNumber('cliCrf', 'crf', false);
-    document.getElementById('cliPreset').addEventListener('change', e => { cli.preset = e.target.value; refreshCommand(); });
+    document.getElementById('cliQuality').addEventListener('change', e => { cli.quality = e.target.value; syncQualityControls(); });
+    document.getElementById('cliCrf').addEventListener('input', e => { cli.crf = parseInt(e.target.value, 10) || 0; syncQualityControls(); });
+    document.getElementById('cliPreset').addEventListener('change', e => { cli.preset = e.target.value; syncQualityControls(); });
     bindNumber('cliKeyframeInterval', 'keyframeInterval', true);
-    document.getElementById('cliNoBFrames').addEventListener('change', e => { cli.noBFrames = e.target.checked; refreshCommand(); });
-    document.getElementById('cliPad').addEventListener('change', e => { cli.pad = e.target.checked; refreshCommand(); });
-    document.getElementById('cliFaststart').addEventListener('change', e => { cli.faststart = e.target.checked; refreshCommand(); });
-    document.getElementById('cliAudio').addEventListener('change', e => { cli.audioMode = e.target.value; refreshCommand(); });
+    document.getElementById('cliNoBFrames').addEventListener('change', e => { cli.noBFrames = e.target.checked; refreshCliCommand(); });
+    document.getElementById('cliPad').addEventListener('change', e => { cli.pad = e.target.checked; refreshCliCommand(); });
+    document.getElementById('cliFaststart').addEventListener('change', e => { cli.faststart = e.target.checked; refreshCliCommand(); });
+    document.getElementById('cliAudio').addEventListener('change', e => { cli.audioMode = e.target.value; refreshCliCommand(); });
     bindNumber('cliFps', 'fps', false);
-    refreshCommand();
+    refreshCliCommand();
 
     // ---- In-browser engines ----
     const engineSec = h('div', 'section');
@@ -1496,6 +1762,243 @@ async function runExactEncode(info, box) {
         box.button.disabled = false;
         box.progress.style.display = 'none';
     }
+}
+
+// ============================================
+// Tab: Encode Test — short-segment A/B comparison with synced zoom/pan
+// ============================================
+function renderEncodeTestTab() {
+    const panel = document.getElementById('panel-compare');
+    panel.innerHTML = '';
+    const vt = state.tracks.find(t => t.kind === 'video');
+    if (!vt) return;
+
+    const maxDuration = Math.max(1, Math.min(10, state.duration || 10));
+    encodeTest.duration = Math.min(Math.max(1, encodeTest.duration || 3), maxDuration);
+    encodeTest.startTime = Math.min(Math.max(0, encodeTest.startTime), Math.max(0, (state.duration || 0) - encodeTest.duration));
+
+    const sec = h('div', 'section');
+    sec.append(h('h2', null, 'Encode Test — A/B Comparison'));
+    sec.append(teachBox(
+        `Encodes a short window of the video at the CRF/preset below via ffmpeg.wasm (byte-matching the CLI ` +
+        `command), then decodes the original and the result side-by-side so you can pixel-peep the actual ` +
+        `difference before committing to a full re-encode.`
+    ));
+
+    const row1 = h('div', 'row');
+    row1.append(fieldNumber('etStart', 'Start Time (s)', encodeTest.startTime.toFixed(1), 0, Math.max(0, (state.duration || 1) - 1), 0.5));
+    row1.append(fieldNumber('etDuration', 'Duration (s)', encodeTest.duration, 1, maxDuration, 0.5));
+    sec.append(row1);
+
+    const row2 = h('div', 'row');
+    row2.append(fieldSelect('etQuality', 'Quality', [
+        ['lossless', 'Lossless (CRF 0)'], ['high', 'High (CRF 18)'], ['medium', 'Medium (CRF 25)'],
+        ['low', 'Low (CRF 32)'], ['custom', 'Custom CRF'],
+    ], cli.quality));
+    const etCrfField = fieldNumber('etCrf', 'Custom CRF', cli.crf, 0, 51, 1);
+    etCrfField.style.display = cli.quality === 'custom' ? '' : 'none';
+    row2.append(etCrfField);
+    row2.append(fieldSelect('etPreset', 'x264 Preset', [
+        'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow',
+    ].map(p => [p, p]), cli.preset));
+    sec.append(row2);
+
+    const runBtn = h('button', 'btn', 'Run Comparison');
+    runBtn.type = 'button';
+    sec.append(runBtn);
+    const progress = h('div', 'progress-wrap'); progress.style.display = 'none';
+    progress.append(h('div', 'fill'));
+    sec.append(progress);
+    const note = h('div', 'progress-label');
+    sec.append(note);
+    const log = h('div', 'log-console'); log.style.display = 'none';
+    sec.append(log);
+    panel.append(sec);
+
+    const resultSec = h('div', 'section');
+    resultSec.style.display = 'none';
+    panel.append(resultSec);
+
+    document.getElementById('etStart').addEventListener('input', e => { encodeTest.startTime = parseFloat(e.target.value) || 0; });
+    document.getElementById('etDuration').addEventListener('input', e => { encodeTest.duration = parseFloat(e.target.value) || 1; });
+    document.getElementById('etQuality').addEventListener('change', e => { cli.quality = e.target.value; syncQualityControls(); });
+    document.getElementById('etCrf').addEventListener('input', e => { cli.crf = parseInt(e.target.value, 10) || 0; syncQualityControls(); });
+    document.getElementById('etPreset').addEventListener('change', e => { cli.preset = e.target.value; syncQualityControls(); });
+    runBtn.addEventListener('click', () => runEncodeTest(vt, { button: runBtn, progress, note, log, resultSec }));
+}
+
+async function runEncodeTest(vt, ui) {
+    if (encodeTest.running) return;
+    encodeTest.running = true;
+    ui.button.disabled = true;
+    ui.progress.style.display = 'block';
+    ui.progress.querySelector('.fill').style.width = '0%';
+    ui.note.textContent = 'Loading ffmpeg.wasm…';
+    ui.log.innerHTML = '';
+    ffmpegLogCallback = msg => logLine(ui.log, msg, 'info');
+    ffmpegProgressCallback = ratio => {
+        const pct = Math.min(1, Math.max(0, ratio)) * 100;
+        ui.progress.querySelector('.fill').style.width = pct.toFixed(0) + '%';
+        ui.note.textContent = `Encoding test segment… ${pct.toFixed(0)}%`;
+    };
+    try {
+        const ffmpeg = await ensureFfmpegLoaded();
+        const inputName = 'et_in' + extOf(state.source.name);
+        ui.note.textContent = 'Writing input to virtual filesystem…';
+        const inputData = state.file ? await fetchFileLocal(state.file) : await fetchFileLocal(state.source.url);
+        await ffmpeg.writeFile(inputName, inputData);
+
+        const info = currentVideoInfo();
+        const start = encodeTest.startTime, dur = encodeTest.duration;
+        const outputName = 'et_out.mp4';
+        const args = buildFfmpegArgs(cli, info, inputName, outputName);
+        // Trim after -i (not before) so the cut is frame-accurate rather than
+        // snapped to the nearest preceding keyframe — the two sides need to
+        // show the same content, not just start "close enough."
+        const iIdx = args.indexOf('-i');
+        args.splice(iIdx + 2, 0, '-ss', String(start), '-t', String(dur));
+        logLine(ui.log, '$ ffmpeg ' + args.join(' '), 'success');
+        ui.note.textContent = 'Encoding test segment…';
+        await ffmpeg.exec(args);
+        const data = await ffmpeg.readFile(outputName);
+        const encodedBlob = new Blob([data.buffer], { type: 'video/mp4' });
+        await ffmpeg.deleteFile(inputName).catch(() => {});
+        await ffmpeg.deleteFile(outputName).catch(() => {});
+
+        ui.note.textContent = 'Decoding frames…';
+        await ensureMediabunny();
+        const encodedInput = new mb.Input({ source: new mb.BlobSource(encodedBlob), formats: mb.ALL_FORMATS });
+        const encodedTrack = await encodedInput.getPrimaryVideoTrack();
+        if (!encodedTrack) throw new Error('Encoded segment has no video track');
+        const encodedDuration = await encodedInput.computeDuration();
+
+        encodeTest.originalSink = new mb.CanvasSink(state.videoTrack, { poolSize: 2 });
+        encodeTest.encodedSink = new mb.CanvasSink(encodedTrack, { poolSize: 2 });
+        encodeTest.encodedInput = encodedInput;
+        encodeTest.segDuration = encodedDuration;
+
+        renderCompareResult(ui.resultSec, vt, encodedBlob.size);
+        ui.note.textContent = 'Done.';
+    } catch (err) {
+        console.error('[encoding-helper] encode test failed:', err);
+        ui.note.textContent = 'Failed: ' + (err.message || err);
+        logLine(ui.log, String(err.message || err), 'error');
+    } finally {
+        encodeTest.running = false;
+        ui.button.disabled = false;
+        ui.progress.style.display = 'none';
+    }
+}
+
+function renderCompareResult(resultSec, vt, encodedSize) {
+    resultSec.innerHTML = '';
+    resultSec.style.display = 'block';
+    resultSec.append(h('h2', null, 'Side-by-Side'));
+
+    const g = h('div', 'grid');
+    g.append(
+        gridItem('Segment', `${encodeTest.startTime.toFixed(1)}s–${(encodeTest.startTime + encodeTest.duration).toFixed(1)}s`),
+        gridItem('Quality', cli.quality === 'custom' ? `Custom (CRF ${cli.crf})` : `${cli.quality} (CRF ${CRF_MAP[cli.quality]})`),
+        gridItem('Preset', cli.preset),
+        gridItem('Encoded Segment Size', fmtBytes(encodedSize)),
+    );
+    resultSec.append(g);
+
+    const stage = h('div', 'compare-stage');
+    const origPane = h('div', 'compare-pane');
+    origPane.append(h('span', 'pane-label', 'Original'));
+    const origCanvas = h('canvas'); origCanvas.width = vt.codedWidth; origCanvas.height = vt.codedHeight;
+    origPane.append(origCanvas);
+    const encPane = h('div', 'compare-pane');
+    encPane.append(h('span', 'pane-label', `Encoded (${cli.quality === 'custom' ? 'CRF ' + cli.crf : cli.quality}, ${cli.preset})`));
+    const encCanvas = h('canvas'); encCanvas.width = vt.codedWidth; encCanvas.height = vt.codedHeight;
+    encPane.append(encCanvas);
+    const ar = `${vt.codedWidth} / ${vt.codedHeight}`;
+    origPane.style.aspectRatio = ar;
+    encPane.style.aspectRatio = ar;
+    stage.append(origPane, encPane);
+    resultSec.append(stage);
+
+    const controls = h('div', 'compare-controls');
+    const scrub = h('input'); scrub.type = 'range'; scrub.min = '0'; scrub.max = '1000'; scrub.value = '0';
+    const scrubLabel = h('span', 'progress-label', '0.00s');
+    const resetBtn = h('button', 'btn sm sec', 'Reset Zoom'); resetBtn.type = 'button';
+    controls.append(scrub, scrubLabel, resetBtn);
+    resultSec.append(controls);
+    resultSec.append(h('div', 'progress-label', 'Scroll to zoom toward the cursor, drag to pan — both panes move together. Slide to scrub the test segment.'));
+
+    const zoomPan = attachSyncedZoomPan(stage, [origCanvas, encCanvas]);
+    resetBtn.addEventListener('click', () => zoomPan.reset());
+
+    const drawFrame = (canvas, frame) => {
+        if (!frame) return;
+        if (canvas.width !== frame.canvas.width || canvas.height !== frame.canvas.height) {
+            canvas.width = frame.canvas.width;
+            canvas.height = frame.canvas.height;
+        }
+        canvas.getContext('2d').drawImage(frame.canvas, 0, 0);
+    };
+    const drawAt = async relT => {
+        const [originalFrame, encodedFrame] = await Promise.all([
+            encodeTest.originalSink.getCanvas(encodeTest.startTime + relT),
+            encodeTest.encodedSink.getCanvas(Math.min(relT, Math.max(0, encodeTest.segDuration - 0.001))),
+        ]);
+        drawFrame(origCanvas, originalFrame);
+        drawFrame(encCanvas, encodedFrame);
+    };
+    scrub.addEventListener('input', () => {
+        const relT = (parseFloat(scrub.value) / 1000) * encodeTest.duration;
+        scrubLabel.textContent = relT.toFixed(2) + 's';
+        drawAt(relT);
+    });
+    drawAt(0);
+}
+
+// Shared drag state: a single pair of window-level listeners serves every
+// comparison run rather than accumulating one pair per re-render.
+let activeZoomDrag = null;
+window.addEventListener('mousemove', e => {
+    if (!activeZoomDrag) return;
+    const d = activeZoomDrag;
+    d.zoom.tx += e.clientX - d.lastX;
+    d.zoom.ty += e.clientY - d.lastY;
+    d.lastX = e.clientX; d.lastY = e.clientY;
+    d.apply();
+});
+window.addEventListener('mouseup', () => { activeZoomDrag = null; });
+window.addEventListener('touchmove', e => {
+    if (!activeZoomDrag || e.touches.length !== 1) return;
+    const d = activeZoomDrag;
+    d.zoom.tx += e.touches[0].clientX - d.lastX;
+    d.zoom.ty += e.touches[0].clientY - d.lastY;
+    d.lastX = e.touches[0].clientX; d.lastY = e.touches[0].clientY;
+    d.apply();
+}, { passive: true });
+window.addEventListener('touchend', () => { activeZoomDrag = null; });
+
+function attachSyncedZoomPan(stageEl, canvases) {
+    const zoom = { scale: 1, tx: 0, ty: 0 };
+    encodeTest.zoom = zoom;
+    const apply = () => {
+        const t = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.scale})`;
+        canvases.forEach(c => { c.style.transform = t; });
+    };
+    stageEl.addEventListener('wheel', e => {
+        e.preventDefault();
+        const rect = canvases[0].getBoundingClientRect();
+        const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+        const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+        const newScale = Math.min(20, Math.max(1, zoom.scale * factor));
+        zoom.tx = cx - (cx - zoom.tx) * (newScale / zoom.scale);
+        zoom.ty = cy - (cy - zoom.ty) * (newScale / zoom.scale);
+        zoom.scale = newScale;
+        apply();
+    }, { passive: false });
+    stageEl.addEventListener('mousedown', e => { activeZoomDrag = { lastX: e.clientX, lastY: e.clientY, zoom, apply }; });
+    stageEl.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) activeZoomDrag = { lastX: e.touches[0].clientX, lastY: e.touches[0].clientY, zoom, apply };
+    }, { passive: true });
+    return { state: zoom, reset: () => { zoom.scale = 1; zoom.tx = 0; zoom.ty = 0; apply(); } };
 }
 
 // ============================================
