@@ -189,6 +189,31 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
     .tabs { gap: 4px; }
     .tab { padding: 7px 10px; font-size: 12px; }
 }
+
+/* Report tab preview + print-only view */
+.report-meta { color: #888; font-size: 12px; margin: -6px 0 14px; }
+#printArea { display: none; }
+@media print {
+    body > *:not(#printArea) { display: none !important; }
+    #printArea {
+        display: block !important; background: #fff; color: #111;
+        font-family: system-ui, -apple-system, sans-serif; max-width: none; padding: 0; margin: 0;
+    }
+    #printArea h1 { color: #111; }
+    #printArea .section { background: #f5f5f7; border: 1px solid #ddd; break-inside: avoid; }
+    #printArea .section h2 { color: #555; }
+    #printArea .grid .item .val { color: #2952cc; }
+    #printArea .grid .item .val.sm { color: #222; }
+    #printArea .grid .item label { color: #777; }
+    #printArea .teach { background: #eef2ff; border-left-color: #2952cc; color: #333; }
+    #printArea pre.cmd { background: #f0f0f0; color: #111; border: 1px solid #ddd; }
+    #printArea table.data th, #printArea table.data td { border-color: #ddd; color: #222; }
+    #printArea table.data th { color: #666; }
+    #printArea .report-meta { color: #666; }
+    #printArea .badge.good { background: #e6f9ee; color: #1a7d42; }
+    #printArea .badge.bad { background: #fff4e0; color: #92620a; }
+    #printArea .badge.info { background: #e8effe; color: #2952cc; }
+}
 </style>
 </head>
 <body>
@@ -227,6 +252,7 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
         <button class="tab" data-tab="seek" type="button">GOP &amp; Seeking</button>
         <button class="tab" data-tab="encode" type="button">Re-encode &amp; CLI</button>
         <button class="tab" data-tab="compare" type="button">Encode Test</button>
+        <button class="tab" data-tab="report" type="button">Report</button>
     </div>
 
     <!-- ============================================ -->
@@ -253,7 +279,15 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
     <!-- Tab: Encode Test (side-by-side CRF/preset comparison) -->
     <!-- ============================================ -->
     <div class="tab-panel" id="panel-compare"></div>
+
+    <!-- ============================================ -->
+    <!-- Tab: Report / Export -->
+    <!-- ============================================ -->
+    <div class="tab-panel" id="panel-report"></div>
 </div>
+
+<!-- Populated only when the Report tab renders; the only thing @media print shows. -->
+<div id="printArea"></div>
 
 <footer>
     Part of <a href="https://github.com/talmolab/vibes" target="_blank" rel="noopener">vibes</a> &middot;
@@ -326,6 +360,7 @@ const encodeTest = {
     encodedSink: null,  // mediabunny CanvasSink over the freshly-encoded segment
     encodedInput: null, // mediabunny Input kept alive so encodedSink stays valid
     segDuration: 0,     // actual decodable duration of the last encoded segment
+    encodedSize: null,  // byte size of the last encoded test segment, for the Report tab
     zoom: null,         // shared {scale, tx, ty} pan/zoom state for both canvases
 };
 
@@ -815,6 +850,7 @@ async function loadSource(kind, payload) {
         renderSeekTab();
         renderEncodeTab();
         renderEncodeTestTab();
+        renderReportTab();
         showMiniLoaded(source.name, source.size);
     } catch (err) {
         console.error('[encoding-helper] load failed:', err);
@@ -839,7 +875,7 @@ function resetState() {
     state.seekResults = null; state.reencodeResult = null;
     encodeTest.startTime = 0; encodeTest.duration = 3; encodeTest.running = false;
     encodeTest.originalSink = null; encodeTest.encodedSink = null; encodeTest.encodedInput = null;
-    encodeTest.segDuration = 0; encodeTest.zoom = null;
+    encodeTest.segDuration = 0; encodeTest.encodedSize = null; encodeTest.zoom = null;
 }
 
 function setLoadingUi(loading, text) {
@@ -936,6 +972,9 @@ function initTabs() {
             document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b === btn));
             document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
             document.getElementById('panel-' + btn.dataset.tab).classList.add('on');
+            // Rebuilt on every visit (not just at load) since it reflects whatever the
+            // seeking test / Encode Test tabs have produced since the file was loaded.
+            if (btn.dataset.tab === 'report') renderReportTab();
         });
     });
 }
@@ -1876,6 +1915,7 @@ async function runEncodeTest(vt, ui) {
         encodeTest.encodedSink = new mb.CanvasSink(encodedTrack, { poolSize: 2 });
         encodeTest.encodedInput = encodedInput;
         encodeTest.segDuration = encodedDuration;
+        encodeTest.encodedSize = encodedBlob.size;
 
         renderCompareResult(ui.resultSec, vt, encodedBlob.size);
         ui.note.textContent = 'Done.';
@@ -1999,6 +2039,273 @@ function attachSyncedZoomPan(stageEl, canvases) {
         if (e.touches.length === 1) activeZoomDrag = { lastX: e.touches[0].clientX, lastY: e.touches[0].clientY, zoom, apply };
     }, { passive: true });
     return { state: zoom, reset: () => { zoom.scale = 1; zoom.tx = 0; zoom.ty = 0; apply(); } };
+}
+
+// ============================================
+// Tab: Report / Export
+//
+// Everything is gathered once into a plain, renderer-agnostic list of
+// sections; renderReportSectionsToHtml/ToMarkdown are the only two places
+// that know how a section actually gets drawn, so the on-screen preview,
+// the print/PDF view, and the .md export can never drift apart.
+// ============================================
+function stripHtml(html) {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    return d.textContent.trim();
+}
+
+function buildReportSections() {
+    const sections = [];
+    const vt = state.tracks.find(t => t.kind === 'video');
+    const at = state.tracks.find(t => t.kind === 'audio');
+    const fileBitrate = state.duration ? (state.source.size * 8) / state.duration : null;
+
+    sections.push({
+        title: 'Overview', kind: 'kv',
+        items: [
+            ['Format', state.format || '–'],
+            ['File Size', fmtBytes(state.source.size)],
+            ['Duration', fmtDur(state.duration)],
+            ['Overall Bitrate', fmtBits(fileBitrate)],
+            ['MIME Type', state.mimeType || '–'],
+            ['Faststart', state.faststart ? 'Yes (moov before mdat)' : 'No (moov after mdat)'],
+        ],
+    });
+
+    if (vt) {
+        const items = [
+            ['Codec', vt.codecString || vt.codec],
+            ['Resolution', `${vt.codedWidth}×${vt.codedHeight}`],
+        ];
+        if (vt.displayWidth !== vt.codedWidth || vt.displayHeight !== vt.codedHeight) items.push(['Display Size', `${vt.displayWidth}×${vt.displayHeight}`]);
+        items.push(
+            ['Frame Rate', vt.packetRate != null ? fmtRate(vt.packetRate) + ' fps' : '–'],
+            ['Frames', state.frameCount != null ? state.frameCount.toLocaleString() : '–'],
+            ['Bitrate', fmtBits(vt.bitrate)],
+        );
+        if (vt.rotation) items.push(['Rotation', vt.rotation + '°']);
+        if (vt.codecInfo) vt.codecInfo.details.forEach(d => items.push([d.label, d.value]));
+        if (vt.colorSpace) items.push(['Color Space', [vt.colorSpace.primaries, vt.colorSpace.transfer, vt.colorSpace.matrix].filter(Boolean).join(' / ') || '–']);
+        if (vt.hdr) items.push(['HDR', 'Yes']);
+        sections.push({
+            title: 'Video Track', kind: 'kv', items,
+            note: vt.codecInfo ? `${vt.codecInfo.family}${vt.codecInfo.year ? ' (' + vt.codecInfo.year + ')' : ''}: ${stripHtml(vt.codecInfo.description)}` : null,
+        });
+    }
+
+    if (at) {
+        const items = [
+            ['Codec', at.codecString || at.codec],
+            ['Sample Rate', at.sampleRate ? at.sampleRate.toLocaleString() + ' Hz' : '–'],
+            ['Channels', at.channels != null ? at.channels : '–'],
+            ['Bitrate', fmtBits(at.bitrate)],
+        ];
+        if (at.codecInfo) at.codecInfo.details.forEach(d => items.push([d.label, d.value]));
+        sections.push({
+            title: 'Audio Track', kind: 'kv', items,
+            note: at.codecInfo ? `${at.codecInfo.family}${at.codecInfo.year ? ' (' + at.codecInfo.year + ')' : ''}: ${stripHtml(at.codecInfo.description)}` : null,
+        });
+    }
+
+    const flatTags = {};
+    if (state.tags) {
+        for (const [k, v] of Object.entries(state.tags)) {
+            if (k === 'raw' && v && typeof v === 'object') Object.assign(flatTags, v);
+            else if (v != null && v !== '' && typeof v !== 'object') flatTags[k] = v;
+        }
+    }
+    if (Object.keys(flatTags).length) {
+        sections.push({ title: 'Metadata Tags', kind: 'kv', items: Object.entries(flatTags) });
+    }
+
+    if (state.boxes && state.boxes.length) {
+        const lines = [];
+        const walk = (box, depth) => {
+            lines.push(`${'  '.repeat(depth)}${box.type.padEnd(6)} offset ${box.start.toLocaleString()}  ${fmtBytes(box.size)} (${box.size.toLocaleString()} B)`);
+            box.children.forEach(c => walk(c, depth + 1));
+        };
+        state.boxes.forEach(b => walk(b, 0));
+        sections.push({ title: 'MP4 Atom Map', kind: 'code', lang: '', content: lines.join('\n') });
+    }
+
+    if (state.samples.length) {
+        const gop = state.gopLengths;
+        const avgGop = gop.length ? gop.reduce((a, b) => a + b, 0) / gop.length : 0;
+        const fps = state.fps || 30;
+        sections.push({
+            title: 'GOP / Keyframe Structure', kind: 'kv',
+            items: [
+                ['Total Frames', state.samples.length.toLocaleString()],
+                ['Keyframes', state.keyframeDecodeIndices.length.toLocaleString()],
+                ['Avg GOP', `${avgGop.toFixed(1)} frames (${(avgGop / fps).toFixed(2)} s)`],
+                ['Min/Max GOP', gop.length ? `${Math.min(...gop)} / ${Math.max(...gop)} frames` : '–'],
+                ['B-Frames', state.hasBFrames ? 'Yes (cts ≠ dts)' : 'No (IPPP…)'],
+            ],
+        });
+    }
+
+    if (state.seekResults && state.seekResults.length) {
+        const results = state.seekResults;
+        const avgDist = results.reduce((a, r) => a + (r.dist || 0), 0) / results.length;
+        const avgDecode = results.reduce((a, r) => a + r.decodeMs, 0) / results.length;
+        const maxDecode = Math.max(...results.map(r => r.decodeMs));
+        sections.push({
+            title: 'Empirical Seeking Test', kind: 'table',
+            summary: [
+                ['Avg Keyframe Distance', avgDist.toFixed(3) + ' s'],
+                ['Avg Decode Time', fmtMs(avgDecode)],
+                ['Max Decode Time', fmtMs(maxDecode)],
+            ],
+            headers: ['Timestamp', 'Nearest Keyframe ≤ t', 'Distance', 'Distance (frames)', 'Decode Time'],
+            rows: results.map(r => [
+                r.t.toFixed(3) + 's',
+                r.kf != null ? r.kf.toFixed(3) + 's' : '—',
+                r.dist != null ? r.dist.toFixed(3) + 's' : '—',
+                r.distFrames != null ? String(r.distFrames) : '—',
+                fmtMs(r.decodeMs),
+            ]),
+        });
+    }
+
+    if (vt) {
+        const info = currentVideoInfo();
+        const args = buildFfmpegArgs(cli, info);
+        sections.push({ title: 'Re-encode CLI Command', kind: 'code', lang: 'bash', content: formatCliCommand(args) });
+    }
+
+    if (encodeTest.originalSink && encodeTest.encodedSink) {
+        sections.push({
+            title: 'Encode Test (A/B) Result', kind: 'kv',
+            items: [
+                ['Segment', `${encodeTest.startTime.toFixed(1)}s–${(encodeTest.startTime + encodeTest.duration).toFixed(1)}s`],
+                ['Quality', cli.quality === 'custom' ? `Custom (CRF ${cli.crf})` : `${cli.quality} (CRF ${CRF_MAP[cli.quality]})`],
+                ['Preset', cli.preset],
+                ['Encoded Segment Size', fmtBytes(encodeTest.encodedSize)],
+            ],
+        });
+    }
+
+    return sections;
+}
+
+function renderReportSectionsToHtml(sections) {
+    const frag = document.createDocumentFragment();
+    sections.forEach(sec => {
+        const secEl = h('div', 'section');
+        secEl.append(h('h2', null, sec.title));
+        if (sec.kind === 'kv') {
+            const g = h('div', 'grid');
+            sec.items.forEach(([k, v]) => g.append(gridItem(k, v, { sm: String(v).length > 18 })));
+            secEl.append(g);
+            if (sec.note) secEl.append(h('div', 'teach', sec.note));
+        } else if (sec.kind === 'code') {
+            secEl.append(h('pre', 'cmd', sec.content));
+        } else if (sec.kind === 'table') {
+            if (sec.summary) {
+                const g = h('div', 'grid');
+                sec.summary.forEach(([k, v]) => g.append(gridItem(k, v)));
+                secEl.append(g);
+            }
+            const scroll = h('div', 'scroll-x');
+            const table = h('table', 'data');
+            const thead = h('thead'); const headRow = h('tr');
+            sec.headers.forEach(hd => headRow.append(h('th', null, hd)));
+            thead.append(headRow); table.append(thead);
+            const tbody = h('tbody');
+            sec.rows.forEach(row => {
+                const tr = h('tr');
+                row.forEach(cell => tr.append(h('td', null, cell)));
+                tbody.append(tr);
+            });
+            table.append(tbody);
+            scroll.append(table);
+            secEl.append(scroll);
+        }
+        frag.append(secEl);
+    });
+    return frag;
+}
+
+function renderReportSectionsToMarkdown(sections, title) {
+    const esc = s => String(s).replace(/\|/g, '\\|');
+    const lines = [`# Encoding Helper Report — ${title}`, '', `_Generated ${new Date().toLocaleString()} · https://vibes.tlab.sh/encoding-helper/_`, ''];
+    sections.forEach(sec => {
+        lines.push(`## ${sec.title}`, '');
+        if (sec.kind === 'kv') {
+            lines.push('| Field | Value |', '|---|---|');
+            sec.items.forEach(([k, v]) => lines.push(`| ${esc(k)} | ${esc(v)} |`));
+            lines.push('');
+            if (sec.note) lines.push('> ' + sec.note.replace(/\n/g, '\n> '), '');
+        } else if (sec.kind === 'code') {
+            lines.push('```' + (sec.lang || ''), sec.content, '```', '');
+        } else if (sec.kind === 'table') {
+            if (sec.summary) {
+                lines.push('| Metric | Value |', '|---|---|');
+                sec.summary.forEach(([k, v]) => lines.push(`| ${esc(k)} | ${esc(v)} |`));
+                lines.push('');
+            }
+            lines.push('| ' + sec.headers.join(' | ') + ' |', '|' + sec.headers.map(() => '---').join('|') + '|');
+            sec.rows.forEach(row => lines.push('| ' + row.map(esc).join(' | ') + ' |'));
+            lines.push('');
+        }
+    });
+    return lines.join('\n');
+}
+
+function renderReportTab() {
+    const panel = document.getElementById('panel-report');
+    panel.innerHTML = '';
+    if (!state.source) return;
+
+    const sec = h('div', 'section');
+    sec.append(h('h2', null, 'Report / Export'));
+    sec.append(teachBox(
+        `Compiles everything above &mdash; metadata, the codec explainer, the atom map, GOP/keyframe stats, the ` +
+        `seeking test and Encode Test results (if you've run them), and the CLI command &mdash; into one ` +
+        `shareable report.`
+    ));
+    const actions = h('div', 'load-actions');
+    const copyBtn = h('button', 'btn', 'Copy Markdown'); copyBtn.type = 'button';
+    const dlBtn = h('button', 'btn sec', 'Download .md'); dlBtn.type = 'button';
+    const printBtn = h('button', 'btn sec', 'Print / Save as PDF'); printBtn.type = 'button';
+    actions.append(copyBtn, dlBtn, printBtn);
+    sec.append(actions);
+    panel.append(sec);
+
+    const previewWrap = h('div');
+    panel.append(previewWrap);
+
+    const refresh = () => {
+        const sections = buildReportSections();
+        previewWrap.innerHTML = '';
+        previewWrap.append(renderReportSectionsToHtml(sections));
+
+        const printArea = document.getElementById('printArea');
+        printArea.innerHTML = '';
+        printArea.append(
+            h('h1', null, `Encoding Helper Report — ${state.source.name}`),
+            h('p', 'report-meta', `Generated ${new Date().toLocaleString()} · vibes.tlab.sh/encoding-helper`),
+            renderReportSectionsToHtml(sections),
+        );
+        return sections;
+    };
+
+    copyBtn.addEventListener('click', () => {
+        const md = renderReportSectionsToMarkdown(buildReportSections(), state.source.name);
+        copyToClipboard(md, copyBtn);
+    });
+    dlBtn.addEventListener('click', () => {
+        const md = renderReportSectionsToMarkdown(buildReportSections(), state.source.name);
+        const blob = new Blob([md], { type: 'text/markdown' });
+        downloadBlob(blob, (state.source.name || 'video').replace(/\.[^.]+$/, '') + '.report.md');
+    });
+    printBtn.addEventListener('click', () => {
+        refresh();
+        window.print();
+    });
+
+    refresh();
 }
 
 // ============================================
