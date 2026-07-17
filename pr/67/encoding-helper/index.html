@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Encoding Helper</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.6;
+    background: #1a1a2e;
+    color: #eee;
+}
+h1 { text-align: center; margin-bottom: 5px; }
+.subtitle { text-align: center; color: #888; margin-bottom: 20px; font-size: 14px; }
+.subtitle a { color: #6c9fff; text-decoration: none; }
+.subtitle a:hover { text-decoration: underline; }
+
+/* Drop zone / file loading */
+.drop-zone {
+    border: 2px dashed #444;
+    border-radius: 10px;
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    margin-bottom: 16px;
+}
+.drop-zone.dragover { border-color: #6c9fff; background: rgba(108,159,255,0.08); }
+.drop-zone .hint { color: #888; font-size: 13px; margin-top: 8px; }
+.drop-zone .drop-mini { display: none; }
+.drop-zone.collapsed {
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: default;
+    border-style: solid;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.drop-zone.collapsed .drop-full { display: none; }
+.drop-zone.collapsed .drop-mini { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.drop-mini .fname { font-weight: 600; word-break: break-all; }
+.drop-mini .fsize { color: #888; font-size: 13px; }
+.load-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+.url-row { display: flex; gap: 8px; margin-top: 12px; max-width: 500px; margin-left: auto; margin-right: auto; }
+.url-row input { flex: 1; margin-bottom: 0; }
+
+/* Buttons / inputs */
+.btn {
+    background: #6c9fff; color: #fff; border: none; padding: 9px 18px;
+    border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: 500;
+}
+.btn:hover { background: #5a8ae6; }
+.btn:disabled { background: #444; color: #888; cursor: not-allowed; }
+.btn.sec { background: #333a54; }
+.btn.sec:hover { background: #3f4768; }
+.btn.sm { padding: 6px 12px; font-size: 12px; }
+input, select {
+    width: 100%;
+    padding: 10px; border: 1px solid #444; border-radius: 6px;
+    font-size: 16px; background: #12122080; color: #eee; margin-bottom: 10px;
+    background: #14142a;
+}
+input:focus, select:focus { outline: none; border-color: #6c9fff; }
+input[type="range"] { padding: 0; }
+input[type="checkbox"] { width: auto; margin-right: 6px; vertical-align: middle; }
+label.field-label { display: block; font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px; }
+.field { margin-bottom: 14px; }
+.field .hint { color: #777; font-size: 12px; margin-top: -6px; margin-bottom: 8px; }
+.row { display: flex; gap: 16px; flex-wrap: wrap; }
+.row > .field { flex: 1; min-width: 160px; }
+
+/* Error banner */
+.error-msg {
+    background: rgba(239,68,68,0.12); border: 1px solid #ef4444; color: #ff8080;
+    padding: 12px 16px; border-radius: 8px; margin: 14px 0; display: none;
+}
+
+/* Cards / sections */
+.section { background: #252540; border-radius: 8px; padding: 16px 20px; margin-bottom: 14px; }
+.section h2 { font-size: 13px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; margin: 0 0 12px; }
+.section h3 { font-size: 14px; color: #ccc; margin: 16px 0 8px; }
+.section h3:first-child { margin-top: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 16px; }
+.grid .item label { display: block; font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+.grid .item .val { font-size: 16px; font-weight: 600; color: #6c9fff; word-break: break-word; }
+.grid .item .val.sm { font-size: 13px; font-family: Monaco, Consolas, monospace; font-weight: 400; color: #eee; }
+.grid .item.wide { grid-column: span 2; }
+
+/* Badges */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge.good { background: rgba(74,222,128,0.15); color: #4ade80; }
+.badge.bad { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.badge.info { background: rgba(108,159,255,0.15); color: #6c9fff; }
+
+/* Teach boxes */
+.teach {
+    background: #1a1a2e; border-left: 3px solid #6c9fff; border-radius: 4px;
+    padding: 10px 14px; margin: 10px 0; font-size: 13px; color: #bbb;
+}
+.teach b { color: #ddd; }
+details.teach-more { margin-top: 6px; }
+details.teach-more summary { cursor: pointer; color: #6c9fff; font-size: 12px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 6px; margin: 18px 0 12px; flex-wrap: wrap; }
+.tab {
+    background: #1a1a2e; border: 1px solid #444; color: #999;
+    padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500;
+}
+.tab:hover { border-color: #6c9fff; color: #fff; }
+.tab.on { background: #6c9fff; border-color: #6c9fff; color: #fff; }
+.tab-panel { display: none; }
+.tab-panel.on { display: block; }
+
+/* Atom tree */
+.atom-tree { font-family: Monaco, Consolas, monospace; font-size: 12.5px; }
+.atom-row { display: flex; gap: 10px; padding: 3px 6px; border-radius: 4px; align-items: baseline; }
+.atom-row:hover { background: #1a1a2e; }
+.atom-row .type { color: #6c9fff; font-weight: 700; min-width: 4.2em; }
+.atom-row .off { color: #888; min-width: 9em; }
+.atom-row .sz { color: #999; min-width: 9em; }
+.atom-row .tag { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #333a54; color: #aaa; }
+
+/* Histogram bars */
+.hist { display: flex; align-items: flex-end; gap: 2px; height: 90px; margin: 10px 0; }
+.hist .bar { flex: 1; background: #6c9fff; border-radius: 2px 2px 0 0; min-height: 2px; }
+.hist .bar.tall { background: #fbbf24; }
+
+/* Progress */
+.progress-wrap { background: #444; border-radius: 4px; height: 10px; overflow: hidden; margin: 8px 0; }
+.progress-wrap .fill { height: 100%; background: #6c9fff; width: 0%; transition: width 0.15s; }
+.progress-label { font-size: 12px; color: #888; }
+
+/* Log console */
+.log-console { background: #12121f; border-radius: 6px; padding: 8px 10px; max-height: 160px; overflow-y: auto; font-family: Monaco, Consolas, monospace; font-size: 11.5px; margin-top: 8px; }
+.log-console .l { padding: 1px 0; }
+.log-console .l.info { color: #6c9fff; }
+.log-console .l.success { color: #4ade80; }
+.log-console .l.warn { color: #fbbf24; }
+.log-console .l.error { color: #ff6b6b; }
+
+/* Command output */
+pre.cmd {
+    background: #12121f; padding: 14px; border-radius: 6px; font-size: 12.5px;
+    overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0 0 10px;
+    font-family: Monaco, Consolas, monospace; color: #c9d6ff;
+}
+
+/* Table */
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th, table.data td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #333; }
+table.data th { color: #888; font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.scroll-x { overflow-x: auto; }
+
+footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
+footer a { color: #6c9fff; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
+
+@media (max-width: 600px) {
+    body { padding: 12px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    .drop-zone { padding: 26px 12px; }
+    .tabs { gap: 4px; }
+    .tab { padding: 7px 10px; font-size: 12px; }
+}
+</style>
+</head>
+<body>
+
+<h1>Encoding Helper</h1>
+<p class="subtitle">A didactic video encoding lab &middot; metadata via <a href="https://mediabunny.dev" target="_blank" rel="noopener">mediabunny</a> &amp; <a href="https://github.com/gpac/mp4box.js" target="_blank" rel="noopener">mp4box.js</a> &middot; <a href="https://github.com/talmolab/vibes" target="_blank" rel="noopener">vibes</a></p>
+
+<div class="error-msg" id="errorMsg"></div>
+
+<div class="drop-zone" id="dropZone">
+    <div class="drop-full">
+        <div><strong>Drop a video file here</strong>, or choose an option below</div>
+        <div class="hint">Inspects MP4/H.264 files entirely in your browser &mdash; nothing is uploaded</div>
+        <div class="load-actions">
+            <button class="btn" id="pickFileBtn" type="button">Choose File</button>
+            <button class="btn sec" id="loadSampleBtn" type="button">Load Sample</button>
+            <button class="btn sec" id="showUrlBtn" type="button">Load from URL</button>
+        </div>
+        <div class="url-row" id="urlRow" style="display:none">
+            <input type="text" id="urlInput" placeholder="https://example.com/video.mp4">
+            <button class="btn sm" id="loadUrlBtn" type="button">Load</button>
+        </div>
+    </div>
+    <div class="drop-mini">
+        <span class="fname" id="miniName"></span>
+        <span class="fsize" id="miniSize"></span>
+        <button class="btn sm sec" id="loadAnotherBtn" type="button">Load Another</button>
+    </div>
+</div>
+<input type="file" id="fileInput" accept="video/*,.mp4,.m4v,.mov" style="display:none">
+
+<div id="app" style="display:none">
+    <div class="tabs">
+        <button class="tab on" data-tab="inspect" type="button">Inspect</button>
+        <button class="tab" data-tab="atoms" type="button">Atom Map</button>
+        <button class="tab" data-tab="seek" type="button">GOP &amp; Seeking</button>
+        <button class="tab" data-tab="encode" type="button">Re-encode &amp; CLI</button>
+    </div>
+
+    <!-- ============================================ -->
+    <!-- Tab: Inspect -->
+    <!-- ============================================ -->
+    <div class="tab-panel on" id="panel-inspect"></div>
+
+    <!-- ============================================ -->
+    <!-- Tab: Atom Map -->
+    <!-- ============================================ -->
+    <div class="tab-panel" id="panel-atoms"></div>
+
+    <!-- ============================================ -->
+    <!-- Tab: GOP & Seeking -->
+    <!-- ============================================ -->
+    <div class="tab-panel" id="panel-seek"></div>
+
+    <!-- ============================================ -->
+    <!-- Tab: Re-encode & CLI -->
+    <!-- ============================================ -->
+    <div class="tab-panel" id="panel-encode"></div>
+</div>
+
+<footer>
+    Part of <a href="https://github.com/talmolab/vibes" target="_blank" rel="noopener">vibes</a> &middot;
+    companion to <a href="https://vibes.tlab.sh/video-info-tool/">Video Info Tool</a> &amp;
+    <a href="https://vibes.tlab.sh/video-player/">Frame-Accurate Video Player</a>
+    <div class="gpl">The &ldquo;exact&rdquo; re-encode engine uses <a href="https://github.com/ffmpegwasm/ffmpeg.wasm" target="_blank" rel="noopener">ffmpeg.wasm</a> (GPL-licensed, lazy-loaded on demand).</div>
+</footer>
+
+<!-- mp4box.js for MP4 box-tree (atom map) and sample-table (GOP/keyframe) parsing -->
+<script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+<script>
+'use strict';
+
+// ============================================
+// Constants
+// ============================================
+const MEDIABUNNY_CDN = 'https://cdn.jsdelivr.net/npm/mediabunny@1.50.8/+esm';
+const FFMPEG_JS_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.15/dist/umd';
+const FFMPEG_JS_CDN = FFMPEG_JS_BASE + '/ffmpeg.js';
+// FFmpeg's own internal worker chunk, pinned to the 0.12.15 build above — it must be
+// fetched as a same-origin blob: URL too, since browsers refuse `new Worker(crossOriginURL)`.
+const FFMPEG_WORKER_CHUNK = FFMPEG_JS_BASE + '/814.ffmpeg.js';
+const FFMPEG_CORE_BASE = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd';
+
+const CRF_MAP = { lossless: 0, high: 18, medium: 25, low: 32 };
+const CONTAINER_BOX_TYPES = new Set(['moov','trak','mdia','minf','stbl','udta','edts','mvex','moof','traf','mfra','dinf','tref','meta','ipro','sinf']);
+
+// ============================================
+// State
+// ============================================
+let mb = null;                 // mediabunny module namespace (dynamic import)
+const state = {
+    source: null,               // ChunkedSource
+    file: null,                 // File object (when available)
+    input: null,                // mediabunny Input
+    videoTrack: null,           // mediabunny InputVideoTrack
+    audioTrack: null,
+    format: null, mimeType: null, duration: null, tags: null, tracks: null,
+    fps: null, frameCount: null,
+    boxes: [],                  // flat top-level box list (with nested .boxes)
+    faststart: null,
+    samples: [],                // decode-order samples: {size, offset, cts, dts, is_sync, duration}
+    timescale: 1,
+    keyframeDecodeIndices: [],
+    gopLengths: [],
+    hasBFrames: false,
+    presentationOrder: [],
+    keyframeTimestampsSec: [],
+    seekResults: null,
+    reencodeResult: null,       // { blob, size } after a successful re-encode
+};
+
+const cli = {
+    quality: 'medium',          // lossless | high | medium | low | custom
+    crf: 25,
+    preset: 'superfast',
+    keyframeInterval: 1.0,
+    noBFrames: true,
+    pad: true,
+    faststart: false,
+    audioMode: 'copy',          // copy | strip
+    fps: null,                  // override, null = source fps
+};
+
+// ============================================
+// Logging / errors
+// ============================================
+function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+function hideError() {
+    document.getElementById('errorMsg').style.display = 'none';
+}
+
+// ============================================
+// Formatting helpers
+// ============================================
+const fmtBytes = b => {
+    if (b == null) return '–';
+    if (b < 1024) return b + ' B';
+    if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+    if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+    return (b / 1073741824).toFixed(2) + ' GB';
+};
+const fmtDur = s => {
+    if (s == null) return '–';
+    if (s < 60) return s.toFixed(3) + ' s';
+    if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60).toFixed(1) + 's';
+    return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm ' + Math.round(s % 60) + 's';
+};
+const fmtBits = bps => {
+    if (bps == null || !isFinite(bps)) return '–';
+    if (bps < 1e3) return Math.round(bps) + ' bps';
+    if (bps < 1e6) return (bps / 1e3).toFixed(0) + ' kbps';
+    return (bps / 1e6).toFixed(2) + ' Mbps';
+};
+const fmtRate = hz => (hz == null ? '–' : (hz % 1 < 0.005 ? Math.round(hz).toString() : hz.toFixed(3)));
+const fmtMs = ms => (ms == null ? '–' : ms.toFixed(1) + ' ms');
+
+// DOM helpers
+const h = (tag, cls, text) => {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+};
+const gridItem = (label, value, opts) => {
+    opts = opts || {};
+    const d = h('div', 'item' + (opts.wide ? ' wide' : ''));
+    d.append(h('label', null, label), h('div', opts.sm ? 'val sm' : 'val', String(value)));
+    return d;
+};
+
+function copyToClipboard(text, btn) {
+    const done = () => {
+        if (btn) {
+            const orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = orig, 1400);
+        }
+    };
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done();
+    });
+}
+
+function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${src}"]`)) return resolve();
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Failed to load script: ' + src));
+        document.head.appendChild(s);
+    });
+}
+
+function extOf(name) {
+    const m = /\.[a-zA-Z0-9]+$/.exec(name || '');
+    return m ? m[0] : '.mp4';
+}
+
+// ============================================
+// I/O layer: unifies File / File System Access handle / remote URL
+// into one readChunk(offset, size) -> ArrayBuffer primitive.
+// ============================================
+class ChunkedSource {
+    constructor() {
+        this.kind = null;      // 'file' | 'url'
+        this.file = null;      // File/Blob (kind === 'file', or url fallback download)
+        this.url = null;
+        this.size = 0;
+        this.name = '';
+        this.supportsRange = false;
+    }
+
+    static fromFile(file) {
+        const s = new ChunkedSource();
+        s.kind = 'file';
+        s.file = file;
+        s.size = file.size;
+        s.name = file.name || 'video';
+        return s;
+    }
+
+    static async fromUrl(url) {
+        const s = new ChunkedSource();
+        s.kind = 'url';
+        s.url = url;
+        s.name = url.split('/').pop().split('?')[0] || 'video';
+        const head = await fetch(url, { method: 'HEAD' });
+        if (!head.ok) throw new Error(`Failed to fetch URL: ${head.status} ${head.statusText}`);
+        s.size = parseInt(head.headers.get('Content-Length'), 10) || 0;
+        s.supportsRange = head.headers.get('Accept-Ranges') === 'bytes' && s.size > 0;
+        if (!s.supportsRange) {
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`Failed to fetch URL: ${resp.status} ${resp.statusText}`);
+            const blob = await resp.blob();
+            s.kind = 'file';
+            s.file = new File([blob], s.name, { type: blob.type || 'video/mp4' });
+            s.size = blob.size;
+        }
+        return s;
+    }
+
+    async readChunk(offset, size) {
+        const end = Math.min(offset + size, this.size);
+        if (end <= offset) return new ArrayBuffer(0);
+        if (this.kind === 'url') {
+            const resp = await fetch(this.url, { headers: { Range: `bytes=${offset}-${end - 1}` } });
+            return await resp.arrayBuffer();
+        }
+        const blob = this.file.slice(offset, end);
+        return await blob.arrayBuffer();
+    }
+}
+
+// ============================================
+// mp4box.js feeding: drip-feed the whole file so mp4box can build
+// both the box tree (for the atom map) and the sample table.
+// mp4box honors the offset it requests via appendBuffer's return
+// value, so it can jump past large mdat payloads it doesn't need
+// to buffer rather than forcing us to read them byte-for-byte.
+// ============================================
+async function parseWithMp4Box(source, onProgress) {
+    const mp4boxFile = MP4Box.createFile();
+    let readyInfo = null;
+    let readyError = null;
+    mp4boxFile.onReady = info => { readyInfo = info; };
+    mp4boxFile.onError = err => { readyError = err; };
+
+    const CHUNK = 2 * 1024 * 1024;
+    let offset = 0;
+    let iterations = 0;
+    const MAX_ITERATIONS = 200000;
+    while (offset < source.size && iterations < MAX_ITERATIONS) {
+        const buf = await source.readChunk(offset, CHUNK);
+        if (buf.byteLength === 0) break;
+        buf.fileStart = offset;
+        const next = mp4boxFile.appendBuffer(buf);
+        offset = (next === undefined || next <= offset) ? offset + buf.byteLength : next;
+        iterations++;
+        if (readyError) throw new Error('mp4box parse error: ' + readyError);
+        if (onProgress) onProgress(Math.min(1, offset / source.size));
+        await new Promise(r => setTimeout(r, 0));
+    }
+    mp4boxFile.flush();
+    if (!readyInfo) throw new Error('mp4box could not parse this file (moov box not found or incomplete)');
+    return { mp4boxFile, info: readyInfo };
+}
+
+// Flatten mp4box's box tree into a simple, serializable structure for rendering.
+function extractBoxTree(mp4boxFile) {
+    const walk = box => ({
+        type: box.type || box.fourcc || '????',
+        start: box.start || 0,
+        size: box.size || 0,
+        hdrSize: box.hdr_size || 0,
+        children: Array.isArray(box.boxes) ? box.boxes.map(walk) : [],
+    });
+    return (mp4boxFile.boxes || []).map(walk);
+}
+
+function findTopLevelBox(tree, type) {
+    return tree.find(b => b.type === type) || null;
+}
+
+function detectFaststart(tree) {
+    const moov = findTopLevelBox(tree, 'moov');
+    const mdat = findTopLevelBox(tree, 'mdat');
+    if (!moov || !mdat) return null;
+    return moov.start < mdat.start;
+}
+
+// Sample table (decode order) + GOP / keyframe / B-frame analysis.
+function extractSampleAnalysis(mp4boxFile, videoTrackId, timescale) {
+    const info = mp4boxFile.getTrackSamplesInfo(videoTrackId);
+    if (!info || info.length === 0) throw new Error('No samples found in video track');
+    const ts = timescale || 1;
+    const samples = info.map(s => ({
+        offset: s.offset, size: s.size,
+        cts: s.cts, dts: s.dts,
+        ctsSec: s.cts / ts, dtsSec: s.dts / ts,
+        is_sync: !!s.is_sync,
+        duration: s.duration,
+    }));
+    const keyframeDecodeIndices = [];
+    samples.forEach((s, i) => { if (s.is_sync) keyframeDecodeIndices.push(i); });
+    const gopLengths = [];
+    for (let i = 0; i < keyframeDecodeIndices.length; i++) {
+        const start = keyframeDecodeIndices[i];
+        const end = i + 1 < keyframeDecodeIndices.length ? keyframeDecodeIndices[i + 1] : samples.length;
+        gopLengths.push(end - start);
+    }
+    const hasBFrames = samples.some(s => s.cts !== s.dts);
+
+    // Presentation order (sorted by CTS) with keyframe timestamps, for nearest-keyframe lookups.
+    const presentationOrder = samples.slice().sort((a, b) => a.ctsSec - b.ctsSec);
+    const keyframeTimestampsSec = presentationOrder.filter(s => s.is_sync).map(s => s.ctsSec);
+
+    return { samples, keyframeDecodeIndices, gopLengths, hasBFrames, presentationOrder, keyframeTimestampsSec };
+}
+
+// Binary search: largest keyframe timestamp <= t (or null if t is before the first keyframe).
+function nearestKeyframeAtOrBefore(keyframeTimestampsSec, t) {
+    let lo = 0, hi = keyframeTimestampsSec.length - 1, ans = null;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (keyframeTimestampsSec[mid] <= t) { ans = keyframeTimestampsSec[mid]; lo = mid + 1; }
+        else hi = mid - 1;
+    }
+    return ans;
+}
+
+// ============================================
+// mediabunny: metadata, packet stats, seeking test, fast re-encode
+// ============================================
+async function ensureMediabunny() {
+    if (mb) return mb;
+    mb = await import(MEDIABUNNY_CDN);
+    return mb;
+}
+
+function codecProfileInfo(codecString) {
+    // avc1.PPCCLL / avc3.PPCCLL -> profile_idc (PP) + level_idc (LL), both hex.
+    const m = /^avc[13]\.([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/.exec(codecString || '');
+    if (!m) return null;
+    const profileIdc = parseInt(m[1], 16);
+    const levelIdc = parseInt(m[3], 16);
+    const PROFILES = { 66: 'Baseline', 77: 'Main', 88: 'Extended', 100: 'High', 110: 'High 10', 122: 'High 4:2:2', 244: 'High 4:4:4 Predictive' };
+    return {
+        profile: PROFILES[profileIdc] || `Profile 0x${m[1]}`,
+        level: (levelIdc / 10).toFixed(1),
+    };
+}
+
+async function loadMediabunnyMetadata(input) {
+    await ensureMediabunny();
+    const [format, mimeType, duration, tracks, tags] = await Promise.all([
+        input.getFormat(), input.getMimeType(), input.computeDuration(),
+        input.getTracks(), input.getMetadataTags(),
+    ]);
+    const videoTrack = tracks.find(t => t.isVideoTrack()) || null;
+    const audioTrack = tracks.find(t => t.isAudioTrack()) || null;
+
+    const result = {
+        format: format.name, mimeType, duration, tags,
+        tracks: [], videoTrack, audioTrack, fps: null,
+    };
+
+    for (const t of tracks) {
+        const [codecString, stats] = await Promise.all([
+            t.getCodecParameterString().catch(() => null),
+            t.computePacketStats().catch(() => null),
+        ]);
+        const d = {
+            kind: t.isVideoTrack() ? 'video' : (t.isAudioTrack() ? 'audio' : 'other'),
+            codec: String(t.codec || 'unknown'), codecString,
+            packetCount: stats ? stats.packetCount : null,
+            packetRate: stats ? stats.averagePacketRate : null,
+            bitrate: stats ? stats.averageBitrate : null,
+        };
+        if (t.isVideoTrack()) {
+            const [color, hdr] = await Promise.all([
+                t.getColorSpace().catch(() => null),
+                t.hasHighDynamicRange().catch(() => false),
+            ]);
+            Object.assign(d, {
+                codedWidth: t.codedWidth, codedHeight: t.codedHeight,
+                displayWidth: t.displayWidth, displayHeight: t.displayHeight,
+                rotation: t.rotation, colorSpace: color, hdr,
+                profile: codecProfileInfo(codecString),
+            });
+            result.fps = d.packetRate;
+        }
+        if (t.isAudioTrack()) {
+            Object.assign(d, { sampleRate: t.sampleRate, channels: t.numberOfChannels });
+        }
+        result.tracks.push(d);
+    }
+    return result;
+}
+
+// ============================================
+// Main load orchestration
+// ============================================
+async function loadSource(kind, payload) {
+    hideError();
+    resetState();
+    setLoadingUi(true, 'Reading file…');
+    try {
+        let source;
+        let fileForMediabunny = null;
+        let urlForMediabunny = null;
+        if (kind === 'file') {
+            source = ChunkedSource.fromFile(payload);
+            fileForMediabunny = payload;
+        } else if (kind === 'url') {
+            source = await ChunkedSource.fromUrl(payload);
+            if (source.kind === 'file') fileForMediabunny = source.file;
+            else urlForMediabunny = payload;
+        } else {
+            throw new Error('Unknown source kind: ' + kind);
+        }
+        state.source = source;
+        state.file = fileForMediabunny;
+        showMiniLoaded(source.name, source.size);
+
+        setLoadingUi(true, 'Parsing MP4 structure (mp4box.js)…');
+        const { mp4boxFile, info } = await parseWithMp4Box(source, p => setLoadingUi(true, `Parsing MP4 structure… ${(p * 100).toFixed(0)}%`));
+        state.boxes = extractBoxTree(mp4boxFile);
+        state.faststart = detectFaststart(state.boxes);
+
+        if (!info.videoTracks || info.videoTracks.length === 0) {
+            throw new Error('No video track found in this file.');
+        }
+        const videoTrackId = info.videoTracks[0].id;
+        state.timescale = info.videoTracks[0].timescale;
+        const analysis = extractSampleAnalysis(mp4boxFile, videoTrackId, state.timescale);
+        Object.assign(state, analysis);
+
+        setLoadingUi(true, 'Reading metadata (mediabunny)…');
+        await ensureMediabunny();
+        const source2 = fileForMediabunny ? new mb.BlobSource(fileForMediabunny) : new mb.UrlSource(urlForMediabunny);
+        const input = new mb.Input({ source: source2, formats: mb.ALL_FORMATS });
+        const meta = await loadMediabunnyMetadata(input);
+        state.input = input;
+        state.videoTrack = meta.videoTrack;
+        state.audioTrack = meta.audioTrack;
+        state.format = meta.format;
+        state.mimeType = meta.mimeType;
+        state.duration = meta.duration;
+        state.tags = meta.tags;
+        state.tracks = meta.tracks;
+        state.fps = meta.fps || estimateFpsFromSamples();
+        state.frameCount = state.samples.length;
+
+        document.getElementById('app').style.display = 'block';
+        renderInspect();
+        renderAtomMap();
+        renderSeekTab();
+        renderEncodeTab();
+        showMiniLoaded(source.name, source.size);
+    } catch (err) {
+        console.error('[encoding-helper] load failed:', err);
+        showError(err.message || String(err));
+        document.getElementById('dropZone').classList.remove('collapsed');
+    }
+}
+
+function estimateFpsFromSamples() {
+    if (!state.samples.length || state.duration == null || state.duration <= 0) return null;
+    return state.samples.length / state.duration;
+}
+
+function resetState() {
+    state.source = null; state.file = null; state.input = null;
+    state.videoTrack = null; state.audioTrack = null;
+    state.format = null; state.mimeType = null; state.duration = null; state.tags = null; state.tracks = null;
+    state.fps = null; state.frameCount = null;
+    state.boxes = []; state.faststart = null;
+    state.samples = []; state.timescale = 1; state.keyframeDecodeIndices = []; state.gopLengths = []; state.hasBFrames = false;
+    state.presentationOrder = []; state.keyframeTimestampsSec = [];
+    state.seekResults = null; state.reencodeResult = null;
+}
+
+function setLoadingUi(loading, text) {
+    const zone = document.getElementById('dropZone');
+    if (loading) {
+        zone.classList.add('collapsed');
+        document.getElementById('miniName').textContent = text || 'Loading…';
+    }
+}
+
+function showMiniLoaded(name, size) {
+    const zone = document.getElementById('dropZone');
+    zone.classList.add('collapsed');
+    document.getElementById('miniName').textContent = name;
+    document.getElementById('miniSize').textContent = size ? `(${fmtBytes(size)})` : '';
+}
+
+// ============================================
+// File loading UI wiring
+// ============================================
+async function pickFile() {
+    if ('showOpenFilePicker' in window) {
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                types: [{ description: 'Video files', accept: { 'video/*': ['.mp4', '.m4v', '.mov'] } }],
+                multiple: false,
+            });
+            return await handle.getFile();
+        } catch (e) {
+            if (e.name === 'AbortError') return null;
+            console.warn('[encoding-helper] File System Access API failed, falling back:', e);
+        }
+    }
+    return new Promise(resolve => {
+        const input = document.getElementById('fileInput');
+        input.onchange = () => resolve(input.files[0] || null);
+        input.click();
+    });
+}
+
+function initFileLoadingUi() {
+    const dropZone = document.getElementById('dropZone');
+    const urlRow = document.getElementById('urlRow');
+
+    document.getElementById('pickFileBtn').addEventListener('click', async () => {
+        const file = await pickFile();
+        if (file) loadSource('file', file);
+    });
+    document.getElementById('loadAnotherBtn').addEventListener('click', async e => {
+        e.stopPropagation();
+        const file = await pickFile();
+        if (file) loadSource('file', file);
+    });
+    document.getElementById('loadSampleBtn').addEventListener('click', async () => {
+        try {
+            setLoadingUi(true, 'Downloading sample…');
+            const resp = await fetch('./mice.mp4');
+            if (!resp.ok) throw new Error('Could not fetch sample video');
+            const blob = await resp.blob();
+            const file = new File([blob], 'mice.mp4', { type: 'video/mp4' });
+            loadSource('file', file);
+        } catch (err) {
+            showError(err.message || String(err));
+        }
+    });
+    document.getElementById('showUrlBtn').addEventListener('click', () => {
+        urlRow.style.display = urlRow.style.display === 'none' ? 'flex' : 'none';
+        if (urlRow.style.display === 'flex') document.getElementById('urlInput').focus();
+    });
+    document.getElementById('loadUrlBtn').addEventListener('click', () => {
+        const url = document.getElementById('urlInput').value.trim();
+        if (url) loadSource('url', url);
+    });
+    document.getElementById('urlInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') document.getElementById('loadUrlBtn').click();
+    });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) loadSource('file', file);
+    });
+}
+
+// ============================================
+// Tab switching
+// ============================================
+function initTabs() {
+    document.querySelectorAll('.tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b === btn));
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('on'));
+            document.getElementById('panel-' + btn.dataset.tab).classList.add('on');
+        });
+    });
+}
+
+// ============================================
+// Tab: Inspect
+// ============================================
+function renderInspect() {
+    const panel = document.getElementById('panel-inspect');
+    panel.innerHTML = '';
+
+    const overview = h('div', 'section');
+    overview.append(h('h2', null, 'Overview'));
+    const fileBitrate = state.duration ? (state.source.size * 8) / state.duration : null;
+    const og = h('div', 'grid');
+    og.append(
+        gridItem('Format', state.format || '–'),
+        gridItem('File Size', fmtBytes(state.source.size)),
+        gridItem('Duration', fmtDur(state.duration)),
+        gridItem('Overall Bitrate', fmtBits(fileBitrate)),
+        gridItem('MIME Type', state.mimeType || '–', { sm: true, wide: true }),
+    );
+    overview.append(og);
+    const fsBadge = h('span', 'badge ' + (state.faststart ? 'good' : 'bad'),
+        state.faststart ? '✓ Faststart (moov before mdat)' : '✗ Not faststart (moov after mdat)');
+    const fsWrap = h('div');
+    fsWrap.style.marginTop = '10px';
+    fsWrap.append(fsBadge);
+    overview.append(fsWrap);
+    overview.append(teachBox(
+        `<b>Faststart</b> means the <code>moov</code> atom (the index describing every sample) sits before ` +
+        `<code>mdat</code> (the actual frame bytes). A browser or CDN can then start playback after downloading ` +
+        `just the first few KB, instead of the whole file. See the <b>Atom Map</b> tab for the byte-level layout.`
+    ));
+    panel.append(overview);
+
+    const vt = state.tracks && state.tracks.find(t => t.kind === 'video');
+    if (vt) {
+        const sec = h('div', 'section');
+        sec.append(h('h2', null, 'Video Track'));
+        const g = h('div', 'grid');
+        g.append(
+            gridItem('Codec', vt.codecString || vt.codec, { sm: true }),
+            gridItem('Resolution', `${vt.codedWidth}×${vt.codedHeight}`),
+        );
+        if (vt.displayWidth !== vt.codedWidth || vt.displayHeight !== vt.codedHeight) {
+            g.append(gridItem('Display Size', `${vt.displayWidth}×${vt.displayHeight}`));
+        }
+        g.append(
+            gridItem('Frame Rate', vt.packetRate != null ? fmtRate(vt.packetRate) + ' fps' : '–'),
+            gridItem('Frames', state.frameCount != null ? state.frameCount.toLocaleString() : '–'),
+            gridItem('Bitrate', fmtBits(vt.bitrate)),
+        );
+        if (vt.rotation) g.append(gridItem('Rotation', vt.rotation + '°'));
+        if (vt.profile) g.append(gridItem('H.264 Profile', `${vt.profile.profile} @ L${vt.profile.level}`));
+        if (vt.colorSpace) g.append(gridItem('Color Space', [vt.colorSpace.primaries, vt.colorSpace.transfer, vt.colorSpace.matrix].filter(Boolean).join(' / ') || '–', { sm: true }));
+        if (vt.hdr) g.append(gridItem('HDR', 'Yes'));
+        sec.append(g);
+
+        const evenW = vt.codedWidth % 2 === 0, evenH = vt.codedHeight % 2 === 0;
+        sec.append(teachBox(
+            `<b>Chroma subsampling (yuv420p)</b> halves the horizontal &amp; vertical resolution of the color ` +
+            `channels while keeping full-resolution luma &mdash; the human eye is far less sensitive to color detail ` +
+            `than brightness, so this cuts data ~2&times; with minimal visible loss. It requires <b>even</b> width ` +
+            `and height so every 2&times;2 luma block maps to one chroma sample. This file is ` +
+            `${evenW && evenH ? '<b>already even</b> in both dimensions.' : `<b>odd</b> in ${!evenW ? 'width' : ''}${!evenW && !evenH ? ' and ' : ''}${!evenH ? 'height' : ''} (${vt.codedWidth}×${vt.codedHeight}) — an encoder must pad or crop before it can write yuv420p.`}`
+        ));
+        panel.append(sec);
+    }
+
+    const at = state.tracks && state.tracks.find(t => t.kind === 'audio');
+    if (at) {
+        const sec = h('div', 'section');
+        sec.append(h('h2', null, 'Audio Track'));
+        const g = h('div', 'grid');
+        g.append(
+            gridItem('Codec', at.codecString || at.codec, { sm: true }),
+            gridItem('Sample Rate', at.sampleRate ? at.sampleRate.toLocaleString() + ' Hz' : '–'),
+            gridItem('Channels', at.channels != null ? at.channels : '–'),
+            gridItem('Bitrate', fmtBits(at.bitrate)),
+        );
+        sec.append(g);
+        panel.append(sec);
+    }
+
+    const flatTags = {};
+    if (state.tags) {
+        for (const [k, v] of Object.entries(state.tags)) {
+            if (k === 'raw' && v && typeof v === 'object') {
+                Object.assign(flatTags, v);
+            } else if (v != null && v !== '' && typeof v !== 'object') {
+                flatTags[k] = v;
+            }
+        }
+    }
+    if (Object.keys(flatTags).length) {
+        const sec = h('div', 'section');
+        sec.append(h('h2', null, 'Metadata Tags'));
+        const g = h('div', 'grid');
+        for (const [k, v] of Object.entries(flatTags)) {
+            g.append(gridItem(k, v, { sm: true }));
+        }
+        sec.append(g);
+        panel.append(sec);
+    }
+}
+
+function teachBox(html) {
+    const d = h('div', 'teach');
+    d.innerHTML = html;
+    return d;
+}
+
+// ============================================
+// Tab: Atom Map
+// ============================================
+function renderAtomMap() {
+    const panel = document.getElementById('panel-atoms');
+    panel.innerHTML = '';
+
+    const sec = h('div', 'section');
+    sec.append(h('h2', null, 'MP4 Box / Atom Structure'));
+    sec.append(teachBox(
+        `An MP4 file is a tree of <b>boxes</b> (also called &ldquo;atoms&rdquo;): <code>ftyp</code> declares the ` +
+        `brand/compatibility, <code>moov</code> holds all metadata &amp; the sample index (offsets, sizes, ` +
+        `timestamps, keyframe flags), and <code>mdat</code> holds the raw encoded frame bytes it points to. ` +
+        `Fragmented MP4s repeat <code>moof</code>+<code>mdat</code> pairs instead of one big <code>mdat</code>.`
+    ));
+
+    const tree = h('div', 'atom-tree');
+    const renderNode = (box, depth) => {
+        const row = h('div', 'atom-row');
+        row.style.paddingLeft = (depth * 18) + 'px';
+        row.append(h('span', 'type', box.type));
+        row.append(h('span', 'off', 'offset ' + box.start.toLocaleString()));
+        row.append(h('span', 'sz', fmtBytes(box.size) + ' (' + box.size.toLocaleString() + ' B)'));
+        if (box.type === 'moov') row.append(h('span', 'tag', 'index'));
+        if (box.type === 'mdat') row.append(h('span', 'tag', 'sample data'));
+        if (box.type === 'ftyp') row.append(h('span', 'tag', 'brand'));
+        tree.append(row);
+        box.children.forEach(c => renderNode(c, depth + 1));
+    };
+    state.boxes.forEach(b => renderNode(b, 0));
+    const treeScroll = h('div', 'scroll-x');
+    treeScroll.append(tree);
+    sec.append(treeScroll);
+    panel.append(sec);
+}
+
+// ============================================
+// Tab: GOP & Seeking
+// ============================================
+function renderSeekTab() {
+    const panel = document.getElementById('panel-seek');
+    panel.innerHTML = '';
+
+    const gop = state.gopLengths;
+    const avgGop = gop.length ? gop.reduce((a, b) => a + b, 0) / gop.length : 0;
+    const minGop = gop.length ? Math.min(...gop) : 0;
+    const maxGop = gop.length ? Math.max(...gop) : 0;
+    const fps = state.fps || 30;
+
+    const sec = h('div', 'section');
+    sec.append(h('h2', null, 'GOP / Keyframe Structure'));
+    const g = h('div', 'grid');
+    g.append(
+        gridItem('Total Frames', state.samples.length.toLocaleString()),
+        gridItem('Keyframes', state.keyframeDecodeIndices.length.toLocaleString()),
+        gridItem('Avg GOP', avgGop.toFixed(1) + ' frames (' + (avgGop / fps).toFixed(2) + ' s)'),
+        gridItem('Min / Max GOP', `${minGop} / ${maxGop} frames`),
+    );
+    sec.append(g);
+    const bBadge = h('span', 'badge ' + (state.hasBFrames ? 'info' : 'good'),
+        state.hasBFrames ? 'Uses B-frames (cts ≠ dts)' : 'No B-frames (IPPP…)');
+    const bWrap = h('div'); bWrap.style.margin = '10px 0'; bWrap.append(bBadge);
+    sec.append(bWrap);
+
+    if (gop.length > 1) {
+        const hist = h('div', 'hist');
+        const maxLen = Math.max(...gop);
+        gop.forEach(len => {
+            const bar = h('div', 'bar' + (len > avgGop * 1.5 ? ' tall' : ''));
+            bar.style.height = Math.max(2, (len / maxLen) * 90) + 'px';
+            bar.title = len + ' frames';
+            hist.append(bar);
+        });
+        sec.append(hist);
+        sec.append(h('div', 'progress-label', 'GOP length per keyframe interval (hover a bar for its frame count)'));
+    }
+
+    sec.append(teachBox(
+        `The <b>GOP (Group of Pictures)</b> is the span between keyframes (I-frames that decode with no ` +
+        `reference to other frames). Shorter GOPs → more, larger keyframes → faster seeking &amp; scrubbing but ` +
+        `worse compression. <b>I-frames</b> are self-contained; <b>P-frames</b> reference earlier frames; ` +
+        `<b>B-frames</b> reference both earlier <i>and later</i> frames (better compression, but decode order ` +
+        `≠ presentation order, which complicates random access). sleap-io's <code>reencode</code> baseline forces ` +
+        `a <b>fixed GOP</b> (<code>-g</code> + <code>-keyint_min</code> + <code>-sc_threshold 0</code>) and ` +
+        `<b>disables B-frames</b> (<code>-bf 0</code>) specifically to make random-access seeking fast and predictable ` +
+        `for pose-estimation pipelines that jump around a video rather than playing it linearly.`
+    ));
+    panel.append(sec);
+
+    const seekSec = h('div', 'section');
+    seekSec.append(h('h2', null, 'Empirical Seeking Test'));
+    seekSec.append(h('div', null, 'Samples N evenly-spaced timestamps across the video and measures how far back the nearest keyframe is, plus how long it takes to decode that frame.'));
+    const controls = h('div', 'row');
+    controls.style.marginTop = '10px';
+    const nField = h('div', 'field');
+    nField.append(h('label', 'field-label', 'Sample Count'));
+    const nInput = h('input'); nInput.type = 'number'; nInput.min = '5'; nInput.max = '200'; nInput.value = '20'; nInput.id = 'seekN';
+    nField.append(nInput);
+    controls.append(nField);
+    seekSec.append(controls);
+    const runBtn = h('button', 'btn', 'Run Seeking Test');
+    runBtn.type = 'button';
+    runBtn.id = 'runSeekBtn';
+    seekSec.append(runBtn);
+    const seekProgress = h('div', 'progress-wrap'); seekProgress.style.display = 'none'; seekProgress.id = 'seekProgress';
+    seekProgress.append(h('div', 'fill'));
+    seekSec.append(seekProgress);
+    const seekResultsWrap = h('div'); seekResultsWrap.id = 'seekResultsWrap';
+    seekSec.append(seekResultsWrap);
+    panel.append(seekSec);
+
+    runBtn.addEventListener('click', () => runSeekingTest(parseInt(nInput.value, 10) || 20));
+}
+
+async function runSeekingTest(n) {
+    const btn = document.getElementById('runSeekBtn');
+    const progress = document.getElementById('seekProgress');
+    const resultsWrap = document.getElementById('seekResultsWrap');
+    btn.disabled = true;
+    progress.style.display = 'block';
+    progress.querySelector('.fill').style.width = '0%';
+    resultsWrap.innerHTML = '';
+    try {
+        await ensureMediabunny();
+        const sink = new mb.CanvasSink(state.videoTrack, { poolSize: 2 });
+        const duration = state.duration;
+        const results = [];
+        for (let i = 0; i < n; i++) {
+            const t = (duration * (i + 0.5)) / n;
+            const kf = nearestKeyframeAtOrBefore(state.keyframeTimestampsSec, t);
+            const dist = kf != null ? t - kf : null;
+            const start = performance.now();
+            await sink.getCanvas(t);
+            const decodeMs = performance.now() - start;
+            results.push({ t, kf, dist, distFrames: dist != null ? Math.round(dist * (state.fps || 30)) : null, decodeMs });
+            progress.querySelector('.fill').style.width = (((i + 1) / n) * 100) + '%';
+        }
+        state.seekResults = results;
+        renderSeekResults(results);
+    } catch (err) {
+        console.error('[encoding-helper] seeking test failed:', err);
+        showError('Seeking test failed: ' + (err.message || err));
+    } finally {
+        btn.disabled = false;
+        progress.style.display = 'none';
+    }
+}
+
+function renderSeekResults(results) {
+    const wrap = document.getElementById('seekResultsWrap');
+    wrap.innerHTML = '';
+    const avgDist = results.reduce((a, r) => a + (r.dist || 0), 0) / results.length;
+    const avgDecode = results.reduce((a, r) => a + r.decodeMs, 0) / results.length;
+    const maxDecode = Math.max(...results.map(r => r.decodeMs));
+    const g = h('div', 'grid');
+    g.append(
+        gridItem('Avg Keyframe Distance', avgDist.toFixed(3) + ' s'),
+        gridItem('Avg Decode Time', fmtMs(avgDecode)),
+        gridItem('Max Decode Time', fmtMs(maxDecode)),
+    );
+    wrap.append(g);
+
+    const scroll = h('div', 'scroll-x');
+    const table = h('table', 'data');
+    const thead = h('thead');
+    const headRow = h('tr');
+    ['Timestamp', 'Nearest Keyframe ≤ t', 'Distance', 'Distance (frames)', 'Decode Time'].forEach(t => headRow.append(h('th', null, t)));
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = h('tbody');
+    results.forEach(r => {
+        const tr = h('tr');
+        tr.append(
+            h('td', null, r.t.toFixed(3) + 's'),
+            h('td', null, r.kf != null ? r.kf.toFixed(3) + 's' : '—'),
+            h('td', null, r.dist != null ? r.dist.toFixed(3) + 's' : '—'),
+            h('td', null, r.distFrames != null ? String(r.distFrames) : '—'),
+            h('td', null, fmtMs(r.decodeMs)),
+        );
+        tbody.append(tr);
+    });
+    table.append(tbody);
+    scroll.append(table);
+    wrap.append(scroll);
+}
+
+// ============================================
+// CLI command builder — single source of truth, shared by the
+// displayed command AND the args fed to ffmpeg.wasm.
+// ============================================
+function computeGop(cliState, fps) {
+    if (cliState.gopOverride != null && cliState.gopOverride > 0) return cliState.gopOverride;
+    return Math.max(1, Math.round(cliState.keyframeInterval * fps));
+}
+
+function buildFfmpegArgs(cliState, info, inName, outName) {
+    const fps = cliState.fps || info.fps || 30;
+    const gop = computeGop(cliState, fps);
+    const crf = cliState.quality === 'custom' ? cliState.crf : CRF_MAP[cliState.quality];
+    const args = ['-y', '-i', inName || 'in.mp4', '-c:v', 'libx264', '-crf', String(crf), '-preset', cliState.preset,
+        '-g', String(gop), '-keyint_min', String(gop), '-sc_threshold', '0'];
+    if (cliState.noBFrames) args.push('-bf', '0');
+    args.push('-pix_fmt', 'yuv420p');
+    if (cliState.pad) args.push('-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2');
+    if (cliState.faststart) args.push('-movflags', '+faststart');
+    if (cliState.fps) args.push('-r', String(cliState.fps));
+    if (cliState.audioMode === 'copy') args.push('-c:a', 'copy');
+    else if (cliState.audioMode === 'strip') args.push('-an');
+    args.push(outName || 'out.reencoded.mp4');
+    return args;
+}
+
+function formatCliCommand(args) {
+    const quote = a => (/[\s"']/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a);
+    const lines = [];
+    let line = 'ffmpeg';
+    for (let i = 0; i < args.length; i++) {
+        const tok = quote(args[i]);
+        if (['-i', '-c:v', '-vf', '-c:a', '-movflags'].includes(args[i]) || i === args.length - 1) {
+            line += ' ' + tok;
+            lines.push(line + (i === args.length - 1 ? '' : ' \\'));
+            line = ' ';
+        } else {
+            line += ' ' + tok;
+        }
+    }
+    if (line.trim()) lines.push(line);
+    return lines.join('\n');
+}
+
+// ============================================
+// Tab: Re-encode & CLI
+// ============================================
+function renderEncodeTab() {
+    const panel = document.getElementById('panel-encode');
+    panel.innerHTML = '';
+
+    const vt = state.tracks.find(t => t.kind === 'video');
+    const info = { fps: state.fps, width: vt.codedWidth, height: vt.codedHeight };
+
+    const builderSec = h('div', 'section');
+    builderSec.append(h('h2', null, 'CLI Command Builder'));
+    builderSec.append(teachBox(
+        `This mirrors <a href="https://github.com/talmolab/sleap-io" target="_blank" rel="noopener">sleap-io</a>'s ` +
+        `<code>reencode</code> baseline &mdash; the shared transcoding target for the BBQS consortium's pose ` +
+        `pipelines. Every knob below edits the command live; copy it to run locally, headless, or in batch.`
+    ));
+
+    const form = h('div');
+    form.append(fieldSelect('cliQuality', 'Quality', [
+        ['lossless', 'Lossless (CRF 0)'], ['high', 'High (CRF 18)'], ['medium', 'Medium (CRF 25) — default'],
+        ['low', 'Low (CRF 32)'], ['custom', 'Custom CRF'],
+    ], cli.quality));
+    const crfField = fieldNumber('cliCrf', 'Custom CRF (0=lossless, 51=worst)', cli.crf, 0, 51, 1);
+    crfField.style.display = cli.quality === 'custom' ? '' : 'none';
+    form.append(crfField);
+
+    const row1 = h('div', 'row');
+    row1.append(fieldSelect('cliPreset', 'x264 Preset', [
+        'ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow',
+    ].map(p => [p, p + (p === 'superfast' ? ' — default (sleap-io)' : '')]), cli.preset));
+    row1.append(fieldNumber('cliKeyframeInterval', 'Keyframe Interval (s)', cli.keyframeInterval, 0.1, 10, 0.1));
+    form.append(row1);
+    const gopHint = h('div', 'field hint', `GOP size = round(interval × fps) = round(${cli.keyframeInterval} × ${(info.fps || 30).toFixed(2)}) = ${computeGop(cli, info.fps || 30)} frames`);
+    gopHint.id = 'gopHint';
+    form.append(gopHint);
+
+    const row2 = h('div', 'row');
+    const bfField = h('div', 'field');
+    const bfLabel = h('label'); const bfCheck = h('input'); bfCheck.type = 'checkbox'; bfCheck.id = 'cliNoBFrames'; bfCheck.checked = cli.noBFrames;
+    bfLabel.append(bfCheck, document.createTextNode(' Disable B-frames (-bf 0, recommended for seekability)'));
+    bfField.append(bfLabel);
+    row2.append(bfField);
+    const padField = h('div', 'field');
+    const padLabel = h('label'); const padCheck = h('input'); padCheck.type = 'checkbox'; padCheck.id = 'cliPad'; padCheck.checked = cli.pad;
+    padLabel.append(padCheck, document.createTextNode(' Pad to even dimensions'));
+    padField.append(padLabel);
+    row2.append(padField);
+    const fsField = h('div', 'field');
+    const fsLabel = h('label'); const fsCheck = h('input'); fsCheck.type = 'checkbox'; fsCheck.id = 'cliFaststart'; fsCheck.checked = cli.faststart;
+    fsLabel.append(fsCheck, document.createTextNode(' Faststart (+movflags)'));
+    fsField.append(fsLabel);
+    row2.append(fsField);
+    form.append(row2);
+
+    const row3 = h('div', 'row');
+    row3.append(fieldSelect('cliAudio', 'Audio', [['copy', 'Copy (default)'], ['strip', 'Strip (-an)']], cli.audioMode));
+    row3.append(fieldNumber('cliFps', 'FPS override (blank = source)', cli.fps || '', 1, 240, 1));
+    form.append(row3);
+    builderSec.append(form);
+
+    const cmdPre = h('pre', 'cmd');
+    cmdPre.id = 'cmdPre';
+    builderSec.append(cmdPre);
+    const copyBtn = h('button', 'btn sm', 'Copy Command');
+    copyBtn.type = 'button';
+    copyBtn.addEventListener('click', () => copyToClipboard(cmdPre.textContent, copyBtn));
+    builderSec.append(copyBtn);
+    panel.append(builderSec);
+
+    function refreshCommand() {
+        const args = buildFfmpegArgs(cli, info);
+        cmdPre.textContent = formatCliCommand(args);
+        const hint = document.getElementById('gopHint');
+        if (hint) hint.textContent = `GOP size = round(interval × fps) = round(${cli.keyframeInterval} × ${(cli.fps || info.fps || 30).toFixed(2)}) = ${computeGop(cli, cli.fps || info.fps || 30)} frames`;
+    }
+
+    const bindNumber = (id, key, isFloat) => document.getElementById(id).addEventListener('input', e => {
+        const v = e.target.value;
+        cli[key] = v === '' ? null : (isFloat ? parseFloat(v) : parseInt(v, 10));
+        refreshCommand();
+    });
+    document.getElementById('cliQuality').addEventListener('change', e => {
+        cli.quality = e.target.value;
+        crfField.style.display = cli.quality === 'custom' ? '' : 'none';
+        refreshCommand();
+    });
+    bindNumber('cliCrf', 'crf', false);
+    document.getElementById('cliPreset').addEventListener('change', e => { cli.preset = e.target.value; refreshCommand(); });
+    bindNumber('cliKeyframeInterval', 'keyframeInterval', true);
+    document.getElementById('cliNoBFrames').addEventListener('change', e => { cli.noBFrames = e.target.checked; refreshCommand(); });
+    document.getElementById('cliPad').addEventListener('change', e => { cli.pad = e.target.checked; refreshCommand(); });
+    document.getElementById('cliFaststart').addEventListener('change', e => { cli.faststart = e.target.checked; refreshCommand(); });
+    document.getElementById('cliAudio').addEventListener('change', e => { cli.audioMode = e.target.value; refreshCommand(); });
+    bindNumber('cliFps', 'fps', false);
+    refreshCommand();
+
+    // ---- In-browser engines ----
+    const engineSec = h('div', 'section');
+    engineSec.append(h('h2', null, 'Re-encode In-Browser'));
+
+    const fastBox = engineBox('fast', 'Fast (WebCodecs / mediabunny)',
+        'Hardware-accelerated. No CRF control &mdash; WebCodecs only exposes target bitrate / quality presets, so this is an approximation, not a byte-match of the CLI command.');
+    engineSec.append(fastBox.el);
+    const exactBox = engineBox('exact', 'Exact (ffmpeg.wasm)',
+        'Runs the literal command above. Lazy-loads ~30 MB on first use and runs single-threaded (no COOP/COEP needed on static hosting), so it is slower than realtime but byte-for-byte matches the CLI.');
+    engineSec.append(exactBox.el);
+    panel.append(engineSec);
+
+    fastBox.button.addEventListener('click', () => runFastEncode(info, fastBox));
+    exactBox.button.addEventListener('click', () => runExactEncode(info, exactBox));
+
+    ensureMediabunny().then(async () => {
+        try {
+            const ok = await mb.canEncodeVideo('avc');
+            if (!ok) {
+                fastBox.button.disabled = true;
+                fastBox.note.textContent = 'This browser cannot hardware-encode H.264 via WebCodecs. Use the Exact (ffmpeg.wasm) engine or the CLI command instead.';
+            }
+        } catch { /* leave enabled; the click handler will surface any error */ }
+    });
+}
+
+function fieldSelect(id, label, options, value) {
+    const f = h('div', 'field');
+    f.append(h('label', 'field-label', label));
+    const sel = h('select'); sel.id = id;
+    options.forEach(opt => {
+        const [v, text] = Array.isArray(opt) ? opt : [opt, opt];
+        const o = h('option', null, text); o.value = v;
+        if (v === value) o.selected = true;
+        sel.append(o);
+    });
+    f.append(sel);
+    return f;
+}
+
+function fieldNumber(id, label, value, min, max, step) {
+    const f = h('div', 'field');
+    f.append(h('label', 'field-label', label));
+    const inp = h('input'); inp.type = 'number'; inp.id = id;
+    inp.value = value; inp.min = min; inp.max = max; inp.step = step;
+    f.append(inp);
+    return f;
+}
+
+function engineBox(kind, title, desc) {
+    const el = h('div');
+    el.style.marginBottom = '18px';
+    el.append(h('h3', null, title));
+    el.append(h('div', 'teach', desc));
+    const button = h('button', 'btn', kind === 'fast' ? 'Encode (fast)' : 'Encode (exact)');
+    button.type = 'button';
+    button.style.marginTop = '8px';
+    el.append(button);
+    const progress = h('div', 'progress-wrap'); progress.style.display = 'none';
+    progress.append(h('div', 'fill'));
+    el.append(progress);
+    const note = h('div', 'progress-label'); note.style.marginTop = '4px';
+    el.append(note);
+    const log = h('div', 'log-console'); log.style.display = 'none';
+    el.append(log);
+    const result = h('div'); result.style.marginTop = '8px';
+    el.append(result);
+    return { el, button, progress, note, log, result };
+}
+
+function logLine(container, msg, level) {
+    container.style.display = 'block';
+    const line = h('div', 'l ' + (level || 'info'), msg);
+    container.append(line);
+    container.scrollTop = container.scrollHeight;
+    while (container.children.length > 200) container.removeChild(container.firstChild);
+}
+
+// ============================================
+// Save-to-disk helper (File System Access API with download fallback)
+// ============================================
+async function pickSaveTarget(suggestedName) {
+    if ('showSaveFilePicker' in window) {
+        try {
+            const handle = await window.showSaveFilePicker({
+                suggestedName,
+                types: [{ description: 'MP4 video', accept: { 'video/mp4': ['.mp4'] } }],
+            });
+            const writable = await handle.createWritable();
+            return { kind: 'stream', handle, writable };
+        } catch (e) {
+            if (e.name === 'AbortError') return null;
+            console.warn('[encoding-helper] showSaveFilePicker failed, falling back to download:', e);
+        }
+    }
+    return { kind: 'buffer' };
+}
+
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function showReencodeResult(box, outSize) {
+    const origSize = state.source.size;
+    const pct = (1 - outSize / origSize) * 100;
+    box.result.innerHTML = '';
+    const g = h('div', 'grid');
+    g.append(
+        gridItem('Original Size', fmtBytes(origSize)),
+        gridItem('Encoded Size', fmtBytes(outSize)),
+        gridItem('Change', (pct >= 0 ? '-' : '+') + Math.abs(pct).toFixed(1) + '%'),
+    );
+    box.result.append(g);
+    box.note.textContent = 'Done.';
+}
+
+// ============================================
+// Fast engine: mediabunny / WebCodecs (approximate, no CRF)
+// ============================================
+function buildMediabunnyOptions(cliState, info) {
+    const bitrateKey = { lossless: 'QUALITY_VERY_HIGH', high: 'QUALITY_HIGH', medium: 'QUALITY_MEDIUM', low: 'QUALITY_LOW' }[cliState.quality] || 'QUALITY_MEDIUM';
+    const video = { codec: 'avc', bitrate: mb[bitrateKey] };
+    if (cliState.pad) {
+        const w = Math.ceil(info.width / 2) * 2, hgt = Math.ceil(info.height / 2) * 2;
+        if (w !== info.width || hgt !== info.height) { video.width = w; video.height = hgt; video.fit = 'contain'; }
+    }
+    if (cliState.fps) video.frameRate = cliState.fps;
+    const audio = cliState.audioMode === 'strip' ? { discard: true } : undefined;
+    return { video, audio };
+}
+
+async function runFastEncode(info, box) {
+    box.button.disabled = true;
+    box.progress.style.display = 'block';
+    box.progress.querySelector('.fill').style.width = '0%';
+    box.note.textContent = 'Preparing…';
+    box.result.innerHTML = '';
+    try {
+        await ensureMediabunny();
+        const opts = buildMediabunnyOptions(cli, info);
+        const baseName = (state.source.name || 'video').replace(/\.[^.]+$/, '');
+        const target = await pickSaveTarget(baseName + '.fast.mp4');
+        if (!target) { return; }
+        const outputTarget = target.kind === 'stream'
+            ? new mb.StreamTarget(target.writable, { chunked: true })
+            : new mb.BufferTarget();
+        const output = new mb.Output({ format: new mb.Mp4OutputFormat(), target: outputTarget });
+        const conversion = await mb.Conversion.init({ input: state.input, output, video: opts.video, audio: opts.audio });
+        if (!conversion.isValid) {
+            const reasons = (conversion.discardedTracks || []).map(d => `${d.track.type}: ${d.reason}`).join('; ');
+            throw new Error('Conversion not possible: ' + (reasons || 'no compatible tracks'));
+        }
+        conversion.onProgress = ratio => {
+            box.progress.querySelector('.fill').style.width = (ratio * 100).toFixed(0) + '%';
+            box.note.textContent = `Encoding… ${(ratio * 100).toFixed(0)}%`;
+        };
+        await conversion.execute();
+        let outSize;
+        if (target.kind === 'stream') {
+            outSize = (await target.handle.getFile()).size;
+        } else {
+            const blob = new Blob([output.target.buffer], { type: 'video/mp4' });
+            outSize = blob.size;
+            downloadBlob(blob, baseName + '.fast.mp4');
+        }
+        showReencodeResult(box, outSize);
+    } catch (err) {
+        console.error('[encoding-helper] fast encode failed:', err);
+        box.note.textContent = 'Failed: ' + (err.message || err);
+    } finally {
+        box.button.disabled = false;
+        box.progress.style.display = 'none';
+    }
+}
+
+// ============================================
+// Exact engine: ffmpeg.wasm (lazy-loaded, single-thread core)
+// ============================================
+let ffmpegInstance = null;
+let ffmpegLogCallback = null;
+let ffmpegProgressCallback = null;
+
+// @ffmpeg/util's UMD build calls bare require()/exports internally and throws
+// when loaded via a plain <script> tag, so the one helper it would have
+// provided is reimplemented locally instead of depending on that package.
+async function fetchFileLocal(input) {
+    if (typeof input === 'string' || input instanceof URL) {
+        const resp = await fetch(input);
+        return new Uint8Array(await resp.arrayBuffer());
+    }
+    return new Uint8Array(await input.arrayBuffer());
+}
+
+// FFmpeg's own worker chunk expects a classic (importScripts-capable) worker, matching
+// how it's normally used once bundled into an app's own same-origin build output. Loaded
+// straight from a CDN into a foreign page origin, though, `new Worker()` refuses a
+// cross-origin script unless we hand it a same-origin blob: URL via `classWorkerURL` —
+// but doing so forces the worker into MODULE mode, where `importScripts` exists (so the
+// worker's own `typeof importScripts` checks pass) yet throws the instant it's called.
+// That sends the worker down its bundler-only fallback path, which is an unfinished
+// webpack stub that unconditionally throws "Cannot find module". Since we already fetch
+// the worker source to blob it, we patch in a working synchronous-XHR-based
+// `importScripts` polyfill first, so the worker's original (otherwise unmodified) load
+// logic runs exactly as it would in a classic worker.
+async function buildFfmpegClassWorkerUrl() {
+    const workerSrc = await (await fetch(FFMPEG_WORKER_CHUNK)).text();
+    const polyfill = "self.importScripts = (...urls) => { for (const u of urls) { " +
+        "const x = new XMLHttpRequest(); x.open('GET', u, false); x.send(); " +
+        "if (x.status && x.status >= 400) throw new Error('importScripts polyfill: failed to fetch ' + u); " +
+        "(0, eval)(x.responseText); } };\n";
+    return URL.createObjectURL(new Blob([polyfill + workerSrc], { type: 'text/javascript' }));
+}
+
+async function ensureFfmpegLoaded() {
+    if (ffmpegInstance) return ffmpegInstance;
+    await loadScriptOnce(FFMPEG_JS_CDN);
+    const { FFmpeg } = window.FFmpegWASM;
+    const ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => { if (ffmpegLogCallback) ffmpegLogCallback(message); });
+    ffmpeg.on('progress', ({ progress }) => { if (ffmpegProgressCallback) ffmpegProgressCallback(progress); });
+    if (ffmpegLogCallback) ffmpegLogCallback('Downloading ffmpeg-core (~30 MB, first use only)…');
+    const classWorkerURL = await buildFfmpegClassWorkerUrl();
+    await ffmpeg.load({
+        coreURL: `${FFMPEG_CORE_BASE}/ffmpeg-core.js`,
+        wasmURL: `${FFMPEG_CORE_BASE}/ffmpeg-core.wasm`,
+        classWorkerURL,
+    });
+    ffmpegInstance = ffmpeg;
+    return ffmpeg;
+}
+
+async function runExactEncode(info, box) {
+    box.button.disabled = true;
+    box.progress.style.display = 'block';
+    box.progress.querySelector('.fill').style.width = '0%';
+    box.note.textContent = 'Loading ffmpeg.wasm…';
+    box.result.innerHTML = '';
+    box.log.innerHTML = '';
+    ffmpegLogCallback = msg => logLine(box.log, msg, 'info');
+    ffmpegProgressCallback = ratio => {
+        const pct = Math.min(1, Math.max(0, ratio)) * 100;
+        box.progress.querySelector('.fill').style.width = pct.toFixed(0) + '%';
+        box.note.textContent = `Encoding… ${pct.toFixed(0)}%`;
+    };
+    try {
+        const ffmpeg = await ensureFfmpegLoaded();
+        const inputName = 'in' + extOf(state.source.name);
+        const outputName = 'out.reencoded.mp4';
+        box.note.textContent = 'Writing input to virtual filesystem…';
+        const inputData = state.file ? await fetchFileLocal(state.file) : await fetchFileLocal(state.source.url);
+        await ffmpeg.writeFile(inputName, inputData);
+        const args = buildFfmpegArgs(cli, info, inputName, outputName);
+        logLine(box.log, '$ ffmpeg ' + args.join(' '), 'success');
+        box.note.textContent = 'Encoding (single-threaded — this can take a while)…';
+        await ffmpeg.exec(args);
+        const data = await ffmpeg.readFile(outputName);
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const baseName = (state.source.name || 'video').replace(/\.[^.]+$/, '');
+        const target = await pickSaveTarget(baseName + '.exact.mp4');
+        if (target && target.kind === 'stream') {
+            await target.writable.write(blob);
+            await target.writable.close();
+        } else {
+            downloadBlob(blob, baseName + '.exact.mp4');
+        }
+        showReencodeResult(box, blob.size);
+    } catch (err) {
+        console.error('[encoding-helper] exact encode failed:', err);
+        box.note.textContent = 'Failed: ' + (err.message || err);
+        logLine(box.log, String(err.message || err), 'error');
+    } finally {
+        box.button.disabled = false;
+        box.progress.style.display = 'none';
+    }
+}
+
+// ============================================
+// Init
+// ============================================
+initFileLoadingUi();
+initTabs();
+ensureMediabunny().catch(err => console.warn('[encoding-helper] mediabunny preload failed:', err));
+</script>
+</body>
+</html>

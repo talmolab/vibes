@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salk Email Signature Generator</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #fafafa;
+            color: #222;
+        }
+        h1 { margin-bottom: 0.25rem; }
+        .description { color: #666; margin-top: 0; }
+        a { color: #0a6cbd; }
+        .layout { display: flex; gap: 20px; align-items: flex-start; }
+        .col-form { flex: 1 1 420px; min-width: 0; }
+        .col-preview { flex: 1 1 380px; min-width: 0; position: sticky; top: 20px; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 0 0 20px 0;
+        }
+        .card h2 { font-size: 16px; margin: 0 0 4px; }
+        .card .sub { font-size: 13px; color: #888; margin: 0 0 14px; }
+
+        /* line builder */
+        .line-row {
+            display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+            padding: 8px; border: 1px solid #e3e8ee; border-radius: 8px;
+            background: #fff; margin-bottom: 8px;
+        }
+        .line-row.dragging { opacity: .45; }
+        .line-row.drop-target { border-color: #0a6cbd; box-shadow: 0 0 0 2px rgba(10,108,189,.15); }
+        .grip { cursor: grab; color: #c2c8d0; font-size: 18px; user-select: none; padding: 0 2px; line-height: 1; }
+        .grip:active { cursor: grabbing; }
+        .line-type {
+            flex: 0 0 130px; padding: 8px; border: 2px solid #ddd;
+            border-radius: 6px; font-size: 14px; background: #fff;
+        }
+        .line-fields { flex: 1 1 150px; display: flex; gap: 6px; min-width: 0; }
+        .line-fields input {
+            width: 100%; padding: 9px; border: 2px solid #ddd;
+            border-radius: 6px; font-size: 16px; min-width: 0;
+        }
+        .line-fields input:focus, .line-type:focus { outline: none; border-color: #0a6cbd; }
+        .line-fields input.ext { flex: 0 0 78px; }
+        .line-actions { display: flex; gap: 2px; flex: 0 0 auto; }
+        .icon-btn {
+            background: #eef2f6; color: #555; border: none; width: 30px; height: 32px;
+            border-radius: 6px; font-size: 14px; cursor: pointer; padding: 0;
+        }
+        .icon-btn:hover { background: #dde7f0; }
+        .icon-btn.del:hover { background: #fde2e2; color: #c0392b; }
+        .add-btn {
+            width: 100%; margin-top: 4px; padding: 11px; background: #eef2f6; color: #0a6cbd;
+            border: 2px dashed #b9d2e8; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        .add-btn:hover { background: #e2edf7; }
+
+        .toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; cursor: pointer; margin-bottom: 10px; }
+        .toggle:last-of-type { margin-bottom: 0; }
+        .toggle input { width: 18px; height: 18px; accent-color: #0a6cbd; cursor: pointer; }
+        .hint { font-size: 12px; color: #888; margin: 4px 0 0 26px; }
+
+        button.action {
+            background: #0a6cbd; color: white; border: none; padding: 12px 20px;
+            border-radius: 6px; font-size: 15px; font-weight: 600; cursor: pointer;
+        }
+        button.action:hover { background: #08568f; }
+        button.action.secondary { background: #eef2f6; color: #0a6cbd; }
+        button.action.secondary:hover { background: #dde7f0; }
+
+        .preview-frame { border: 1px solid #e3e3e3; border-radius: 6px; padding: 18px; background: #fff; overflow-x: auto; }
+        .preview-label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: #888; margin: 0 0 8px; }
+        .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+        .toast {
+            position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+            background: #222; color: #fff; padding: 10px 18px; border-radius: 6px; font-size: 14px;
+            opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .toast.err { background: #c0392b; }
+        details.src { margin-top: 14px; }
+        details.src summary { cursor: pointer; font-size: 14px; font-weight: 600; color: #0a6cbd; }
+        textarea#src {
+            width: 100%; min-height: 150px; margin-top: 10px; padding: 10px;
+            border: 2px solid #ddd; border-radius: 6px; font-family: ui-monospace, Menlo, Consolas, monospace;
+            font-size: 12px; line-height: 1.4; white-space: pre; resize: vertical;
+        }
+        .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+        .tab { background: #eef2f6; color: #444; padding: 8px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; }
+        .tab.active { background: #0a6cbd; color: #fff; }
+        .guide { font-size: 14px; }
+        .guide ol { margin: 0; padding-left: 20px; }
+        .guide li { margin-bottom: 6px; }
+        .note { background: #fff8e6; border-left: 4px solid #f1c40f; padding: 10px 12px; border-radius: 4px; font-size: 13px; margin-top: 10px; }
+        @media (max-width: 760px) {
+            body { padding: 15px; }
+            .layout { flex-direction: column; }
+            .col-preview { position: static; width: 100%; }
+            /* stack each line: [type] [actions] on top, full-width input below */
+            .line-row { flex-wrap: wrap; }
+            .grip { display: none; }
+            .line-type { flex: 1 1 auto; order: 1; }
+            .line-actions { order: 2; }
+            .line-fields { order: 3; flex-basis: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Salk Email Signature Generator</h1>
+    <p class="description">Build your signature line by line — pick each line's type, reorder by dragging
+        <span style="color:#c2c8d0">⠿</span> or with ↑↓, and add as many lines as you need.</p>
+
+    <div class="layout">
+        <!-- ============ FORM ============ -->
+        <div class="col-form">
+            <div class="card">
+                <h2>Signature lines</h2>
+                <p class="sub">Each line renders in order. Choose a type per line; add multiple of any type
+                    (e.g. several title lines) or use <strong>Custom text</strong> for freeform content.</p>
+                <div id="lines"></div>
+                <button class="add-btn" id="addLine">+ Add line</button>
+            </div>
+
+            <div class="card">
+                <h2>Salk branding</h2>
+                <p class="sub">The standard footer (institute name, address, and www.salk.edu) is always included.</p>
+                <label class="toggle"><input type="checkbox" id="t_logo" checked> Salk logo</label>
+                <p class="hint">Hosted image. Some clients block remote images until the recipient allows them.</p>
+                <label class="toggle" style="margin-top:10px"><input type="checkbox" id="t_social" checked> Social links</label>
+            </div>
+        </div>
+
+        <!-- ============ PREVIEW ============ -->
+        <div class="col-preview">
+            <div class="card">
+                <p class="preview-label">Live preview</p>
+                <div class="preview-frame">
+                    <div id="signaturePreview"></div>
+                </div>
+                <div class="actions">
+                    <button class="action" id="copyBtn">Copy signature</button>
+                    <button class="action secondary" id="copyHtmlBtn">Copy HTML source</button>
+                </div>
+                <details class="src">
+                    <summary>View / edit raw HTML</summary>
+                    <textarea id="src" readonly spellcheck="false"></textarea>
+                </details>
+            </div>
+
+            <div class="card">
+                <div class="tabs">
+                    <button class="tab active" data-tab="outlook">Outlook</button>
+                    <button class="tab" data-tab="apple">Apple Mail</button>
+                    <button class="tab" data-tab="gmail">Gmail</button>
+                </div>
+                <div class="guide" id="guide"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ---- Brand constants ----
+        const COLOR = '#6D6E71';
+        const LOGO_URL = 'https://www.salk.edu/wp-content/uploads/2026/03/26-salk-signature-tag-logo.png';
+        const INSTITUTE = 'Salk Institute for Biological Studies';
+        const ADDRESS = '10010 N Torrey Pines Rd | La Jolla, CA 92037';
+        const DEFAULT_PHONE = '(858) 453-4100';
+        const SOCIAL = [
+            ['Facebook', 'https://www.facebook.com/SalkInstitute'],
+            ['Instagram', 'https://www.instagram.com/salkinstitute'],
+            ['LinkedIn', 'https://www.linkedin.com/company/salk-institute-for-biological-studies'],
+            ['YouTube', 'https://www.youtube.com/@SalkInstitute'],
+            ['X', 'https://x.com/salkinstitute']
+        ];
+        const LINK = `color:${COLOR};text-decoration:none;`;
+
+        // Line types: label (for the picker) + placeholder (for the input)
+        const TYPES = {
+            name:    { label: 'Name',             ph: 'Jane Doe' },
+            title:   { label: 'Title',            ph: 'Postdoctoral Researcher' },
+            lab:     { label: 'Lab / Department',  ph: 'Smith Laboratory' },
+            phone:   { label: 'Office phone',      ph: DEFAULT_PHONE },
+            mobile:  { label: 'Mobile',            ph: '(555) 123-4567' },
+            email:   { label: 'Email',             ph: 'jdoe@salk.edu' },
+            website: { label: 'Website / Link',    ph: 'smithlab.salk.edu' },
+            text:    { label: 'Custom text',       ph: 'Freeform line of text' }
+        };
+        const TYPE_OPTIONS = Object.entries(TYPES)
+            .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+
+        const $ = id => document.getElementById(id);
+
+        // ---- State ----
+        let lines = [
+            { type: 'name', value: '', ext: '' },
+            { type: 'title', value: '', ext: '' },
+            { type: 'email', value: '', ext: '' }
+        ];
+        const footer = { logo: true, social: true };
+        let dragLine = null;
+
+        // ---- Helpers ----
+        function escapeHtml(s) {
+            return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function normalizeUrl(raw) {
+            const v = raw.trim();
+            const display = v.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+            const href = /^https?:\/\//i.test(v) ? v : 'https://' + display;
+            return { href, display };
+        }
+        function telHref(num, ext) {
+            const digits = String(num).replace(/\D/g, '').replace(/^1/, '');
+            if (!digits) return '';
+            let h = 'tel:+1' + digits;
+            const ed = String(ext || '').replace(/\D/g, '');
+            if (ed) h += ';ext=' + ed;
+            return h;
+        }
+
+        // ---- Render a single line to HTML (returns '' to omit) ----
+        function renderLine(line) {
+            const e = escapeHtml, v = line.value.trim();
+            switch (line.type) {
+                case 'name': return v ? `<strong>${e(v)}</strong>` : '';
+                case 'title':
+                case 'lab': return v ? `<span style="font-size:10px;text-transform:uppercase;">${e(v.toUpperCase())}</span>` : '';
+                case 'phone': {
+                    const num = v || DEFAULT_PHONE, ext = line.ext.trim(), tel = telHref(num, ext);
+                    const txt = e(num) + (ext ? ' x' + e(ext) : '');
+                    return `<strong>PH</strong> ` + (tel ? `<a href="${e(tel)}" style="${LINK}">${txt}</a>` : txt);
+                }
+                case 'mobile': {
+                    if (!v) return '';
+                    const tel = telHref(v, '');
+                    return `<strong>M</strong> ` + (tel ? `<a href="${e(tel)}" style="${LINK}">${e(v)}</a>` : e(v));
+                }
+                case 'email': return v ? `<strong>E</strong> <a href="mailto:${e(v)}" style="${LINK}">${e(v)}</a>` : '';
+                case 'website': {
+                    if (!v) return '';
+                    const u = normalizeUrl(v);
+                    return `<a href="${e(u.href)}" style="${LINK}">${e(u.display)}</a>`;
+                }
+                case 'text': return v ? e(v) : '';
+                default: return '';
+            }
+        }
+        function plainLine(line) {
+            const v = line.value.trim();
+            switch (line.type) {
+                case 'name': return v || null;
+                case 'title': case 'lab': return v ? v.toUpperCase() : null;
+                case 'phone': { const num = v || DEFAULT_PHONE; return 'PH ' + num + (line.ext.trim() ? ' x' + line.ext.trim() : ''); }
+                case 'mobile': return v ? 'M ' + v : null;
+                case 'email': return v ? 'E ' + v : null;
+                case 'website': return v ? normalizeUrl(v).display : null;
+                case 'text': return v || null;
+                default: return null;
+            }
+        }
+
+        // ---- Assemble the full signature ----
+        function renderSignature() {
+            const personal = lines.map(renderLine).filter(Boolean).join('<br>');
+            let b = '';
+            if (personal) b += personal + '<br><br>';
+            if (footer.logo)
+                b += `<a href="https://www.salk.edu" style="text-decoration:none;border:none;"><img src="${LOGO_URL}" width="75" height="50" style="width:75px;height:50px;border:0;" alt="Salk Institute"></a><br>`;
+            b += `<strong>${INSTITUTE}</strong><br>${ADDRESS}<br><br>`;
+            b += `<a href="https://www.salk.edu" style="color:${COLOR};font-size:12px;font-family:Arial,sans-serif;text-decoration:none;"><strong>www.salk.edu</strong></a><br>`;
+            if (footer.social) b += SOCIAL.map(([n, u]) => `<a href="${u}" style="${LINK}">${n}</a>`).join(' | ');
+            return `<table cellpadding="0" cellspacing="0" border="0" style="background-color:#fff;font-family:Arial,sans-serif;color:${COLOR};font-size:12px;"><tbody><tr><td style="vertical-align:top;line-height:16px;padding:0;">${b}</td></tr></tbody></table>`;
+        }
+        function renderPlain() {
+            const out = lines.map(plainLine).filter(s => s !== null);
+            if (out.length) out.push('');
+            out.push(INSTITUTE, ADDRESS, '', 'www.salk.edu');
+            if (footer.social) out.push(SOCIAL.map(x => x[0]).join(' | '));
+            return out.join('\n');
+        }
+
+        // ---- Build the editor (rebuilt only on structural changes) ----
+        function move(line, dir) {
+            const i = lines.indexOf(line), j = i + dir;
+            if (j < 0 || j >= lines.length) return;
+            [lines[i], lines[j]] = [lines[j], lines[i]];
+            renderEditor(); renderPreview(); saveHash();
+        }
+        function mkBtn(txt, title, cls, fn) {
+            const b = document.createElement('button');
+            b.type = 'button'; b.className = cls; b.textContent = txt; b.title = title;
+            b.addEventListener('click', fn);
+            return b;
+        }
+        function createRow(line) {
+            const row = document.createElement('div');
+            row.className = 'line-row';
+
+            const grip = document.createElement('span');
+            grip.className = 'grip'; grip.textContent = '⠿'; grip.title = 'Drag to reorder';
+            grip.setAttribute('draggable', 'true');
+            grip.addEventListener('dragstart', e => { dragLine = line; row.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', ''); });
+            grip.addEventListener('dragend', () => { dragLine = null; row.classList.remove('dragging'); document.querySelectorAll('.line-row').forEach(r => r.classList.remove('drop-target')); });
+            row.appendChild(grip);
+
+            row.addEventListener('dragover', e => { if (dragLine && dragLine !== line) { e.preventDefault(); row.classList.add('drop-target'); } });
+            row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+            row.addEventListener('drop', e => {
+                e.preventDefault(); row.classList.remove('drop-target');
+                if (dragLine && dragLine !== line) {
+                    lines.splice(lines.indexOf(dragLine), 1);
+                    lines.splice(lines.indexOf(line), 0, dragLine);
+                    renderEditor(); renderPreview(); saveHash();
+                }
+            });
+
+            const sel = document.createElement('select');
+            sel.className = 'line-type'; sel.innerHTML = TYPE_OPTIONS; sel.value = line.type;
+            sel.addEventListener('change', () => { line.type = sel.value; renderEditor(); renderPreview(); saveHash(); });
+            row.appendChild(sel);
+
+            const fields = document.createElement('div');
+            fields.className = 'line-fields';
+            const input = document.createElement('input');
+            input.type = 'text'; input.value = line.value; input.placeholder = TYPES[line.type].ph;
+            input.addEventListener('input', () => { line.value = input.value; renderPreview(); saveHash(); });
+            fields.appendChild(input);
+            if (line.type === 'phone') {
+                const ext = document.createElement('input');
+                ext.type = 'text'; ext.className = 'ext'; ext.value = line.ext || ''; ext.placeholder = 'ext.';
+                ext.addEventListener('input', () => { line.ext = ext.value; renderPreview(); saveHash(); });
+                fields.appendChild(ext);
+            }
+            row.appendChild(fields);
+
+            const actions = document.createElement('div');
+            actions.className = 'line-actions';
+            actions.appendChild(mkBtn('↑', 'Move up', 'icon-btn', () => move(line, -1)));
+            actions.appendChild(mkBtn('↓', 'Move down', 'icon-btn', () => move(line, 1)));
+            actions.appendChild(mkBtn('✕', 'Remove line', 'icon-btn del', () => {
+                lines.splice(lines.indexOf(line), 1); renderEditor(); renderPreview(); saveHash();
+            }));
+            row.appendChild(actions);
+
+            return row;
+        }
+        function renderEditor() {
+            const c = $('lines');
+            c.innerHTML = '';
+            lines.forEach(line => c.appendChild(createRow(line)));
+        }
+        function renderPreview() {
+            const html = renderSignature();
+            $('signaturePreview').innerHTML = html;
+            $('src').value = html;
+        }
+
+        function addLine() {
+            const line = { type: 'title', value: '', ext: '' };
+            lines.push(line);
+            renderEditor(); renderPreview(); saveHash();
+            const inputs = $('lines').querySelectorAll('.line-row:last-child input');
+            if (inputs[0]) inputs[0].focus();
+        }
+
+        // ---- Toast ----
+        let toastTimer;
+        function toast(msg, isErr) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isErr ? ' err' : '');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.className = 'toast' + (isErr ? ' err' : ''); }, 2200);
+        }
+
+        // ---- Copy: rich HTML via Clipboard API, execCommand fallback ----
+        async function copySignature() {
+            const html = renderSignature(), plain = renderPlain();
+            try {
+                if (navigator.clipboard && window.ClipboardItem) {
+                    await navigator.clipboard.write([new ClipboardItem({
+                        'text/html': new Blob([html], { type: 'text/html' }),
+                        'text/plain': new Blob([plain], { type: 'text/plain' })
+                    })]);
+                    toast('Signature copied — paste into your email signature settings');
+                    return;
+                }
+            } catch (err) { /* fall through */ }
+            try {
+                const node = $('signaturePreview');
+                const range = document.createRange();
+                range.selectNode(node);
+                const sel = window.getSelection();
+                sel.removeAllRanges(); sel.addRange(range);
+                const ok = document.execCommand('copy');
+                sel.removeAllRanges();
+                toast(ok ? 'Signature copied!' : 'Copy failed — select it manually or use the HTML source', !ok);
+            } catch (e2) {
+                toast('Copy failed — open "View raw HTML" and copy it manually', true);
+            }
+        }
+        async function copyHtml() {
+            const html = renderSignature();
+            try {
+                await navigator.clipboard.writeText(html);
+                toast('HTML source copied');
+            } catch {
+                const ta = $('src');
+                ta.removeAttribute('readonly'); ta.select();
+                document.execCommand('copy'); ta.setAttribute('readonly', '');
+                toast('HTML source copied');
+            }
+        }
+
+        // ---- Client guidance tabs ----
+        const GUIDES = {
+            outlook: `<ol>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Outlook: <strong>File → Options → Mail → Signatures</strong> (new Outlook: <strong>Settings → Mail → Compose and reply</strong>).</li>
+                <li>Create a new signature and <strong>paste</strong> (Ctrl+V) into the editor.</li>
+                <li>Set it as the default for new messages and replies.</li>
+            </ol>
+            <div class="note">Outlook uses Word for rendering — the table layout and hosted logo are built for it. If the logo looks oversized, confirm the width/height stuck (75×50).</div>`,
+            apple: `<ol>
+                <li>For best results use <strong>Safari</strong> to copy (it carries the logo into Mail most reliably).</li>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Mail: <strong>Settings → Signatures</strong>, create a new one, and <strong>paste</strong>.</li>
+                <li><strong>Uncheck "Always match my default message font"</strong> or Mail will override the styling.</li>
+            </ol>
+            <div class="note">In Chrome/Firefox the logo may not copy into Mail — use Safari, or paste the HTML source.</div>`,
+            gmail: `<ol>
+                <li>Click <strong>Copy signature</strong> above.</li>
+                <li>In Gmail: <strong>Settings (gear) → See all settings → General → Signature</strong>.</li>
+                <li>Create a new signature and <strong>paste</strong> into the box.</li>
+                <li>Set it as the default under "Signature defaults" and <strong>Save Changes</strong>.</li>
+            </ol>`
+        };
+        function setTab(name) {
+            document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+            $('guide').innerHTML = GUIDES[name];
+        }
+
+        // ---- Shareable URL state (base64 JSON) ----
+        const toB64 = s => btoa(unescape(encodeURIComponent(s)));
+        const fromB64 = s => decodeURIComponent(escape(atob(s)));
+        function saveHash() {
+            const data = {
+                l: lines.map(x => [x.type, x.value, x.ext || '']),
+                f: [footer.logo ? 1 : 0, footer.social ? 1 : 0]
+            };
+            try { history.replaceState(null, '', '#' + toB64(JSON.stringify(data))); } catch (e) {}
+        }
+        function loadHash() {
+            const h = location.hash.slice(1);
+            if (!h) return;
+            try {
+                const data = JSON.parse(fromB64(h));
+                if (Array.isArray(data.l) && data.l.length) {
+                    lines = data.l.map(a => ({ type: TYPES[a[0]] ? a[0] : 'text', value: a[1] || '', ext: a[2] || '' }));
+                }
+                if (Array.isArray(data.f)) {
+                    footer.logo = !!data.f[0]; footer.social = !!data.f[1];
+                    $('t_logo').checked = footer.logo; $('t_social').checked = footer.social;
+                }
+            } catch (e) { /* ignore malformed hash */ }
+        }
+
+        // ---- Wire up ----
+        $('addLine').addEventListener('click', addLine);
+        $('copyBtn').addEventListener('click', copySignature);
+        $('copyHtmlBtn').addEventListener('click', copyHtml);
+        $('t_logo').addEventListener('change', e => { footer.logo = e.target.checked; renderPreview(); saveHash(); });
+        $('t_social').addEventListener('change', e => { footer.social = e.target.checked; renderPreview(); saveHash(); });
+        document.querySelectorAll('.tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+        loadHash();
+        renderEditor();
+        setTab('outlook');
+        renderPreview();
+    </script>
+</body>
+</html>
