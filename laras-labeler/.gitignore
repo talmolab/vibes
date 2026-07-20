@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# uv / venv
+.venv/
+uv.lock.tmp
+
+# Project data / caches produced by laras-labeler
+*.slp
+!**/tests/**/*.slp
+projects/
+scratch/
+
+# OS
+.DS_Store
