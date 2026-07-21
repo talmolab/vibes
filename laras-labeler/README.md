@@ -23,17 +23,15 @@ format, milestones).
 The heavy part is the `movement` install; on Intel macOS it needs the viz-free recipe (PLAN §1):
 
 ```bash
-git clone https://github.com/talmolab/vibes.git
-cd vibes/laras-labeler          # run all commands from inside this folder
+cd laras-labeler
 uv venv --python 3.12 .venv
-uv pip install --python .venv sleap-io scikit-learn fastapi "uvicorn[standard]" python-multipart \
+uv pip install --python .venv sleap-io scikit-learn fastapi "uvicorn[standard]" \
     pandas pyarrow joblib pydantic numpy scipy xarray
 uv pip install --python .venv movement==0.17.0 --no-deps
 uv pip install --python .venv attrs pooch tqdm shapely PyYAML loguru orjson bottleneck
 uv pip install --python .venv -e . --no-deps
 
-# launch — pass a folder for your projects (created on first run); it prints the URL and opens the browser
-.venv/bin/laras-labeler ~/laras-projects
+.venv/bin/laras-labeler            # -> http://127.0.0.1:8760/  (opens the browser)
 ```
 
 Verify the core pipeline headlessly:

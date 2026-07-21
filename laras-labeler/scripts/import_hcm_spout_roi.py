@@ -5,6 +5,7 @@
 """Auto-populate a laras-labeler project's spout ROI from the HCM database's water polygon.
 
 The HCM (Home Cage Monitoring) DB stores a per-recording GeoJSON "water" polygon (the spout ROI,
+import os
 from UNet segmentation) in `recordings.rois`. It's fixed per camera to within a few pixels, so we
 pick the *medoid* polygon for a camera — the recording whose water-polygon center is closest to the
 camera's median center — as a clean, real representative, and set it as the project's `spout_roi`
@@ -31,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import urllib.error
