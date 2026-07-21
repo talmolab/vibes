@@ -34,6 +34,7 @@ Self-contained HTML tools and applets for the web.
 - [Salk Email Signature](salk-signature/) <a href="salk-signature/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail</span>
 - [Encoding Helper](encoding-helper/) <a href="encoding-helper/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Didactic in-browser video encoding lab: MP4 atom map, GOP/keyframe analysis, seeking tests, and H.264 re-encoding with a live ffmpeg CLI command builder</span>
 - [Clip Extractor](clip-extractor/) <a href="clip-extractor/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Load a video (URL or local) ± a SLEAP .slp, select an in/out range, extract it as an MP4 clip (ffmpeg.wasm) or frame images with SLP-free annotation JSON, and package it for a backend POST</span>
+- [MDR Labeller](mdr-labeller/) <a href="mdr-labeller/README" class="readme-badge">[README]</a><br><span class="vibe-desc">Severance/Lumon "Macrodata Refinement"-styled behavior labeller: hover clip tiles to play, drag them into ethogram bins to label (local Python-backed tool, not a hosted page)</span>
 
 ## About
 
