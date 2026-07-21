@@ -4,10 +4,10 @@ v0a bootstraps an in-memory "dev" project pointing at the mice sample so there i
 something to label immediately. On-disk projects (§9) land in a later step.
 """
 
-import os
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import threading
 import time
@@ -19,7 +19,8 @@ import uvicorn
 from .config import Settings
 from .project import ProjectStore
 
-SAMPLE_SLP = Path(os.environ.get("LARAS_SAMPLE_SLP",""))
+_sample = os.environ.get("LARAS_SAMPLE_SLP", "").strip()
+SAMPLE_SLP = Path(_sample).expanduser() if _sample else None   # optional dev sample; unset for normal use
 
 
 def _free_port(host: str, preferred: int) -> int:
@@ -55,7 +56,8 @@ def main(argv: list[str] | None = None) -> None:
     port = args.port or _free_port(args.host, 8760)
     settings = Settings(projects_root=projects_root, host=args.host, port=port)
     store = ProjectStore(projects_root)
-    store.ensure_dev(SAMPLE_SLP)
+    if SAMPLE_SLP and SAMPLE_SLP.exists():
+        store.ensure_dev(SAMPLE_SLP)          # first-run demo project only if a sample SLP is configured
 
     from .app import create_app
 

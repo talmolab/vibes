@@ -10,9 +10,9 @@ clip's ROIs.
 Everything here degrades gracefully: sqlalchemy is imported lazily and any DB error (not installed,
 off-VPN, timeout, no ROI) returns None rather than raising — so video loading never blocks on it.
 """
-import os
 from __future__ import annotations
 
+import os
 import re
 
 DATABASE_URL = os.environ.get("HCM_DATABASE_URL", "")  # set HCM_DATABASE_URL locally; do not commit credentials
