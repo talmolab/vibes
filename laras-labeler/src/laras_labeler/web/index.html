@@ -1,0 +1,2880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>laras-labeler</title>
+<style>
+  :root {
+    --bg: #0f1218; --surface: #161a22; --surface-2: #1d222c; --btn: #212734; --btn-hover: #2b323f;
+    --border: #262c38; --border-strong: #39414f; --text: #e7eaf1; --dim: #949cac; --mute: #6b7280;
+    --accent: #6ea8fe; --radius: 8px; --radius-sm: 6px; --shadow: 0 8px 28px rgba(0,0,0,.38);
+  }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2b323f; border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #3b4352; background-clip: padding-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); line-height: 1.5;
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+         -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  header { padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface);
+           display: flex; gap: 14px; align-items: baseline; position: sticky; top: 0; z-index: 20; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .3px; }
+  header h1::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                      background: linear-gradient(135deg, #6ea8fe, #7fb069); margin-right: 8px; vertical-align: middle; }
+  header .meta { color: var(--dim); font-size: 12px; letter-spacing: .2px; }
+  main { max-width: 1400px; margin: 0 auto; padding: 20px 20px 44px; }
+  #stage { position: relative; width: 100%; margin: 0 auto; background: #000;
+           border-radius: 12px; overflow: hidden; line-height: 0; box-shadow: var(--shadow); border: 1px solid #05070a; }
+  #stageInner { position: absolute; inset: 0; transform-origin: 0 0; }
+  #stage #stageInner { cursor: grab; }
+  #stage.zoomed.grabbing #stageInner { cursor: grabbing; }
+  #frame, #overlay { width: 100%; height: 100%; display: block; }
+  #overlay { position: absolute; inset: 0; }
+  #zoomCtl { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; gap: 4px;
+             align-items: center; background: rgba(14,17,23,0.72); backdrop-filter: blur(8px);
+             border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px 6px; line-height: 1.2; }
+  #zoomCtl button { padding: 2px 9px; font-size: 15px; border-radius: 6px; }
+  #zoomCtl #zoomLabel { font-size: 12px; color: #b8c0cc; min-width: 38px; text-align: center;
+                        font-variant-numeric: tabular-nums; }
+  #poseCtl { position: absolute; top: 10px; left: 10px; z-index: 5; background: rgba(14,17,23,0.72);
+             backdrop-filter: blur(8px); border: 1px solid var(--border-strong); border-radius: 10px; padding: 5px 10px; }
+  #poseCtl label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #c2c9d4;
+                   cursor: pointer; user-select: none; line-height: 1.2; }
+  #poseCtl input { width: 14px; height: 14px; cursor: pointer; margin: 0; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+          padding: 11px 14px; margin-top: 12px; }
+  .card > .row { margin-top: 9px; }
+  .card > .row:first-child { margin-top: 0; }
+  .card-label { font-size: 10.5px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase;
+                color: #6b7382; margin: 0 0 2px 2px; }
+  .row { display: flex; gap: 9px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  button { background: var(--btn); color: var(--text); border: 1px solid var(--border-strong);
+           border-radius: var(--radius); padding: 7px 13px; font-size: 13.5px; font-weight: 500; cursor: pointer;
+           transition: background .13s ease, border-color .13s ease, box-shadow .13s ease, transform .05s ease; }
+  button:hover:not(:disabled) { background: var(--btn-hover); border-color: #47505f; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(110,168,254,.55); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.on { background: #2f496f; border-color: #4a6da5; box-shadow: inset 0 0 0 1px rgba(110,168,254,.22); }
+  #mPos.on { background: #2c3f57; border-color: #5f8fc4; }     /* Happening = soft blue */
+  #mNeg.on { background: #543c3c; border-color: #cc7f7f; }     /* Not-happening = soft red */
+  #mErase.on { background: #3a4048; border-color: #9aa3b2; }   /* Unknown = gray */
+  button.primary { background: #2f7d4f; border-color: #3f9a63; color: #eafff2; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #368c59; border-color: #46a870; }
+  button.yes { background: #2f7d4f; border-color: #3f9a63; color: #eafff2; }
+  button.no { background: #8a3b47; border-color: #a5495a; color: #ffeef0; }
+  select { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong);
+           border-radius: var(--radius-sm); padding: 7px 9px; font-size: 13.5px; max-width: 340px; }
+  input[type=number] { width: 88px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong);
+                       border-radius: var(--radius-sm); padding: 7px 9px; font-size: 13.5px; }
+  select:focus, input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(110,168,254,.25); }
+  input[type=range] { -webkit-appearance: none; appearance: none; flex: 1; min-width: 200px; height: 6px;
+                      border-radius: 3px; background: #2b323f; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+                      background: var(--accent); border: 2px solid var(--bg); box-shadow: 0 1px 4px rgba(0,0,0,.45); cursor: grab; }
+  input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; background: var(--accent);
+                      border: 2px solid var(--bg); cursor: grab; }
+  .counter { font-variant-numeric: tabular-nums; color: #c2c9d4; font-size: 13px; min-width: 118px; }
+  .sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
+  .stg { font-size: 10px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #6b7c93;
+         background: #12151b; border: 1px solid #232833; border-radius: 5px; padding: 2px 7px; white-space: nowrap; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; background: var(--surface);
+          border: 1px solid var(--border-strong); border-radius: 999px; cursor: pointer; font-size: 13px; user-select: none;
+          transition: background .13s ease, border-color .13s ease, box-shadow .13s ease; }
+  .chip:hover { background: var(--surface-2); }
+  .chip.active { border-color: #cfd6e0; background: #262c37; box-shadow: 0 0 0 1px rgba(207,214,224,.18); }
+  .chip .sw { width: 11px; height: 11px; border-radius: 3px; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+  .chip .k { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .chip .behcheck { width: 15px; height: 15px; cursor: pointer; margin: 0; }
+  .chip .x { color: var(--mute); margin-left: 2px; transition: color .12s; }
+  .chip .x:hover { color: #e0777f; }
+  #timeline { width: 100%; display: block; margin-top: 16px; border-radius: 10px; background: #0c0e13;
+              cursor: crosshair; touch-action: none; border: 1px solid var(--border); box-shadow: var(--shadow); }
+  #heatstrip { width: 100%; display: block; border-radius: 0 0 10px 10px; background: #0c0e13; }
+  #features { width: 100%; display: block; margin-top: 6px; border-radius: 10px; background: #0c0e13;
+              border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .panel { margin-top: 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px;
+           background: var(--surface); display: none; box-shadow: var(--shadow); }
+  .panel.on { display: block; }
+  /* --- layout: main is a vertical flex so views can reorder blocks with `order` --- */
+  main { display: flex; flex-direction: column; }
+  /* the video row: track selector (left rail) · video · behavior selector (right rail) */
+  #stageRow { display: flex; gap: 14px; align-items: flex-start; }
+  .siderail { flex: 0 0 auto; }
+  #trackRail { flex: 0 0 150px; }
+  #behaviorRail { flex: 0 0 190px; }
+  #stage { flex: 1 1 auto; margin: 0; }                  /* fills between the rails (still capped by 58vh) */
+  .railcard { margin-top: 0; }
+  .railcard .row { flex-direction: column; align-items: stretch; gap: 5px; margin: 0; }
+  .railcard .chip { justify-content: flex-start; padding: 4px 9px; font-size: 12px; }
+  /* condense the track/behavior rails: scroll internally past ~video height instead of stretching the
+     stage row and pushing the rest of the GUI down as more behaviors are added */
+  #behaviorCard, #trackCard { max-height: 56vh; overflow-y: auto; }
+  /* ANNOTATE view (default): tool/action controls ABOVE the video, annotation lanes right below it.
+     stageRow/playbar/overviewWrap/timeline/features/panels/hints keep order 0 (DOM order). */
+  #loadbar    { order: -6; }
+  #clipBar    { order: -5; }
+  #toolsCard  { order: -3; }                             /* paint / annotate tools */
+  #actionRow  { order: -2; }                             /* train / predict / review / stats … */
+  #featSetHelp{ order: -1; }
+  /* REVIEW view: pull video + rail + lanes to the top; the controls drop back below them */
+  main.reviewing #loadbar, main.reviewing #clipBar,
+  main.reviewing #toolsCard, main.reviewing #actionRow, main.reviewing #featSetHelp { order: 0; }
+  main.reviewing #trackRail, main.reviewing #behaviorRail { display: none; }   /* selectors hidden while reviewing */
+  main.reviewing #stageRow { gap: 16px; align-items: stretch; order: -5; margin-top: 12px; }
+  main.reviewing #stage { flex: 1 1 auto; margin: 0; align-self: flex-start; }
+  main.reviewing #reviewPanel.review-rail {
+    flex: 0 0 clamp(300px, 30%, 380px); margin: 0; max-height: 58vh; overflow: auto;
+    border-color: #3a4a66; box-shadow: 0 0 0 1px rgba(110,168,254,.14), var(--shadow); }
+  main.reviewing #playbar { order: -4; }
+  main.reviewing #overviewWrap { order: -3; }
+  main.reviewing #timeline { order: -2; }               /* pull the lanes up directly under the video */
+  main.reviewing #reviewPanel .rvq { font-size: 14px; }
+  @media (max-width: 900px) {                            /* narrow: stack rails above/below the video */
+    #stageRow { flex-wrap: wrap; }
+    #trackRail, #behaviorRail { flex-basis: 100%; }
+    .railcard .row { flex-direction: row; flex-wrap: wrap; }
+    main.reviewing #stageRow { flex-direction: column; }
+    main.reviewing #reviewPanel.review-rail { flex-basis: auto; max-height: none; }
+  }
+  /* collapsible help / "direction" boxes */
+  .help-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .collapse-btn { background: none; border: none; color: var(--accent); font-size: 11.5px; font-weight: 600;
+                  cursor: pointer; padding: 2px 4px; letter-spacing: .3px; }
+  .collapse-btn:hover { text-decoration: underline; }
+  .is-collapsed { display: none !important; }
+  #statsPlot { width: 100%; display: block; height: 230px; border-radius: 8px; background: #0c0e13; border: 1px solid var(--border); }
+  .sbar { display: flex; align-items: center; gap: 10px; margin: 5px 0; font-size: 12px; }
+  .sbar .lab { width: 66px; color: var(--dim); }
+  .sbar .track { flex: 1; max-width: 320px; height: 13px; border-radius: 7px; background: #2b313d; overflow: hidden; display: flex; }
+  .sbar .track i { height: 13px; display: block; }
+  .sbar .cnt { color: #c2c9d4; font-variant-numeric: tabular-nums; }
+  .rvq { font-size: 15px; line-height: 1.55; }
+  .rvq b { color: #fff; }
+  .hint { color: var(--mute); font-size: 12px; margin-top: 16px; line-height: 1.6;
+          border-top: 1px solid var(--border); padding-top: 12px; }
+  .hints { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; margin-top: 20px; }
+  .hint-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .hint-box h4 { margin: 0 0 7px; font-size: 10.5px; font-weight: 700; letter-spacing: .6px;
+                 text-transform: uppercase; color: #7b8494; }
+  .hint-box p { margin: 0; font-size: 12px; color: var(--mute); line-height: 1.6; }
+  .status { color: #aeb6c2; font-size: 13px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.62); backdrop-filter: blur(3px); display: none;
+                   align-items: center; justify-content: center; z-index: 50; }
+  .modal-overlay.on { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 12px;
+           padding: 22px 24px; min-width: 440px; box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+  .modal h3 { font-size: 15px; margin: 0 0 6px; }
+  .modal .sub { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
+  .frow { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+  .frow label { width: 96px; color: #b8c0cc; font-size: 13px; }
+  .frow input[type=file] { flex: 1; color: var(--text); font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>laras-labeler</h1>
+  <select id="projSel" title="Switch project (workspace). Each project is a separate set of behaviors + labels + models, sharing the same clips."
+          style="margin-left:4px; padding:2px 6px; font-size:12px; background:var(--surface); color:#e7eaf1; border:1px solid var(--border); border-radius:5px"></select>
+  <span class="meta" id="meta">loading…</span>
+  <span id="sessionTimer" title="Session stopwatch (testing aid). ⏸ pause/resume · ⟲ reset. Logs the model's AP at each Train, so you can see how long it takes to reach good performance."
+        style="margin-left:auto; display:flex; align-items:center; gap:6px; font-size:13px; color:#aeb6c2; white-space:nowrap">
+    <span>⏱ <b id="timerClock" style="color:#e7eaf1; font-variant-numeric:tabular-nums">0:00</b></span>
+    <button id="timerToggle" style="padding:1px 7px; font-size:12px">⏸</button>
+    <button id="timerReset" style="padding:1px 7px; font-size:12px">⟲</button>
+    <span id="timerLog" class="status" style="color:#7b8494; font-size:11px"></span>
+  </span>
+</header>
+<main>
+  <div class="row" id="loadbar">
+    <span class="stg">① Load</span>
+    <button id="loadVideoBtn">Load Video</button>
+    <button id="loadSlpBtn">Load SLP</button>
+    <span class="status" id="loadStatus"></span>
+    <input type="file" id="impVideo" accept="video/mp4,video/*" style="display:none">
+    <input type="file" id="impSlp" accept=".slp,.h5" style="display:none">
+  </div>
+
+  <div class="row" id="clipBar"></div>
+
+  <div id="stageRow">
+  <aside id="trackRail" class="siderail">
+    <div class="card railcard" id="trackCard"><div class="row" id="trackBar"></div></div>
+  </aside>
+  <div id="stage">
+    <div id="stageInner"><canvas id="frame"></canvas><canvas id="overlay"></canvas></div>
+    <div id="poseCtl"><label><input type="checkbox" id="showPoses" checked> Poses</label>
+      <span id="spoutCtl">
+        <button id="setSpout" title="Click to place the spout landmark for THIS clip — enables distance-to-spout features. Right-click the video to clear.">◎ Set spout</button>
+        <button id="setSpoutRoi" title="Click to draw the spout ROI polygon for THIS clip — enables spout-ROI features. Enter to finish, Esc to cancel, right-click removes the last point (or clears the ROI).">◇ Set spout ROI</button>
+      </span>
+      <span id="spoutSet" style="display:none; color:#8b93a2; font-size:12px">◇ spout set · right-click the video to change</span>
+      <span id="cageCtl">
+        <button id="setCageRoi" title="Click to draw the cage-boundary ROI polygon for THIS clip — enables cage-ROI features (distance-to-wall + cage position). Enter to finish, Esc to cancel, right-click removes the last point (or clears the ROI).">▢ Set cage ROI</button>
+      </span>
+      <span id="cageSet" style="display:none; color:#8b93a2; font-size:12px">▢ cage set · right-click the video to change</span>
+      <button id="showApproaches" title="Overlay each confirmed-positive bout's nose approach path to the spout for the active behavior — all tracks, colored by track (○ = start of approach, ★ = at spout). Needs a spout/ROI set. Toggle off to hide.">→ Approaches</button>
+    </div>
+    <div id="zoomCtl">
+      <button id="zOut" title="Zoom out (−)">−</button>
+      <span id="zoomLabel">1.0×</span>
+      <button id="zIn" title="Zoom in (+)">＋</button>
+      <button id="zReset" title="Reset zoom (0)">⤢</button>
+    </div>
+  </div>
+  <aside id="behaviorRail" class="siderail">
+    <div class="card railcard" id="behaviorCard"><div class="row" id="behaviorBar"></div></div>
+  </aside>
+  <div id="reviewPanel" class="panel review-rail">
+    <div id="reviewQ" class="rvq"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="rvReplay" title="Replay this bout from the start (r)">↺ Replay (r)</button>
+      <button id="rvTrimS" title="Set the accept-range START to the playhead ([)">◂ Start</button>
+      <button id="rvTrimE" title="Set the accept-range END to the playhead (])">End ▸</button>
+      <button id="rvSplit" title="This candidate spans more than one bout: accept up to the playhead as one bout, then keep reviewing the rest (s)">✂ Split (s)</button>
+      <div class="sep"></div>
+      <button id="rvYes" class="yes">✓ Accept (y)</button>
+      <button id="rvNo" class="no">✗ Reject (n)</button>
+      <button id="rvSkip">Next (⏎)</button>
+      <button id="rvUndo" title="Undo the last review action (accept / reject / split / merge / reclassify) and go back to that candidate (z)" disabled>↶ Undo (z)</button>
+      <div class="sep"></div>
+      <button id="rvStop">Done</button>
+      <span class="status" id="rvProgress"></span>
+    </div>
+    <div class="row" id="rvMergeRow" style="margin-top:8px; display:none">
+      <button id="rvMerge" title="Bridges the gap so this doesn't stay split into two bouts (m)">⛓ Merge with adjacent bout (m)</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <select id="rvReclassify" title="Not this behavior, but IS another one — marks the current behavior Not-happening and the chosen one Happening over this range, then moves on">
+        <option value="">↷ mark as other behavior…</option>
+      </select>
+    </div>
+  </div>
+  </div><!-- /stageRow -->
+
+  <div class="row" id="playbar">
+    <button id="first" title="First frame (Home)">⏮</button>
+    <button id="prev">◀</button>
+    <button id="play">▶ Play</button>
+    <button id="next">▶</button>
+    <button id="last" title="Last frame (End)">⏭</button>
+    <input type="range" id="scrub" min="0" max="0" value="0">
+    <span class="counter" id="counter">0 / 0</span>
+    <span class="status">Frame</span>
+    <input type="number" id="frameInput" min="0" step="1" title="Type a frame number and press Enter">
+    <span class="status">Speed</span>
+    <select id="speedSel">
+      <option value="0.25">0.25×</option><option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option><option value="1.5">1.5×</option>
+      <option value="2">2×</option><option value="4">4×</option>
+    </select>
+  </div>
+
+  <div class="card" id="toolsCard">
+    <div class="row">
+      <span class="stg">② Label</span>
+      <span class="status">Tool:</span>
+      <button id="toolPaint" class="on" title="Drag a lane to label (b)">✏ Paint</button>
+      <button id="toolSelect" title="Click any segment — even 1 frame — to select it (v)">☝ Select</button>
+      <div class="sep"></div>
+      <span class="status">Annotate:</span>
+      <button id="mPos" class="on">Happening (p)</button>
+      <button id="mNeg">Not happening (n)</button>
+      <button id="mErase">Unknown (u)</button>
+      <div class="sep"></div>
+      <button id="delSeg" class="no" disabled title="Select an annotation in a lane, then delete it (Delete)">🗑 Delete</button>
+      <div class="sep"></div>
+      <button id="undo">↶ Undo</button>
+      <button id="redo">↷ Redo</button>
+    </div>
+  </div>
+
+  <div class="row" id="actionRow" style="flex-wrap:wrap; row-gap:8px">
+    <!-- ③ Train -->
+    <span class="stg">③ Train</span>
+    <button id="train" class="primary">⚙ Train</button>
+    <select id="featSet" title="Which features this behavior's model is trained on. A lean set can beat the full one (e.g. drinking does better on spout-only — pose/social features overfit). Retrain to apply.">
+      <option value="all">All features</option>
+      <option value="spout">Spout only</option>
+      <option value="spout_cage">Spout + cage</option>
+      <option value="cage">Cage only</option>
+      <option value="no_social">No social</option>
+      <option value="pose">Pose only</option>
+      <option value="social">Social only</option>
+      <option value="social_pose">Social + pose</option>
+    </select>
+    <button id="predict" title="Apply the already-trained model(s) to THIS video — builds its features first if needed. Use on a newly loaded clip.">▶ Predict this video</button>
+    <div class="sep"></div>
+    <!-- ④ Review -->
+    <span class="stg">④ Review</span>
+    <select id="candMode" title="What to review — newly-detected bouts, labeled bouts the model thinks you got wrong, or bouts the filters removed">
+      <option value="new">New detections</option>
+      <option value="disagree">Label disagreements</option>
+      <option value="mislabel">Likely mislabels (cross-val)</option>
+      <option value="reviewed">Reviewed mislabels</option>
+      <option value="dropped">Filtered out</option>
+    </select>
+    <input type="number" id="candN" value="10" min="1" max="50" step="1" style="width:52px"
+           title="Max candidates to suggest per review, best-ranked first (retrain or reopen the dropdown above to apply a change)">
+    <button id="review" disabled>Review candidates</button>
+    <div class="sep"></div>
+    <!-- ⑤ Analyze -->
+    <span class="stg">⑤ Analyze</span>
+    <button id="statsBtn" title="Precision stats + learning curve vs. how much you've labeled">📊 Stats</button>
+    <button id="trainsetBtn" title="List the clips, tracks, and bouts THIS model was actually trained on">🗂 Training set</button>
+    <button id="labelStatsBtn" title="How many bouts you labeled by hand vs accepted from candidates, per track">🏷 Label sources</button>
+    <button id="featDiffBtn" title="How keypoint features differ between positive and negative frames">📈 Feature diff</button>
+    <button id="importBtn">Import…</button>
+    <span class="status" id="metrics" style="flex-basis:100%; margin-top:2px"></span>
+  </div>
+
+  <div id="featSetHelp" style="margin:2px 0 8px; padding:9px 13px; background:#12151b; border:1px solid #232833; border-radius:8px; color:#9aa3b2; font-size:12px; line-height:1.55">
+    <div class="help-hd"><b style="color:#cbd3df">Feature set &amp; stats help</b><button id="featHelpToggle" class="collapse-btn" data-target="featHelpBody">hide ▾</button></div>
+    <div id="featHelpBody" style="margin-top:6px">
+      <div><b style="color:#cbd3df">Feature set</b> — <span id="featSetDesc"></span></div>
+      <div style="margin-top:8px"><b style="color:#cbd3df">Which set for which behavior?</b> — a starting point; the only real test is to try a couple and compare AP/F1 (📊 Stats). Rules of thumb:
+        <table style="margin:5px 0 2px; border-collapse:collapse; font-size:11.5px; width:100%">
+          <tr style="color:#7b8494; text-align:left"><th style="padding:2px 8px 2px 0">If the behavior is defined by…</th><th style="padding:2px 8px">example</th><th style="padding:2px 0">try</th></tr>
+          <tr><td style="padding:2px 8px 2px 0; border-top:1px solid #232833">being <b>at a landmark</b> (needs a spout/ROI set)</td><td style="padding:2px 8px; border-top:1px solid #232833">drinking</td><td style="padding:2px 0; border-top:1px solid #232833"><b>Spout only</b></td></tr>
+          <tr><td style="padding:2px 8px 2px 0">position <b>at the cage wall/rim</b> (needs a cage ROI)</td><td style="padding:2px 8px">climbing, rearing on rim</td><td style="padding:2px 0"><b>No social</b> (cage + pose beats cage-only)</td></tr>
+          <tr><td style="padding:2px 8px 2px 0"><b>body motion/posture</b> alone, no landmark</td><td style="padding:2px 8px">grooming, freezing, locomotion</td><td style="padding:2px 0"><b>Pose only</b></td></tr>
+          <tr><td style="padding:2px 8px 2px 0"><b>interaction</b> between two mice</td><td style="padding:2px 8px">fighting, following, sniffing</td><td style="padding:2px 0"><b>Social + pose</b></td></tr>
+          <tr><td style="padding:2px 8px 2px 0">not sure yet</td><td style="padding:2px 8px">—</td><td style="padding:2px 0"><b>No social</b>, then trim down</td></tr>
+        </table>
+        <span style="color:#6b7280">Leaner usually beats “All”: extra columns can overfit &amp; dilute a clean signal. Adding a feature that <i>looks</i> discriminative alone (📈 Feature diff) may still not help if it’s redundant with signals already in the set — always confirm with AP/F1.</span>
+      </div>
+      <div style="margin-top:8px"><b style="color:#cbd3df">How the stats are computed</b> — cross-validated with <b>StratifiedGroupKFold</b> where each CV group is a labeled <b>bout</b>, so adjacent frames never leak between train and test (an honest, not-optimistic estimate). <b>AP</b> = area under the precision–recall curve (threshold-free). <b>Frame P/R/F1</b> are at probability ≥ 0.5: precision = of frames the model calls the behavior, how many you labeled it; recall = of your positive frames, how many it caught. <b>Bout P/R</b> scores whole bouts — a labeled bout counts as caught if its mean cross-validated probability ≥ 0.5. Needs ≥ 2 labeled bouts per class to report.</div>
+    </div>
+  </div>
+
+  <div id="overviewWrap" style="display:none">
+    <div class="status" style="color:#6b7280; margin:6px 0 2px">📍 Whole-clip overview — the box is the zoomed region, ▮ is the candidate · click/drag to jump anywhere</div>
+    <canvas id="overview" title="whole-clip overview — click to jump" style="width:100%; cursor:pointer"></canvas>
+  </div>
+
+  <canvas id="timeline" title="per behavior: manual lane (your labels) + auto lane (classifier)"></canvas>
+
+  <div class="row" style="margin-top:8px">
+    <span class="status">Features · <b id="featTrackLabel">track 0</b></span>
+    <span class="status" style="color:#6b7280">per-frame feature time-series for the selected track (synced to the playhead)</span>
+  </div>
+  <canvas id="features" title="per-frame feature time-series"></canvas>
+
+  <div id="statsPanel" class="panel">
+    <div class="row" style="margin-top:0; justify-content:space-between">
+      <b id="statsTitle" style="font-size:14px">Stats</b>
+      <span>
+        <button id="statsExport" title="Download every training run's precision stats (AP/F1/P/R/bout-P/R + feature set + label counts) as CSV">⬇ Export CSV</button>
+        <button id="statsClose">✕ Close</button>
+      </span>
+    </div>
+    <div id="statsBreakdown" style="margin:12px 0 4px"></div>
+    <div class="row" style="margin:10px 0 4px; justify-content:space-between; align-items:center">
+      <span class="status" style="color:#7b8494; font-size:11px; text-transform:uppercase; letter-spacing:.5px; font-weight:700" title="Observational: each point is a real past training. Lines are split by feature set (a line never joins points from different configs). For a controlled sample-efficiency curve, subsample training size with everything else fixed.">Learning curve — metric vs. labeled (by feature set)</span>
+      <span class="status">
+        compare vs <select id="statsCompare" style="padding:2px 6px"><option value="">— none —</option></select>
+        &nbsp; x-axis:
+        <select id="statsXMode" style="padding:2px 6px">
+          <option value="bouts">positive bouts</option>
+          <option value="candidates">candidate bouts</option>
+          <option value="frames">positive frames</option>
+          <option value="time">time (when trained)</option>
+        </select>
+      </span>
+    </div>
+    <canvas id="statsPlot"></canvas>
+    <div class="status" id="statsNote" style="margin-top:8px"></div>
+  </div>
+
+  <div id="trainsetPanel" class="panel">
+    <div class="row" style="margin-top:0; justify-content:space-between">
+      <b id="trainsetTitle" style="font-size:14px">Training set</b>
+      <span>
+        <button id="trainsetCopy" title="Copy the full training-set list as JSON">⧉ Copy JSON</button>
+        <button id="trainsetClose">✕ Close</button>
+      </span>
+    </div>
+    <div id="trainsetSummary" class="status" style="margin:12px 0 6px"></div>
+    <div class="status" style="color:#6b7280; margin-bottom:8px">Every clip · track · bout this model version learned from (frozen at train time). Click a bout to jump to it.</div>
+    <div id="trainsetList" style="max-height:360px; overflow:auto"></div>
+  </div>
+
+  <div id="labelStatsPanel" class="panel">
+    <div class="row" style="margin-top:0; justify-content:space-between">
+      <b style="font-size:14px">Label sources</b>
+      <button id="labelStatsClose">✕ Close</button>
+    </div>
+    <div class="status" style="color:#6b7280; margin:10px 0 8px">Bouts you labeled <b style="color:#cbd3df">by hand</b> vs <b style="color:#cbd3df">accepted from candidates</b> (and imported), per animal track. Positive bouts shown, negatives in parentheses.</div>
+    <div id="labelStatsList" style="max-height:360px; overflow:auto"></div>
+  </div>
+
+  <div id="featDiffPanel" class="panel">
+    <div class="row" style="margin-top:0; justify-content:space-between">
+      <b id="featDiffTitle" style="font-size:14px">Feature differences</b>
+      <button id="featDiffClose">✕ Close</button>
+    </div>
+    <div id="featDiffBody" style="margin-top:10px; max-height:460px; overflow:auto"></div>
+  </div>
+
+  <div class="help-hd" style="margin-top:20px; border-top:1px solid var(--border); padding-top:12px">
+    <b style="font-size:10.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase; color:#7b8494">Tips &amp; keyboard shortcuts</b>
+    <button id="hintsToggle" class="collapse-btn" data-target="hintsGrid">hide ▾</button>
+  </div>
+  <div class="hints" id="hintsGrid" style="margin-top:12px">
+    <div class="hint-box">
+      <h4>Workflow</h4>
+      <p>Import prior annotations (or paint a few) → <b>Train</b> → the model proposes bouts → <b>Review</b> each one (the timeline zooms to it): <b>[</b>/<b>]</b> trim the accept range at the playhead, <b>y</b> accept · <b>n</b> reject · <b>⏎</b> next, or paint the zoomed lane to fix specific frames → <b>Train</b> again to refine.</p>
+    </div>
+    <div class="hint-box">
+      <h4>Tracks &amp; behaviors</h4>
+      <p>Labels &amp; predictions are kept <b>separate per track</b>. Pick a track by clicking a chip, keys <b>1–9</b>, <b>Tab</b> to cycle, or clicking the animal in the video. Everything you paint, train, and review applies to the selected track.</p>
+    </div>
+    <div class="hint-box">
+      <h4>Painting labels</h4>
+      <p>Press a <b>behavior's hotkey</b> to start → move the playhead → press again to commit; or drag a lane. <b style="color:#5f8fc4">blue = Happening (p)</b>, <b style="color:#cc7f7f">red = Not-happening (n)</b>, <b>▨ gray = Unknown (u)</b> (saved, not trained). Remove with <b>Select → Delete</b>.</p>
+    </div>
+    <div class="hint-box">
+      <h4>Tools</h4>
+      <p><b>✏ Paint (b)</b> drags a lane to label. <b>☝ Select (v)</b>: <b>drag along the bar to scrub</b> to a bout, click a bout to select + play it (then drag the ▮ handles or [ / ] to adjust, <b>Delete</b>/🗑 to remove). Picking a paint action switches back to Paint.</p>
+    </div>
+    <div class="hint-box">
+      <h4>Video &amp; keys</h4>
+      <p><b>Double-click</b> the video to zoom on a spot (again to reset), then <b>drag to recenter</b>. Also ＋ / − / 0 or Ctrl/⌘+scroll. Ruler = scrub · <b>←/→</b> step (Ctrl ±30) · <b>Space</b> play · <b>Esc</b> cancel · <b>Ctrl+Z</b> undo.</p>
+    </div>
+  </div>
+
+</main>
+
+<script type="module">
+import * as sleapio from 'https://esm.sh/@talmolab/sleap-io.js@0.4.1';
+// Track/animal palette — deliberately NO blue or red (those are reserved for behavior labels below),
+// so a colored skeleton/chip is never confused with a Happening/Not-happening mark. Muted tones.
+const TRACK_COLORS = ["#5aa06e", "#d9a54e", "#9a72b8", "#4fa39a", "#c4b45c", "#a8826b"];
+const NEG_COLOR = "rgba(130,138,150,0.55)";
+// manual-label semantics (same across behaviors): Happening=soft blue, Not-happening=soft red, Unknown=gray hatch
+const HAPPENING_COLOR = "#5f8fc4", NOTHAPPENING_COLOR = "#cc7f7f", UNKNOWN_HATCH = "#9aa3b2";
+const RULER = 24, MANUAL_H = 28, PRED_H = 15, LANE_GAP = 3, ROW_GAP = 8;   // taller painting lane
+const TL_GUT = 128;   // left gutter reserved for the behavior-name label + prev/next label-nav arrows, so the bars/bouts aren't drawn under it
+const CLICK_SLOP = 4;   // px of pointer travel below which a lane press counts as a click (select), not a drag (paint)
+
+const el = id => document.getElementById(id);
+const stage = el("stage"), stageInner = el("stageInner");
+const frameEl = el("frame"), vctx = frameEl.getContext("2d");
+const overlay = el("overlay"), octx = overlay.getContext("2d");
+const tl = el("timeline"), tctx = tl.getContext("2d");
+const fc = el("features"), fctx = fc.getContext("2d");
+const FEAT_H = 34, OVER_H = 34;
+const ov = el("overview"), ovctx = ov ? ov.getContext("2d") : null;   // whole-video overview strip (shown when zoomed)
+// Offscreen bitmaps of the timeline/feature "base" (everything but the moving playhead) so playback
+// frames blit instead of recomputing the heatstrip + feature min/max every frame.
+const tlBase = document.createElement("canvas"), featBase = document.createElement("canvas"), ovBase = document.createElement("canvas");
+let tlBaseW = 0, tlBaseH = 0, featBaseW = 0, featBaseH = 0, ovBaseW = 0, ovBaseH = 0;
+let tlBaseVS = 0, tlBaseVE = 0, tlBaseDpr = 0;   // zoom-window + dpr the base was captured at (fast path invalidates if these move)
+function invalidateTlCache() { tlBaseW = 0; ovBaseW = 0; featBaseW = 0; }
+function fitCanvas(c, W, H, dpr) {   // size to W×H CSS px @dpr WITHOUT reallocating (which clears) when unchanged
+  const w = Math.round(W * dpr), h = Math.round(H * dpr);
+  if (c.width !== w) c.width = w;
+  if (c.height !== h) c.height = h;
+  c.style.height = H + "px";
+}
+let featureSeries = { names: [], data: {} }, activeTrack = 0;
+let predictedBouts = new Map(), reviewCurrent = null;   // bid -> [{s,e,p}], and the bout under review
+const scrub = el("scrub"), counter = el("counter"), metaEl = el("meta"), metricsEl = el("metrics");
+
+let PID = null, vid = null, meta = null, skeleton = null, projMeta = null;
+let poses = null, poseShape = null;
+let behaviors = [], activeBid = null, mode = "pos";
+let labelState = new Map(), predsByBeh = new Map(), sourceState = new Map();   // per-frame value + provenance (parallel arrays)
+const SRC_CODES = { manual: 0, candidate: 1, imported: 2 }, SRC_NAMES = ["manual", "candidate", "imported"];
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+let cur = 0, playing = false, showSeq = 0, playStopAt = null;   // playStopAt: auto-stop frame (play a single bout), null = play to end
+let videoBackend = null, frameOrder = null, pfStart = 0, pfEnd = -1;
+let playRaf = null, playAnchorT = null, playAnchorF = 0, playBusy = false, playbackSpeed = 1;
+const PF_CHUNK = 40, PF_TRIGGER = 20;
+const undoStack = [], redoStack = [], reviewUndo = [];   // reviewUndo: compound review actions (accept/reject/split/merge/reclassify) as single undo units
+let drag = null, reviewQueue = [], reviewIdx = 0, reviewHi = null, painting = null;
+let candidateMode = "new";               // "new" (unlabeled detections) | "disagree" (model⊥your labels)
+let lastTrainset = null, lastTrainsetBid = null, statsXMode = "bouts", lastStatsHistory = [];   // training-set panel + learning-curve x-axis
+let tlView = null, reviewTrim = null;   // timeline zoom window during candidate review + the accept sub-range {s,e}
+let selectedSeg = null;                     // {bid, s, e, val} — a labeled run clicked in a lane
+let segTrim = null;                          // {s, e} editable bounds of the selected labeled bout (drag handles / [ ])
+let toolMode = "paint";                     // "paint" (drag a lane to label) | "select" (click to select any segment)
+let zoom = 1, panX = 0, panY = 0, stageDrag = null, panMoved = false;   // video zoom + pan
+let showPoses = true;                                                   // pose overlay toggle
+let spout = null, settingSpout = false;                                 // shared arena landmark [x,y] + click-to-place mode
+let spoutRoi = null, settingRoi = false, roiPts = [];                   // shared spout ROI polygon [[x,y],...] + draw mode + in-progress points
+let cageRoi = null, settingCage = false, cagePts = [];                  // cage-boundary ROI polygon [[x,y],...] + draw mode + in-progress points
+let showApproaches = false, approachBouts = null;                       // overlay: confirmed-positive nose approach paths to the spout (all tracks)
+const modeName = (m = mode) => m === "pos" ? "Happening" : m === "neg" ? "Not-happening" : "Unknown";
+const modeVal = (m = mode) => m === "pos" ? 1 : m === "neg" ? 2 : 3;   // labelState: 1=Happening 2=Not-happening 3=Unknown (0=none)
+
+const api = (path, opts) => fetch(`/api/projects/${PID}${path}`, opts);
+function hexRgb(h) { const n = parseInt(h.slice(1), 16); return { r: n >> 16 & 255, g: n >> 8 & 255, b: n & 255 }; }
+// "Not-happening" = diagonal hatch in the behavior color over a dark base (clearly visible + distinct from solid = Happening)
+function hatchRect(ctx, x, y, w, h, color, alpha = 1) {
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "rgba(64,72,86,0.9)"; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  for (let xx = x - h; xx < x + w; xx += 5) { ctx.beginPath(); ctx.moveTo(xx, y + h); ctx.lineTo(xx + h, y); ctx.stroke(); }
+  ctx.restore();
+}
+
+async function boot() {
+  window.addEventListener("resize", renderTimeline);
+  overlay.addEventListener("click", ev => {   // click an animal in the video to annotate it (event-annotator style)
+    if (settingRoi || settingSpout || settingCage) return;    // placing a spout/ROI/cage point, not selecting a track
+    if (panMoved) { panMoved = false; return; }   // that click was a pan drag, not a select
+    if (!poses) return;
+    const rect = overlay.getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * (overlay.width / rect.width);
+    const py = (ev.clientY - rect.top) * (overlay.height / rect.height);
+    const [F, T, N, C] = poseShape; if (cur >= F) return;
+    const base = cur * T * N * C;
+    let best = -1, bestD = Infinity;
+    for (let t = 0; t < T; t++) {
+      const o = base + t * N * C; let cx = 0, cy = 0, n = 0;
+      for (let k = 0; k < N; k++) { const x = poses[o + k * C], y = poses[o + k * C + 1]; if (!Number.isNaN(x)) { cx += x; cy += y; n++; } }
+      if (!n) continue;
+      const d = (cx / n - px) ** 2 + (cy / n - py) ** 2;
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    if (best >= 0 && best !== activeTrack) setActiveTrack(best);
+  });
+  el("loadVideoBtn").onclick = () => el("impVideo").click();
+  el("loadSlpBtn").onclick = () => el("impSlp").click();
+  el("impVideo").onchange = e => { pendingVideo = e.target.files[0] || null; maybeUpload(); };
+  el("impSlp").onchange = e => { pendingSlp = e.target.files[0] || null; maybeUpload(); };
+  await initWorkspace();
+}
+
+async function initWorkspace() {   // multi-project: dropdown switcher + ?pid= URL param, default "default"
+  let projects = await (await fetch("/api/projects")).json();
+  if (!projects.length) projects = [await (await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "default" }) })).json()];
+  const sel = el("projSel");
+  sel.innerHTML = projects.map(p => `<option value="${p.pid}">${p.name}</option>`).join("");
+  const want = new URLSearchParams(location.search).get("pid");
+  const start = projects.find(p => p.pid === want) ? want : (projects.find(p => p.pid === "default") ? "default" : projects[0].pid);
+  sel.value = start;
+  sel.onchange = () => {                            // switch workspace: reflect in URL so it's shareable/refresh-safe
+    const u = new URL(location); u.searchParams.set("pid", sel.value); history.replaceState(null, "", u);
+    selectProject(sel.value);
+  };
+  await selectProject(start);
+}
+
+async function selectProject(pid) {
+  PID = pid;
+  const sel = el("projSel"); if (sel && sel.value !== pid) sel.value = pid;   // keep switcher in sync
+  projMeta = await (await api(``)).json();
+  featSetInfo = await (await api(`/feature-sets`)).json().catch(() => null);   // exact per-set composition for the help box
+  behaviors = projMeta.behaviors;
+  spout = projMeta.spout || null;                 // shared arena landmark (drawn on every clip)
+  spoutRoi = projMeta.spout_roi || null;          // shared spout ROI polygon (drawn on every clip)
+  cageRoi = projMeta.cage_roi || null;            // shared cage-boundary ROI polygon
+  updateSpoutCtl(); updateCageCtl();
+  if (projMeta.videos.length) await openVideo(projMeta.videos[projMeta.videos.length - 1].video_id);   // most recently loaded
+  else metaEl.textContent = "Load a video + SLP to begin.";
+}
+
+async function openVideo(vidId) {
+  stop();                       // don't carry playback (or its stale wall-clock anchor) across a clip switch
+  vid = vidId;
+  meta = projMeta.videos.find(v => v.video_id === vidId);
+  spoutRoi = meta.spout_roi || null;              // per-clip spout ROI (from this clip's meta; falls back to project default)
+  cageRoi = meta.cage_roi || null;                // per-clip cage-boundary ROI
+  spout = meta.spout || null;
+  updateSpoutCtl(); updateCageCtl();
+  skeleton = await (await api(`/skeleton/${vid}`)).json();
+  const res = await api(`/poses/${vid}`);
+  if (res.ok) {
+    poseShape = res.headers.get("X-Pose-Shape").split(",").map(Number);
+    poses = new Float32Array(await res.arrayBuffer());
+  } else { poses = null; poseShape = [meta.n_frames, 0, 0, 0]; }
+
+  frameEl.width = meta.width; frameEl.height = meta.height;
+  overlay.width = meta.width; overlay.height = meta.height;
+  el("stage").style.aspectRatio = `${meta.width} / ${meta.height}`;
+  el("stage").style.maxWidth = `calc(58vh * ${meta.width} / ${meta.height})`;
+  setZoom(1);
+  scrub.max = meta.n_frames - 1; el("frameInput").max = meta.n_frames - 1;
+  metaEl.textContent = `${vid} · ${meta.n_frames} frames · ${meta.fps.toFixed(1)} fps · `
+    + `${poseShape[1]} tracks · ${poseShape[2]} nodes`;
+  await loadVideoBackend();
+  predsByBeh = new Map(); predictedBouts = new Map();
+  activeTrack = 0;
+  renderTrackBar();
+  renderClipBar();
+  await loadSeries();
+  await loadLabels();
+  await loadAllPredictions();
+  renderBehaviorBar();
+  // keep the behavior you're working on across clip switches; only default to the first on initial load
+  // (or if the previously-active one no longer exists)
+  const keepBid = behaviors.some(b => b.id === activeBid) ? activeBid : (behaviors[0] ? behaviors[0].id : null);
+  if (keepBid != null) await selectBehavior(keepBid); else renderTimeline();
+  show(0);
+  autoloadCageRoi();                                   // best-effort: fill a missing cage ROI from the HCM DB
+}
+async function autoloadCageRoi() {   // when a clip has no cage ROI, pull its camera's medoid from the HCM DB (no-op off-VPN)
+  if (cageRoi) return;                                 // already set — don't clobber or re-hit the DB
+  const reqVid = vid;                                  // guard against a clip switch mid-request
+  let d; try { const r = await api(`/videos/${vid}/autoload-roi`, { method: "POST" }); if (!r.ok) return; d = await r.json(); }
+  catch (e) { return; }
+  if (vid !== reqVid || !d || !d.set) return;
+  let msg = [];
+  if (d.set.cage_roi) { cageRoi = d.set.cage_roi; msg.push("cage"); }
+  if (d.set.spout_roi && !spoutRoi) { spoutRoi = d.set.spout_roi; msg.push("spout"); }
+  if (msg.length) {
+    updateCageCtl(); updateSpoutCtl(); drawPose();     // reflect the new ROI(s) on the overlay
+    busy(`auto-loaded ${msg.join(" + ")} ROI from HCM DB (${d.camera || "?"}) — Train/Predict to use it`);
+  }
+}
+
+let pendingVideo = null, pendingSlp = null;
+async function maybeUpload() {
+  const parts = [];
+  if (pendingVideo) parts.push("▸ " + pendingVideo.name);
+  if (pendingSlp) parts.push("▸ " + pendingSlp.name);
+  el("loadStatus").textContent = parts.join("  ");
+  if (!(pendingVideo && pendingSlp)) return;         // wait until both are chosen
+  el("loadStatus").textContent = "uploading… (large videos take a moment)";
+  const fd = new FormData(); fd.append("video", pendingVideo); fd.append("slp", pendingSlp);
+  const vname = pendingVideo, sname = pendingSlp; pendingVideo = pendingSlp = null;
+  try {
+    const r = await fetch(`/api/projects/${PID}/videos/upload`, { method: "POST", body: fd });
+    if (!r.ok) { el("loadStatus").textContent = "failed: " + ((await r.json()).detail || r.status); return; }
+    const v = await r.json();
+    el("loadStatus").textContent = "";
+    projMeta = await (await api(``)).json(); behaviors = projMeta.behaviors;
+    await openVideo(v.video_id);
+  } catch (e) { el("loadStatus").textContent = "error: " + e.message; pendingVideo = vname; pendingSlp = sname; }
+}
+
+async function loadLabels() {
+  selectedSeg = null; const db = el("delSeg"); if (db) db.disabled = true;
+  const runs = await (await api(`/labels/${vid}?track=${activeTrack}`)).json();   // runs are [start, end, value, source]
+  labelState = new Map(); sourceState = new Map();
+  for (const b of behaviors) { labelState.set(b.id, new Int8Array(meta.n_frames)); sourceState.set(b.id, new Int8Array(meta.n_frames)); }
+  for (const [bid, rl] of Object.entries(runs)) {
+    const arr = labelState.get(Number(bid)), sarr = sourceState.get(Number(bid));
+    if (arr) for (const [s, e, val, source] of rl) {
+      arr.fill(val === 1 ? 1 : val === 0 ? 2 : 3, s, e);        // stored 1/0/2 -> state 1/2/3
+      if (sarr) sarr.fill(SRC_CODES[source] ?? 0, s, e);         // provenance code (default manual)
+    }
+  }
+  for (const b of behaviors) recomputeBouts(b.id);   // keep the "new suggestion" bouts in sync with the freshly-loaded labels
+}
+
+// ---------- video + overlay ----------
+function setSpoutMode(on) {
+  settingSpout = on;
+  if (on) setCageMode(false);
+  const b = el("setSpout"); if (b) b.classList.toggle("on", on);
+  stage.style.cursor = on ? "crosshair" : "";
+  busy(on ? "click the spout location on the video (right-click to clear)" : "");
+  updateSpoutCtl();
+}
+async function pickSpout(clientX, clientY) {   // screen click -> video pixel coords (overlay rect already reflects zoom/pan)
+  if (!meta) return;
+  const r = overlay.getBoundingClientRect();
+  const x = Math.round(Math.max(0, Math.min(meta.width, (clientX - r.left) / r.width * meta.width)));
+  const y = Math.round(Math.max(0, Math.min(meta.height, (clientY - r.top) / r.height * meta.height)));
+  setSpoutMode(false);
+  await applySpout(x, y);
+}
+async function applySpout(x, y) {
+  const r = await api(`/videos/${vid}/spout`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ x, y }) });   // per-clip
+  if (!r.ok) { alert("Could not set spout: " + r.status); return; }
+  spout = (await r.json()).spout;
+  if (meta) meta.spout = spout;                   // this clip's landmark
+  updateSpoutCtl();
+  drawPose();
+  busy(spout ? `spout set at (${spout[0]}, ${spout[1]}) for this clip — retrain (rebuilds features) to use distance-to-spout` : "spout cleared for this clip — retrain to drop distance-to-spout features");
+}
+function drawSpoutMarker() {
+  if (!spout || !meta) return;
+  const [sx, sy] = spout;
+  octx.save(); octx.globalAlpha = 1; octx.lineWidth = 2; octx.strokeStyle = "#ffd24a";
+  octx.fillStyle = "rgba(255,210,74,0.22)";
+  octx.beginPath(); octx.arc(sx, sy, 9, 0, Math.PI * 2); octx.fill(); octx.stroke();
+  octx.beginPath(); octx.moveTo(sx - 14, sy); octx.lineTo(sx + 14, sy); octx.moveTo(sx, sy - 14); octx.lineTo(sx, sy + 14); octx.stroke();
+  octx.fillStyle = "#ffd24a"; octx.font = "bold 13px system-ui"; octx.textAlign = "center"; octx.textBaseline = "bottom";
+  octx.fillText("spout", sx, sy - 16); octx.textAlign = "left"; octx.textBaseline = "alphabetic"; octx.restore();
+}
+function updateSpoutCtl() {   // the clip already has a spout/ROI set, so the buttons are clutter — hide them (clear via right-click brings them back)
+  const isSet = !!(spout || spoutRoi);
+  const ctl = el("spoutCtl"), note = el("spoutSet");
+  if (ctl) ctl.style.display = (isSet && !settingSpout && !settingRoi) ? "none" : "";
+  if (note) note.style.display = (isSet && !settingSpout && !settingRoi) ? "" : "none";
+}
+function setRoiMode(on) {
+  settingRoi = on;
+  if (on) { setSpoutMode(false); setCageMode(false); roiPts = []; }
+  const b = el("setSpoutRoi"); if (b) b.classList.toggle("on", on);
+  stage.style.cursor = on ? "crosshair" : "";
+  busy(on ? "click to add spout-ROI points · Enter to finish · Esc to cancel · right-click removes the last point" : "");
+  updateSpoutCtl();
+  drawPose();
+}
+function screenToVideo(clientX, clientY) {   // overlay rect already reflects zoom/pan
+  const r = overlay.getBoundingClientRect();
+  return [
+    Math.round(Math.max(0, Math.min(meta.width, (clientX - r.left) / r.width * meta.width))),
+    Math.round(Math.max(0, Math.min(meta.height, (clientY - r.top) / r.height * meta.height))),
+  ];
+}
+function addRoiPoint(clientX, clientY) {
+  if (!meta) return;
+  roiPts.push(screenToVideo(clientX, clientY));
+  drawPose();
+}
+async function finishRoi() {
+  if (roiPts.length < 3) { busy("need at least 3 points — keep clicking, or Esc to cancel"); return; }
+  const pts = roiPts.slice();
+  setRoiMode(false);
+  await applySpoutRoi(pts);
+}
+async function applySpoutRoi(points) {
+  const r = await api(`/videos/${vid}/spout-roi`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ points }) });   // per-clip
+  if (!r.ok) { alert("Could not set spout ROI: " + r.status); return; }
+  spoutRoi = (await r.json()).spout_roi;
+  if (meta) meta.spout_roi = spoutRoi;            // this clip's ROI
+  updateSpoutCtl();
+  drawPose();
+  busy(spoutRoi ? `spout ROI set (${spoutRoi.length} pts) for this clip — retrain (rebuilds features) to use spout-ROI features` : "spout ROI cleared for this clip — retrain to drop spout-ROI features");
+}
+function drawSpoutRoi() {
+  if (!meta) return;
+  const polys = [];
+  if (spoutRoi && spoutRoi.length >= 3 && !settingRoi) polys.push({ pts: spoutRoi, closed: true });
+  if (settingRoi && roiPts.length) polys.push({ pts: roiPts, closed: false });
+  if (!polys.length) return;
+  octx.save(); octx.lineWidth = 2;
+  for (const { pts, closed } of polys) {
+    octx.strokeStyle = "#4ad0ff"; octx.fillStyle = "rgba(74,208,255,0.18)";
+    octx.beginPath();
+    pts.forEach(([x, y], i) => i ? octx.lineTo(x, y) : octx.moveTo(x, y));
+    if (closed) { octx.closePath(); octx.fill(); }
+    octx.stroke();
+    octx.fillStyle = "#4ad0ff";
+    for (const [x, y] of pts) { octx.beginPath(); octx.arc(x, y, 3, 0, Math.PI * 2); octx.fill(); }
+  }
+  const lbl = polys[0].pts[0];
+  octx.fillStyle = "#4ad0ff"; octx.font = "bold 13px system-ui"; octx.textAlign = "center"; octx.textBaseline = "bottom";
+  octx.fillText("spout ROI", lbl[0], lbl[1] - 8); octx.textAlign = "left"; octx.textBaseline = "alphabetic";
+  octx.restore();
+}
+// ---------- cage-boundary ROI (parallel to the spout ROI: amber, dashed) ----------
+function updateCageCtl() {   // once the clip has a cage ROI, hide the draw button (right-click clears -> button returns)
+  const isSet = !!cageRoi;
+  const ctl = el("cageCtl"), note = el("cageSet");
+  if (ctl) ctl.style.display = (isSet && !settingCage) ? "none" : "";
+  if (note) note.style.display = (isSet && !settingCage) ? "" : "none";
+}
+function setCageMode(on) {
+  settingCage = on;
+  if (on) { setSpoutMode(false); setRoiMode(false); cagePts = []; }
+  const b = el("setCageRoi"); if (b) b.classList.toggle("on", on);
+  stage.style.cursor = on ? "crosshair" : "";
+  busy(on ? "click to trace the cage boundary · Enter to finish · Esc to cancel · right-click removes the last point" : "");
+  updateCageCtl();
+  drawPose();
+}
+function addCagePoint(clientX, clientY) {
+  if (!meta) return;
+  cagePts.push(screenToVideo(clientX, clientY));
+  drawPose();
+}
+async function finishCage() {
+  if (cagePts.length < 3) { busy("need at least 3 points — keep clicking, or Esc to cancel"); return; }
+  const pts = cagePts.slice();
+  setCageMode(false);
+  await applyCageRoi(pts);
+}
+async function applyCageRoi(points) {
+  const r = await api(`/videos/${vid}/cage-roi`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ points }) });   // per-clip
+  if (!r.ok) { alert("Could not set cage ROI: " + r.status); return; }
+  cageRoi = (await r.json()).cage_roi;
+  if (meta) meta.cage_roi = cageRoi;             // this clip's cage boundary
+  updateCageCtl();
+  drawPose();
+  busy(cageRoi ? `cage ROI set (${cageRoi.length} pts) for this clip — retrain (rebuilds features) to use cage-ROI features` : "cage ROI cleared for this clip — retrain to drop cage-ROI features");
+}
+function drawCageRoi() {
+  if (!meta) return;
+  const polys = [];
+  if (cageRoi && cageRoi.length >= 3 && !settingCage) polys.push({ pts: cageRoi, closed: true });
+  if (settingCage && cagePts.length) polys.push({ pts: cagePts, closed: false });
+  if (!polys.length) return;
+  octx.save(); octx.lineWidth = 2; octx.setLineDash([9, 6]);       // dashed = boundary, distinct from the solid spout ROI
+  for (const { pts, closed } of polys) {
+    octx.strokeStyle = "#e0a340"; octx.fillStyle = "rgba(224,163,64,0.08)";
+    octx.beginPath();
+    pts.forEach(([x, y], i) => i ? octx.lineTo(x, y) : octx.moveTo(x, y));
+    if (closed) { octx.closePath(); octx.fill(); }
+    octx.stroke();
+    octx.setLineDash([]); octx.fillStyle = "#e0a340";
+    for (const [x, y] of pts) { octx.beginPath(); octx.arc(x, y, 3, 0, Math.PI * 2); octx.fill(); }
+    octx.setLineDash([9, 6]);
+  }
+  const lbl = polys[0].pts.reduce((a, p) => p[1] < a[1] ? p : a, polys[0].pts[0]);   // label at the topmost vertex
+  octx.setLineDash([]); octx.fillStyle = "#e0a340"; octx.font = "bold 13px system-ui";
+  octx.textAlign = "center"; octx.textBaseline = "bottom";
+  octx.fillText("cage ROI", lbl[0], lbl[1] - 8); octx.textAlign = "left"; octx.textBaseline = "alphabetic";
+  octx.restore();
+}
+function noseIndex() {
+  const nm = skeleton && skeleton.roles && skeleton.roles.nose;
+  const nodes = (skeleton && skeleton.nodes) || [];
+  let i = nm ? nodes.indexOf(nm) : -1;
+  if (i < 0) i = nodes.findIndex(n => String(n).toLowerCase() === "nose");
+  return i < 0 ? 0 : i;
+}
+async function loadConfirmedBouts(bid) {   // confirmed-positive bouts (value==1) for a behavior, all tracks; merge frame-adjacent runs
+  const out = [];
+  for (let t = 0; t < nTracks(); t++) {
+    const j = await (await api(`/labels/${vid}?track=${t}&behavior=${bid}`)).json();
+    let cur = null;
+    for (const [s, e] of (j[bid] || []).filter(r => r[2] === 1).sort((a, b) => a[0] - b[0])) {
+      if (cur && s <= cur.e) cur.e = Math.max(cur.e, e);
+      else { cur = { track: t, s, e }; out.push(cur); }
+    }
+  }
+  return out;
+}
+async function toggleApproaches(on = !showApproaches) {
+  showApproaches = on;
+  el("showApproaches").classList.toggle("on", on);
+  if (on) {
+    if (activeBid == null) { showApproaches = false; el("showApproaches").classList.remove("on"); return busy("select a behavior first"); }
+    approachBouts = await loadConfirmedBouts(activeBid);
+    busy(approachBouts.length ? `showing ${approachBouts.length} nose→spout approach path(s) for ${bname(activeBid)} · colored by track`
+                              : `no confirmed-positive ${bname(activeBid)} bouts yet — accept some in Review first`);
+  } else busy("");
+  drawPose();
+}
+function drawStar(cx, cy, r, color) {
+  octx.save(); octx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5, rad = (i % 2) ? r * 0.45 : r;
+    const x = cx + rad * Math.cos(ang), y = cy + rad * Math.sin(ang);
+    i ? octx.lineTo(x, y) : octx.moveTo(x, y);
+  }
+  octx.closePath(); octx.fillStyle = color; octx.lineWidth = 1; octx.strokeStyle = "#000";
+  octx.fill(); octx.stroke(); octx.restore();
+}
+function drawApproaches() {
+  if (!showApproaches || !approachBouts || !poses || !meta) return;
+  const [F, T, N, C] = poseShape, ni = noseIndex(), MARGIN = 45;
+  octx.save(); octx.lineWidth = 2; octx.lineJoin = "round";
+  for (const { track, s, e } of approachBouts) {
+    if (track >= T) continue;
+    const col = TRACK_COLORS[track % TRACK_COLORS.length], a = Math.max(0, s - MARGIN);
+    octx.strokeStyle = col; octx.globalAlpha = 0.85; octx.beginPath();
+    let pen = false, sx, sy, lx, ly;
+    for (let f = a; f < e && f < F; f++) {
+      const o = (f * T + track) * N * C, x = poses[o + ni * C], y = poses[o + ni * C + 1];
+      if (Number.isNaN(x) || Number.isNaN(y)) { pen = false; continue; }
+      pen ? octx.lineTo(x, y) : octx.moveTo(x, y); pen = true;
+      if (sx === undefined) { sx = x; sy = y; } lx = x; ly = y;
+    }
+    octx.stroke();
+    octx.globalAlpha = 1;
+    if (sx !== undefined) { octx.beginPath(); octx.arc(sx, sy, 5, 0, Math.PI * 2); octx.lineWidth = 2; octx.strokeStyle = col; octx.stroke(); }  // ○ approach start
+    if (lx !== undefined) drawStar(lx, ly, 7, col);                                                                                              // ★ at spout
+  }
+  octx.restore();
+}
+function drawPose() {
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  drawSpoutMarker();                                    // always shown (independent of the pose toggle)
+  drawSpoutRoi();                                       // spout ROI polygon (committed + in-progress)
+  drawCageRoi();                                        // cage-boundary ROI polygon (committed + in-progress)
+  drawApproaches();                                     // confirmed-positive nose approach paths (toggle)
+  if (!poses) return;
+  if (!showPoses) { drawIdentityMarkers(); return; }    // poses hidden -> keep a minimal per-mouse identity marker so the mice stay distinguishable
+  const [F, T, N, C] = poseShape;
+  if (cur >= F) return;
+  const base = cur * T * N * C;
+  // draw dimmed tracks first, the active (annotated) track bright on top
+  const order = [...Array(T).keys()].sort((a, b) => (a === activeTrack ? 1 : 0) - (b === activeTrack ? 1 : 0));
+  for (const t of order) {
+    const active = (t === activeTrack), color = TRACK_COLORS[t % TRACK_COLORS.length], o = base + t * N * C;
+    const lw = active ? 4 : 1.5, nodeR = active ? 5 : 2.5;
+    octx.strokeStyle = color; octx.lineWidth = lw; octx.globalAlpha = active ? 0.95 : 0.28;
+    for (const [a, b] of skeleton.edges) {
+      const ax = poses[o + a * C], ay = poses[o + a * C + 1], bx = poses[o + b * C], by = poses[o + b * C + 1];
+      if (Number.isNaN(ax) || Number.isNaN(bx)) continue;
+      octx.beginPath(); octx.moveTo(ax, ay); octx.lineTo(bx, by); octx.stroke();
+    }
+    octx.fillStyle = color; octx.globalAlpha = active ? 1 : 0.28;
+    let topX = 0, topY = Infinity, n = 0;
+    for (let k = 0; k < N; k++) {
+      const x = poses[o + k * C], y = poses[o + k * C + 1];
+      if (Number.isNaN(x)) continue;
+      octx.beginPath(); octx.arc(x, y, nodeR, 0, Math.PI * 2); octx.fill();
+      n++; if (y < topY) { topY = y; topX = x; }
+    }
+    if (active && n) {   // label + halo on the animal being annotated
+      octx.globalAlpha = 1; octx.strokeStyle = color; octx.lineWidth = 2;
+      octx.font = "bold 18px system-ui"; octx.textAlign = "center"; octx.textBaseline = "bottom";
+      octx.fillStyle = "rgba(0,0,0,0.55)"; octx.fillText(`track ${t}`, topX + 1, topY - 8);
+      octx.fillStyle = color; octx.fillText(`track ${t}`, topX, topY - 9);
+      octx.textAlign = "left"; octx.textBaseline = "alphabetic";
+    }
+  }
+  octx.globalAlpha = 1;
+}
+
+// Minimal per-mouse identity: a colored, numbered dot at each animal's centroid (colored by track,
+// matching the skeleton colors). Shown when the full pose overlay is toggled OFF so you can still tell
+// the mice apart. Active track drawn a touch larger.
+function drawIdentityMarkers() {
+  if (!poses) return;
+  const [F, T, N, C] = poseShape;
+  if (cur >= F) return;
+  const base = cur * T * N * C;
+  octx.globalAlpha = 1; octx.textAlign = "center"; octx.textBaseline = "middle";
+  for (let t = 0; t < T; t++) {
+    const o = base + t * N * C;
+    let sx = 0, sy = 0, n = 0;
+    for (let k = 0; k < N; k++) {
+      const x = poses[o + k * C], y = poses[o + k * C + 1];
+      if (Number.isNaN(x)) continue;
+      sx += x; sy += y; n++;
+    }
+    if (!n) continue;                                   // this mouse isn't tracked on this frame
+    const cx = sx / n, cy = sy / n, color = TRACK_COLORS[t % TRACK_COLORS.length];
+    const active = (t === activeTrack), r = active ? 13 : 10;
+    octx.beginPath(); octx.arc(cx, cy, r, 0, Math.PI * 2);
+    octx.fillStyle = color; octx.fill();
+    octx.lineWidth = active ? 3 : 2; octx.strokeStyle = "rgba(0,0,0,0.65)"; octx.stroke();
+    octx.font = `bold ${active ? 15 : 12}px system-ui`;   // track number, white with dark outline (legible on any disc color)
+    octx.lineWidth = 3; octx.strokeStyle = "rgba(0,0,0,0.7)"; octx.strokeText(String(t), cx, cy + 0.5);
+    octx.fillStyle = "#fff"; octx.fillText(String(t), cx, cy + 0.5);
+  }
+  octx.textAlign = "left"; octx.textBaseline = "alphabetic";
+}
+
+// WORKAROUND for sleap-io.js@0.4.1: its MediaBunny backend converts each VideoSample via
+// toVideoFrame() + createImageBitmap and closes the derived VideoFrame, but NEVER closes the source
+// VideoSample — so every decoded frame leaks a WebCodecs frame ("VideoSample garbage collected
+// without first being closed"). Under playback (esp. replaying candidate bouts) this piles up until
+// the decoder/GPU memory chokes and the tab freezes. We wrap the sink so each sample self-closes once
+// its frame has been derived (getFrame uses sink.getSample; prefetch/decodeRange uses sink.samples()).
+function patchBackendLeak(vb) {
+  if (!vb || vb.__leakPatched || !vb.sink) return false;
+  const closeSafe = (s) => { if (s && typeof s.close === "function") { try { s.close(); } catch (e) {} } };
+  try {
+    // (1) getFrame path -> decodeSingleFrame: reimplement exactly, but close the source VideoSample
+    // AFTER the bitmap is made (toVideoFrame shares the underlying frame, so it must live until then).
+    // Falls back to the original on any surprise, so it can never break rendering (only leak).
+    if (typeof vb.decodeSingleFrame === "function" && typeof vb.sink.getSample === "function") {
+      const orig = vb.decodeSingleFrame.bind(vb);
+      vb.decodeSingleFrame = async function (e) {
+        try {
+          if (!this.sink) throw new Error("no sink");
+          const t = this._frameTimes[e], s = await this.sink.getSample(t);
+          if (!s) return null;
+          const r = s.toVideoFrame(), a = await createImageBitmap(r);
+          r.close(); closeSafe(s);                 // <-- the fix: also release the VideoSample
+          this.cacheFrame(e, a);
+          return a;
+        } catch (err) { return orig(e); }          // fall back to library behaviour (leaky but correct)
+      };
+    }
+    // (2) prefetch is DISABLED, not patched. schedulePrefetch (app-level) fires on every displayed
+    // frame with a 20-frame trigger window (~0.67s @30fps) and never awaits/guards the previous call,
+    // so overlapping prefetch() calls can issue concurrent decodeRange() -> sink.samples() streaming
+    // iterations against the SAME underlying decoder. That reentrancy hazard predates any of these
+    // patches (schedulePrefetch/prefetchWin/prefetch are untouched) and is the likely cause of
+    // "plays fine for a while, then freezes" — a decoder-level hang, not a resource leak, so no amount
+    // of closing samples fixes it. Rather than trying to make concurrent streaming-decode calls safe
+    // (unverifiable without a live browser), every frame now goes through the single, simple, already-
+    // verified decodeSingleFrame path above (one getSample() call per frame — no streaming iterator,
+    // nothing to race). No prefetch = no read-ahead buffering, but no freeze risk from this path either.
+    if (typeof vb.prefetch === "function") {
+      vb.prefetch = async () => {};
+    }
+    // (3) backend-level leak: close() nulls this.input/this.sink but never calls Input.dispose() —
+    // mediabunny's Input owns the demuxer + source refs and requires explicit disposal (it even
+    // implements [Symbol.dispose]), so every clip switch (loadVideoBackend -> old backend .close())
+    // leaked the WHOLE previous video's decoder/demuxer state, silently (no console warning, unlike
+    // the VideoSample leak above). Reviewing candidates across multiple clips hits this repeatedly.
+    if (typeof vb.close === "function") {
+      const origClose = vb.close.bind(vb);
+      vb.close = function () {
+        try { this.input?.dispose?.(); } catch (e) {}
+        try { this.sink?.dispose?.(); } catch (e) {}
+        return origClose();
+      };
+    }
+    vb.__leakPatched = true;
+    console.log("[playback] VideoSample + Input.dispose leak workarounds applied");
+    return true;
+  } catch (e) { console.warn("[playback] leak patch failed (playback still works):", e); return false; }
+}
+
+// MediaBunny video backend (client-side WebCodecs decode + prefetch), reused from event-annotator.
+async function loadVideoBackend() {
+  if (videoBackend) { try { videoBackend.close(); } catch (e) {} videoBackend = null; }
+  frameOrder = null; pfStart = 0; pfEnd = -1;
+  try {
+    const blob = await (await api(`/video/${vid}/stream.mp4`)).blob();
+    // Cap the decoded-frame cache by MEMORY, not a fixed count: 128 frames of 1280×1024 RGBA is ~670MB,
+    // which starves GC and makes the backend's decode churn stall the main thread. Budget ~200MB (still
+    // ~1–1.5s of buffer at these sizes), clamped to a sane frame count.
+    const px = (meta && meta.width * meta.height) || (1280 * 1024);
+    const cacheSize = Math.max(24, Math.min(128, Math.round(200e6 / (px * 4))));
+    videoBackend = await sleapio.MediaBunnyVideoBackend.fromBlob(blob, vid + ".mp4", { cacheSize });
+    if (window.__leakPatch !== false) patchBackendLeak(videoBackend);   // stop the per-frame VideoSample leak (see note above); window.__leakPatch=false disables for A/B testing
+    frameOrder = await buildFrameOrder(videoBackend);
+  } catch (e) { console.error("video backend load failed:", e); videoBackend = null; }
+}
+function decodeIndex(i) { return frameOrder ? frameOrder[i] : i; }
+async function buildFrameOrder(vb) {   // display-order remap for B-frame videos
+  if (!vb || typeof vb.getFrameTimes !== "function") return null;
+  let times; try { times = await vb.getFrameTimes(); } catch (e) { return null; }
+  if (!times || !times.length) return null;
+  return times.map((_, i) => i).sort((a, b) => times[a] - times[b]);
+}
+function schedulePrefetch(center) {
+  const b = videoBackend; if (!b || typeof b.prefetch !== "function" || !meta) return;
+  const N = meta.n_frames;
+  if (center < pfStart || center > pfEnd) { pfStart = center; pfEnd = Math.min(N - 1, center + PF_CHUNK - 1); prefetchWin(pfStart, pfEnd); }
+  else if (pfEnd < N - 1 && center + PF_TRIGGER > pfEnd) { const s = pfEnd + 1, e = Math.min(N - 1, pfEnd + PF_CHUNK); prefetchWin(s, e); pfEnd = e; }
+}
+function prefetchWin(s, e) { const b = videoBackend; if (!b) return; const lo = decodeIndex(s), hi = decodeIndex(e); b.prefetch(Math.min(lo, hi), Math.max(lo, hi)).catch(() => {}); }
+
+async function decodeFrame(idx) {
+  if (!videoBackend) return null;
+  try {
+    const fr = await videoBackend.getFrame(decodeIndex(idx));
+    return fr instanceof ImageBitmap ? fr : (fr instanceof ImageData ? await createImageBitmap(fr) : null);
+  } catch (e) { return null; /* decode miss */ }
+}
+async function show(i) {
+  cur = Math.max(0, Math.min(meta.n_frames - 1, i));
+  const seq = ++showSeq, target = cur;
+  // UI chrome (playhead, counter) tracks the request immediately — responsive while the frame decodes.
+  scrub.value = cur; counter.textContent = `${cur} / ${meta.n_frames - 1}`;
+  if (document.activeElement !== el("frameInput")) el("frameInput").value = cur;
+  // While playing zoomed-in, keep the playhead in view: PAGE the zoom window forward when it nears an
+  // edge (jump the window, not scroll it every frame — a per-frame view change would force a full
+  // timeline re-render and re-glitch playback). One full render per page; blits in between.
+  if (playing && tlView) {
+    const span = tlView.e - tlView.s, pad = Math.max(2, Math.round(span * 0.05));
+    if (cur < tlView.s + pad || cur > tlView.e - pad) {
+      const ns = Math.max(0, Math.min(meta.n_frames - span, cur - pad));
+      if (ns !== tlView.s) tlView = { s: ns, e: ns + span };
+    }
+  }
+  // Fast cached repaint when only the playhead moves (playback / scrub-drag) — neither changes the
+  // timeline content or the zoom window, so the cached base stays valid. Everything else full-renders.
+  const fast = playing || (drag && drag.kind === "scrub");
+  (fast ? repaintTimeline : renderTimeline)();
+  schedulePrefetch(cur);
+  const bmp = await decodeFrame(target);
+  // A newer show() superseded this one (rapid scrub/drag) or this decode finished out of order —
+  // drop it so the latest request paints instead. Guarantees the poses never get ahead of the video.
+  if (seq !== showSeq) return;
+  if (bmp) vctx.drawImage(bmp, 0, 0, meta.width, meta.height);
+  drawPose();   // poses drawn atomically with the exact frame they belong to (cur === target here)
+}
+// Coalescing show() for rapid-fire drag input (scrub bar, lane-scrub, overview strip, native range
+// slider): a fast drag can fire pointermove/input events much faster than a frame can decode. Calling
+// show() directly per-event let MANY decodes (each its own getSample() call on the shared decoder) pile
+// up concurrently with no back-pressure — a likely cause of the decoder hanging ("plays fine, then
+// freezes") during scrubbing. This keeps at most one decode in flight; events that arrive while busy
+// just update the pending target, so dragging always ends up showing wherever the pointer currently is
+// (never queues through every intermediate frame) without ever overlapping decode calls.
+let scrubBusy = false, scrubPending = null;
+function scrubTo(f) {
+  if (scrubBusy) { scrubPending = f; return; }
+  scrubBusy = true;
+  show(f).finally(() => {
+    scrubBusy = false;
+    if (scrubPending !== null) { const nf = scrubPending; scrubPending = null; scrubTo(nf); }
+  });
+}
+
+// ---------- video zoom + pan ----------
+function applyZoom() {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const mx = zoom > 1 ? 0 : W * 0.45, my = zoom > 1 ? 0 : H * 0.45;   // zoomed: content covers frame; at 1× allow dragging it ±45% to reposition
+  panX = Math.min(mx, Math.max(W * (1 - zoom) - mx, panX));
+  panY = Math.min(my, Math.max(H * (1 - zoom) - my, panY));
+  stageInner.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+  el("zoomLabel").textContent = zoom.toFixed(1) + "×";
+  stage.classList.toggle("zoomed", zoom > 1);
+}
+function setZoom(z, cx, cy) {
+  const W = stage.clientWidth, H = stage.clientHeight;
+  const nz = Math.max(1, Math.min(8, z));
+  if (cx == null) { cx = W / 2; cy = H / 2; }
+  panX = cx - nz * (cx - panX) / zoom;                      // keep the point under the cursor fixed
+  panY = cy - nz * (cy - panY) / zoom;
+  zoom = nz;
+  if (zoom === 1) { panX = 0; panY = 0; }
+  applyZoom();
+}
+
+// ---------- timeline + heatstrip ----------
+function tlWidth() { return tl.clientWidth || tl.parentElement.clientWidth; }
+function viewS() { return tlView ? tlView.s : 0; }               // timeline x-axis window (zoom-to-bout during review)
+function viewE() { return tlView ? tlView.e : meta.n_frames; }
+function plotW(W) { return Math.max(1, W - TL_GUT); }                          // drawable width right of the label gutter
+function xOf(f, W) { return TL_GUT + (f - viewS()) / (viewE() - viewS()) * plotW(W); }
+function frameAt(px, W) { return Math.max(0, Math.min(meta.n_frames - 1, Math.floor(viewS() + (px - TL_GUT) / plotW(W) * (viewE() - viewS())))); }
+
+function runsOf(arr, s = 0, e = arr.length) {
+  const out = []; let i = s;
+  while (i < e) {
+    const v = arr[i]; if (v === 0) { i++; continue; }
+    let j = i + 1; while (j < e && arr[j] === v) j++;
+    out.push([i, j, v]); i = j;
+  }
+  return out;
+}
+
+const ROWH = () => MANUAL_H + LANE_GAP + PRED_H + ROW_GAP;
+function rRect(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.roundRect(x, y, Math.max(0, w), Math.max(0, h), r); }
+// Timeline lane order: the ACTIVE behavior is floated to the top lane so it stays visible next to the
+// controls while you annotate (the rest keep their normal order). Used by BOTH the lane drawing and the
+// click hit-testing so a lane's position always maps to the same behavior. Deterministic from
+// behaviors + activeBid (no stored state), so draw and hit-test never disagree.
+function laneList() {
+  if (activeBid == null) return behaviors;
+  const a = behaviors.find(b => b.id === activeBid);
+  return a ? [a, ...behaviors.filter(b => b.id !== activeBid)] : behaviors;
+}
+function renderTimeline() {
+  const dpr = window.devicePixelRatio || 1, W = tlWidth(), rh = ROWH();
+  const H = RULER + behaviors.length * rh;
+  fitCanvas(tl, W, H, dpr);
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0); tctx.clearRect(0, 0, W, H);
+  tctx.fillStyle = "#1a1d23"; tctx.fillRect(0, 0, W, RULER);
+  tctx.fillStyle = "#101319"; tctx.fillRect(0, RULER, TL_GUT, H - RULER);   // left label gutter backdrop
+  tctx.textBaseline = "middle";
+  laneList().forEach((b, i) => {
+    const y = RULER + i * rh, ym = y, ya = y + MANUAL_H + LANE_GAP, active = b.id === activeBid;
+    // manual (painting) lane — the active behavior's row is highlighted (starts after the label gutter)
+    tctx.fillStyle = active ? "#242c39" : "#141922"; rRect(tctx, TL_GUT, ym, W - TL_GUT, MANUAL_H, 6); tctx.fill();
+    const arr = labelState.get(b.id);
+    if (arr) for (const [s, e, v] of runsOf(arr)) {
+      const x0 = xOf(s, W), w = Math.max(1, xOf(e, W) - x0);
+      if (v === 1) { tctx.fillStyle = HAPPENING_COLOR; rRect(tctx, x0, ym + 3, w, MANUAL_H - 6, 3); tctx.fill(); }          // Happening = blue
+      else if (v === 2) { tctx.fillStyle = NOTHAPPENING_COLOR; rRect(tctx, x0, ym + 3, w, MANUAL_H - 6, 3); tctx.fill(); }   // Not-happening = red
+      else hatchRect(tctx, x0, ym + 3, w, MANUAL_H - 6, UNKNOWN_HATCH);                                                       // Unknown = gray hatch
+      if (selectedSeg && selectedSeg.bid === b.id && selectedSeg.s === s && selectedSeg.e === e) {
+        tctx.strokeStyle = "#fff"; tctx.lineWidth = 2; rRect(tctx, x0 - 0.5, ym + 2, w + 1, MANUAL_H - 4, 3); tctx.stroke();  // selected -> white outline
+      }
+    }
+    if (active) {                                                // color accent bar + ring on the row being annotated
+      tctx.fillStyle = b.color; rRect(tctx, TL_GUT, ym, 4, MANUAL_H, 2); tctx.fill();
+      tctx.strokeStyle = "rgba(207,214,224,0.32)"; tctx.lineWidth = 1; rRect(tctx, TL_GUT + 0.5, ym + 0.5, W - TL_GUT - 1, MANUAL_H - 1, 6); tctx.stroke();
+    }
+    // prediction lane — same color semantics (blue/red), faint = uncertain (|2P-1|)
+    tctx.fillStyle = "#0c0e13"; rRect(tctx, TL_GUT, ya, W - TL_GUT, PRED_H, 4); tctx.fill();
+    const cH = hexRgb(HAPPENING_COLOR), cN = hexRgb(NOTHAPPENING_COLOR);
+    const proba = predsByBeh.get(b.id);                          // per-frame P for the active track
+    if (proba && proba.length) {
+      const F = meta.n_frames, hy = ya + 3, hh = PRED_H - 6, pw = plotW(W), vS = viewS(), vSpan = viewE() - viewS();
+      for (let x = TL_GUT; x < W; x++) {
+        const p = proba[Math.max(0, Math.min(F - 1, (vS + (x - TL_GUT) / pw * vSpan) | 0))];   // map into the VISIBLE window (zoom-aware), matching the labels/playhead
+        const m = Math.abs(2 * p - 1);
+        if (m < 0.04) continue;
+        const col = p >= 0.5 ? cH : cN;
+        tctx.fillStyle = `rgba(${col.r},${col.g},${col.b},${Math.pow(m, 0.6).toFixed(3)})`;
+        tctx.fillRect(x, hy, 1, hh);
+      }
+    }
+    for (const bt of (predictedBouts.get(b.id) || [])) {         // predicted Happening bouts -> blue top marker (clickable)
+      const x0 = xOf(bt.s, W), w = Math.max(2, xOf(bt.e, W) - x0);
+      tctx.fillStyle = `rgba(${cH.r},${cH.g},${cH.b},0.95)`;
+      tctx.fillRect(x0, ya + 1, w, 2);
+      if (reviewCurrent && reviewCurrent.bid === b.id && reviewCurrent.s === bt.s) {
+        tctx.strokeStyle = "#ffd24a"; tctx.lineWidth = 2; tctx.strokeRect(x0, ya + 1, w, PRED_H - 2);
+      }
+    }
+    let lbl = `${b.name}${b.key ? "  " + b.key : ""}`;           // label pill in the left gutter (beside the bar, not over it)
+    tctx.font = active ? "700 13.5px system-ui" : "600 13px system-ui";
+    const maxw = active ? TL_GUT - 54 : TL_GUT - 18;             // active row leaves room for the ‹ › nav arrows
+    if (tctx.measureText(lbl).width > maxw) {
+      while (lbl.length > 1 && tctx.measureText(lbl + "…").width > maxw) lbl = lbl.slice(0, -1);
+      lbl += "…";
+    }
+    if (active) { tctx.fillStyle = b.color; rRect(tctx, 3, ym + (MANUAL_H - 20) / 2, 3, 20, 1.5); tctx.fill(); }   // color tick by the active label
+    tctx.fillStyle = active ? "#f5f8fc" : "#ccd3de"; tctx.textAlign = "left"; tctx.fillText(lbl, 11, ym + MANUAL_H / 2);
+    if (active) {                                                // prev/next label-nav arrows (jump between labeled bouts)
+      tctx.textAlign = "center"; tctx.font = "700 15px system-ui";
+      for (const [cx, sym] of [[TL_GUT - 30, "‹"], [TL_GUT - 12, "›"]]) {
+        tctx.fillStyle = "rgba(255,255,255,0.10)"; rRect(tctx, cx - 8, ym + MANUAL_H / 2 - 9, 16, 18, 4); tctx.fill();
+        tctx.fillStyle = "#cbd3de"; tctx.fillText(sym, cx, ym + MANUAL_H / 2);
+      }
+      tctx.textAlign = "left";
+    }
+    tctx.font = "600 10.5px system-ui"; tctx.fillStyle = "#6b7c93"; tctx.textAlign = "left"; tctx.fillText("pred", 11, ya + PRED_H / 2);
+  });
+  captureTimelineBase(W, H, dpr);          // snapshot the base (no playhead/overlay) so playback can blit it
+  drawTimelineOverlay(W, H, rh);
+  drawFeatures(W, dpr);
+  renderOverview();
+}
+function captureTimelineBase(W, H, dpr) {
+  fitCanvas(tlBase, W, H, dpr);
+  const bx = tlBase.getContext("2d");
+  bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, tlBase.width, tlBase.height); bx.drawImage(tl, 0, 0);
+  tlBaseW = W; tlBaseH = H; tlBaseVS = viewS(); tlBaseVE = viewE(); tlBaseDpr = dpr;
+}
+function repaintTimeline() {   // playback fast path: blit cached base + only the moving overlay/playhead
+  if (!tlBaseW) return renderTimeline();
+  const dpr = window.devicePixelRatio || 1, W = tlBaseW, H = tlBaseH, rh = ROWH();
+  // Fall back to a full render (which recaptures) if ANYTHING the cached base depends on moved —
+  // width/height, the zoom window (tlView), or dpr. Otherwise the base would blit at a stale x-scale.
+  if (W !== tlWidth() || H !== RULER + behaviors.length * rh
+      || tlBaseVS !== viewS() || tlBaseVE !== viewE() || tlBaseDpr !== dpr) return renderTimeline();
+  tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tl.width, tl.height); tctx.drawImage(tlBase, 0, 0);
+  tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawTimelineOverlay(W, H, rh);
+  repaintFeatures(W, dpr);
+  repaintOverview();
+}
+function drawTimelineOverlay(W, H, rh) {
+  const paintPreview = (i, s, e, pm) => {   // in-progress segment on the manual lane
+    if (i < 0) return;
+    const y = RULER + i * rh, x0 = xOf(s, W), w = Math.max(1, xOf(e, W) - x0);
+    if (pm === "pos") { const c = hexRgb(HAPPENING_COLOR); tctx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.6)`; rRect(tctx, x0, y + 3, w, MANUAL_H - 6, 3); tctx.fill(); }
+    else if (pm === "neg") { const c = hexRgb(NOTHAPPENING_COLOR); tctx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.6)`; rRect(tctx, x0, y + 3, w, MANUAL_H - 6, 3); tctx.fill(); }
+    else hatchRect(tctx, x0, y + 3, w, MANUAL_H - 6, UNKNOWN_HATCH);
+    tctx.strokeStyle = "#fff"; tctx.setLineDash([4, 3]); tctx.lineWidth = 1.5;
+    rRect(tctx, x0, y + 3, w, MANUAL_H - 6, 3); tctx.stroke(); tctx.setLineDash([]);
+  };
+  if (drag && drag.kind === "paint" && drag.moved)
+    paintPreview(laneList().findIndex(b => b.id === drag.bid),
+                 Math.min(drag.start, drag.curFrame), Math.max(drag.start, drag.curFrame) + 1, mode);
+  if (painting)
+    paintPreview(laneList().findIndex(b => b.id === painting.bid),
+                 Math.min(painting.anchor, cur), Math.max(painting.anchor, cur) + 1, painting.mode);
+  if (reviewCurrent) {                                        // candidate under review: bracket + accept/trim preview
+    const ri = laneList().findIndex(b => b.id === reviewCurrent.bid);
+    if (ri >= 0) {
+      const y = RULER + ri * rh, ym = y, t = reviewTrim || reviewCurrent;
+      const xc0 = xOf(reviewCurrent.s, W), xc1 = xOf(reviewCurrent.e, W);
+      const xt0 = xOf(t.s, W), xt1 = xOf(t.e, W), cH = hexRgb(HAPPENING_COLOR), cN = hexRgb(NOTHAPPENING_COLOR);
+      const isDis = reviewCurrent.mode === "disagree";
+      const cAcc = (isDis && reviewCurrent.suggestVal === 0) ? cN : cH;   // disagree fills the range with the model's verdict color
+      tctx.fillStyle = `rgba(${cAcc.r},${cAcc.g},${cAcc.b},0.30)`; tctx.fillRect(xt0, ym + 3, Math.max(1, xt1 - xt0), MANUAL_H - 6);
+      if (!isDis && t.s > reviewCurrent.s) { tctx.fillStyle = `rgba(${cN.r},${cN.g},${cN.b},0.30)`; tctx.fillRect(xc0, ym + 3, xt0 - xc0, MANUAL_H - 6); }  // trimmed -> red (edges kept as your label in disagree mode)
+      if (!isDis && t.e < reviewCurrent.e) { tctx.fillStyle = `rgba(${cN.r},${cN.g},${cN.b},0.30)`; tctx.fillRect(xt1, ym + 3, xc1 - xt1, MANUAL_H - 6); }
+      tctx.strokeStyle = "#ffd24a"; tctx.lineWidth = 1.5;
+      tctx.strokeRect(xc0, y + 1, Math.max(2, xc1 - xc0), rh - ROW_GAP - 2);                                    // candidate bracket
+      for (const xx of [xt0, xt1]) {                                       // trim markers + draggable grips
+        tctx.strokeStyle = "#ffd24a"; tctx.beginPath(); tctx.moveTo(xx, y); tctx.lineTo(xx, y + MANUAL_H); tctx.stroke();
+        tctx.fillStyle = "#ffd24a"; rRect(tctx, xx - 4, y + MANUAL_H / 2 - 8, 8, 16, 3); tctx.fill();
+        tctx.strokeStyle = "#1a1d23"; tctx.lineWidth = 1;
+        tctx.beginPath(); tctx.moveTo(xx - 1.5, y + MANUAL_H / 2 - 4); tctx.lineTo(xx - 1.5, y + MANUAL_H / 2 + 4);
+        tctx.moveTo(xx + 1.5, y + MANUAL_H / 2 - 4); tctx.lineTo(xx + 1.5, y + MANUAL_H / 2 + 4); tctx.stroke();
+      }
+    }
+  }
+  if (selectedSeg && segTrim && !reviewCurrent) {              // selected labeled bout: draggable edit handles
+    const si = laneList().findIndex(b => b.id === selectedSeg.bid);
+    if (si >= 0) {
+      const y = RULER + si * rh, xt0 = xOf(segTrim.s, W), xt1 = xOf(segTrim.e, W);
+      const c = selectedSeg.val === 1 ? hexRgb(HAPPENING_COLOR) : selectedSeg.val === 2 ? hexRgb(NOTHAPPENING_COLOR) : { r: 150, g: 150, b: 150 };
+      tctx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.28)`; tctx.fillRect(xt0, y + 3, Math.max(1, xt1 - xt0), MANUAL_H - 6);  // edited extent
+      for (const xx of [xt0, xt1]) {                           // grips (white, matching the selection outline)
+        tctx.strokeStyle = "#fff"; tctx.lineWidth = 1.5; tctx.beginPath(); tctx.moveTo(xx, y); tctx.lineTo(xx, y + MANUAL_H); tctx.stroke();
+        tctx.fillStyle = "#fff"; rRect(tctx, xx - 4, y + MANUAL_H / 2 - 8, 8, 16, 3); tctx.fill();
+        tctx.strokeStyle = "#1a1d23"; tctx.lineWidth = 1;
+        tctx.beginPath(); tctx.moveTo(xx - 1.5, y + MANUAL_H / 2 - 4); tctx.lineTo(xx - 1.5, y + MANUAL_H / 2 + 4);
+        tctx.moveTo(xx + 1.5, y + MANUAL_H / 2 - 4); tctx.lineTo(xx + 1.5, y + MANUAL_H / 2 + 4); tctx.stroke();
+      }
+    }
+  }
+  const px = xOf(cur, W);
+  tctx.strokeStyle = "#ffd24a"; tctx.lineWidth = 1.5;
+  tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, H); tctx.stroke();
+}
+
+async function loadSeries() {
+  if (!vid) return;
+  const r = await api(`/features/${vid}/series?track=${activeTrack}`);
+  if (!r.ok) { featureSeries = { names: [], data: {} }; return; }
+  const names = r.headers.get("X-Series").split(","), F = +r.headers.get("X-Frames");
+  const buf = new Float32Array(await r.arrayBuffer());
+  const data = {}; names.forEach((n, i) => data[n] = buf.subarray(i * F, (i + 1) * F));
+  featureSeries = { names, data };
+}
+
+function drawFeatures(W, dpr) {
+  const S = featureSeries, H = Math.max(FEAT_H, S.names.length * FEAT_H);
+  fitCanvas(fc, W, H, dpr);
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  fctx.fillStyle = "#0f1115"; fctx.fillRect(0, 0, W, H);
+  if (!S.names.length) {
+    featBaseW = 0;                                  // invalidate cache so playback doesn't blit stale series
+    fctx.fillStyle = "#6b7280"; fctx.font = "11px system-ui"; fctx.textBaseline = "top";
+    fctx.fillText("feature time-series appear here", 6, 12); return;
+  }
+  const F = meta.n_frames;
+  S.names.forEach((name, i) => {
+    const arr = S.data[name], y0 = i * FEAT_H;
+    let mn = Infinity, mx = -Infinity;
+    for (let k = 0; k < arr.length; k++) { const v = arr[k]; if (!Number.isNaN(v)) { if (v < mn) mn = v; if (v > mx) mx = v; } }
+    const rng = (mx - mn) || 1;
+    fctx.strokeStyle = "#2a2e35"; fctx.lineWidth = 1; fctx.beginPath(); fctx.moveTo(0, y0); fctx.lineTo(W, y0); fctx.stroke();
+    fctx.strokeStyle = "#6ea8ff"; fctx.lineWidth = 1; fctx.beginPath(); let started = false;
+    for (let x = TL_GUT; x < W; x++) {                                // start after the gutter so curves + playhead (xOf) line up with the timeline
+      const v = arr[Math.min(F - 1, Math.floor(viewS() + (x - TL_GUT) / plotW(W) * (viewE() - viewS())))];
+      if (Number.isNaN(v)) { started = false; continue; }
+      const yy = y0 + FEAT_H - 3 - ((v - mn) / rng) * (FEAT_H - 12);
+      if (!started) { fctx.moveTo(x, yy); started = true; } else fctx.lineTo(x, yy);
+    }
+    fctx.stroke();
+    fctx.fillStyle = "#9aa3b2"; fctx.font = "10px system-ui"; fctx.textBaseline = "top"; fctx.fillText(name, 4, y0 + 2);
+  });
+  captureFeatureBase(W, H, dpr);
+  drawFeaturePlayhead(W, H);
+}
+function captureFeatureBase(W, H, dpr) {
+  fitCanvas(featBase, W, H, dpr);
+  const bx = featBase.getContext("2d");
+  bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, featBase.width, featBase.height); bx.drawImage(fc, 0, 0);
+  featBaseW = W; featBaseH = H;
+}
+function drawFeaturePlayhead(W, H) {
+  const px = xOf(cur, W);
+  fctx.strokeStyle = "#ffd24a"; fctx.lineWidth = 1; fctx.beginPath(); fctx.moveTo(px, 0); fctx.lineTo(px, H); fctx.stroke();
+}
+function repaintFeatures(W, dpr) {   // playback: reuse the cached series, redraw only the playhead
+  if (!featBaseW || featBaseW !== W) return drawFeatures(W, dpr);
+  fctx.setTransform(1, 0, 0, 1, 0, 0); fctx.clearRect(0, 0, fc.width, fc.height); fctx.drawImage(featBase, 0, 0);
+  fctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawFeaturePlayhead(W, featBaseH);
+}
+
+// ---------- whole-video overview strip (shown while zoomed/reviewing so you see WHERE the clip is) ----------
+function renderOverview() {   // full: draw the whole-clip strip (all but the playhead) and snapshot it
+  const wrap = el("overviewWrap"); if (!ovctx || !wrap) return;
+  const on = !!tlView && !!meta;                    // only meaningful when the timeline is zoomed to a sub-window
+  wrap.style.display = on ? "" : "none";
+  if (!on) { ovBaseW = 0; return; }
+  const dpr = window.devicePixelRatio || 1, W = ov.clientWidth || tlWidth(), H = OVER_H, N = Math.max(1, meta.n_frames);
+  fitCanvas(ov, W, H, dpr);
+  ovctx.setTransform(dpr, 0, 0, dpr, 0, 0); ovctx.clearRect(0, 0, W, H);
+  const X = f => f / N * W;
+  ovctx.fillStyle = "#0c0e13"; ovctx.fillRect(0, 0, W, H);
+  const arr = labelState.get(activeBid);            // active behavior's labels across the WHOLE clip
+  if (arr) for (const [s, e, v] of runsOf(arr)) {
+    ovctx.fillStyle = v === 1 ? HAPPENING_COLOR : v === 2 ? NOTHAPPENING_COLOR : UNKNOWN_HATCH;
+    ovctx.fillRect(X(s), 5, Math.max(1, X(e) - X(s)), H - 12);
+  }
+  const cH = hexRgb(HAPPENING_COLOR);
+  for (const bt of (predictedBouts.get(activeBid) || [])) {   // predicted bouts, thin under-rail
+    ovctx.fillStyle = `rgba(${cH.r},${cH.g},${cH.b},0.85)`; ovctx.fillRect(X(bt.s), H - 5, Math.max(1, X(bt.e) - X(bt.s)), 3);
+  }
+  if (reviewCurrent) {                              // the candidate / accept region, bright
+    const t = reviewTrim || reviewCurrent;
+    ovctx.fillStyle = "rgba(255,210,74,0.9)"; ovctx.fillRect(X(t.s), 3, Math.max(2, X(t.e) - X(t.s)), H - 6);
+  }
+  const vx0 = X(viewS()), vx1 = X(viewE());          // the zoomed window box
+  ovctx.fillStyle = "rgba(255,255,255,0.10)"; ovctx.fillRect(vx0, 0, Math.max(2, vx1 - vx0), H);
+  ovctx.strokeStyle = "rgba(255,255,255,0.6)"; ovctx.lineWidth = 1;
+  ovctx.strokeRect(vx0 + 0.5, 0.5, Math.max(2, vx1 - vx0) - 1, H - 1);
+  fitCanvas(ovBase, W, H, dpr);                      // snapshot the strip (no playhead) for playback reuse
+  const bx = ovBase.getContext("2d");
+  bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, ovBase.width, ovBase.height); bx.drawImage(ov, 0, 0);
+  ovBaseW = W; ovBaseH = H;
+  drawOverviewPlayhead(W, H, N);
+}
+function drawOverviewPlayhead(W, H, N) {
+  const pxp = cur / N * W;
+  ovctx.strokeStyle = "#ffd24a"; ovctx.lineWidth = 1.5; ovctx.beginPath(); ovctx.moveTo(pxp, 0); ovctx.lineTo(pxp, H); ovctx.stroke();
+}
+function repaintOverview() {   // playback: blit the cached strip + only the playhead (no per-frame runsOf / layout read)
+  if (!ovctx) return;
+  if (!tlView || !meta || !ovBaseW) return renderOverview();
+  const dpr = window.devicePixelRatio || 1, W = ovBaseW, H = ovBaseH, N = Math.max(1, meta.n_frames);
+  ovctx.setTransform(1, 0, 0, 1, 0, 0); ovctx.clearRect(0, 0, ov.width, ov.height); ovctx.drawImage(ovBase, 0, 0);
+  ovctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  drawOverviewPlayhead(W, H, N);
+}
+function overviewNav(clientX) {
+  if (!tlView || !meta) return;
+  const rect = ov.getBoundingClientRect(), W = rect.width || tlWidth();
+  const f = Math.max(0, Math.min(meta.n_frames - 1, Math.round((clientX - rect.left) / Math.max(1, W) * meta.n_frames)));
+  const span = viewE() - viewS();                    // keep the current zoom span, recenter on the click
+  const s = Math.max(0, Math.min(meta.n_frames - span, Math.round(f - span / 2)));
+  tlView = { s, e: s + span };
+  stop(); scrubTo(f);
+}
+
+// ---------- labeling ops ----------
+function labeledRunsSrc(bid, s, e) {   // runs of same (value, source) within [s,e), skipping unlabeled — for faithful re-sync
+  const v = labelState.get(bid), src = sourceState.get(bid); if (!v) return [];
+  const out = []; let i = s;
+  while (i < e) {
+    if (!v[i]) { i++; continue; }
+    const sc = src ? src[i] : 0; let j = i + 1;
+    while (j < e && v[j] === v[i] && (src ? src[j] : 0) === sc) j++;
+    out.push([i, j, v[i], sc]); i = j;
+  }
+  return out;
+}
+async function syncRange(bid, s, e) {   // reads per-frame value+source so each run persists with its own provenance
+  await api(`/labels/${vid}?behavior=${bid}&track=${activeTrack}&start=${s}&end=${e}`, { method: "DELETE" });
+  const spans = labeledRunsSrc(bid, s, e).map(([rs, re, v, sc]) => ({ behavior_id: bid, track: activeTrack, start: rs, end: re, value: v === 1 ? 1 : v === 2 ? 0 : 2, source: SRC_NAMES[sc] || "manual" }));  // state 1/2/3 -> stored 1/0/2
+  if (spans.length) await api(`/labels/${vid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spans) });
+}
+async function applyPaint(bid, s, e, k, source = "manual") {
+  clearSel();                                        // any label edit invalidates a highlighted selection
+  const v = labelState.get(bid), src = sourceState.get(bid), sc = SRC_CODES[source] ?? 0;
+  const beforeV = v.slice(s, e), beforeS = src.slice(s, e);   // snapshot BOTH value and provenance for a faithful undo
+  v.fill(k, s, e); src.fill(sc, s, e);
+  undoStack.push({ bid, s, e, beforeV, beforeS, afterV: v.slice(s, e), afterS: src.slice(s, e) }); redoStack.length = 0;
+  recomputeBouts(bid);                               // labeling this range drops it from the "new suggestion" bouts
+  renderTimeline(); await syncRange(bid, s, e);
+}
+async function applyOp(op, vSlice, sSlice) {
+  clearSel();
+  labelState.get(op.bid).set(vSlice, op.s); sourceState.get(op.bid).set(sSlice, op.s);   // restore value AND source
+  recomputeBouts(op.bid); renderTimeline(); await syncRange(op.bid, op.s, op.e);
+}
+async function undo() { const op = undoStack.pop(); if (!op) return; redoStack.push(op); await applyOp(op, op.beforeV, op.beforeS); }
+async function redo() { const op = redoStack.pop(); if (!op) return; undoStack.push(op); await applyOp(op, op.afterV, op.afterS); }
+
+// ---------- select + delete a single annotation ----------
+function runAt(bid, f) {                       // the contiguous labeled run containing frame f (or null)
+  const arr = labelState.get(bid); if (!arr || f < 0 || f >= arr.length) return null;
+  const v = arr[f]; if (!v) return null;      // 0 = unlabeled
+  let s = f; while (s > 0 && arr[s - 1] === v) s--;
+  let e = f + 1; while (e < arr.length && arr[e] === v) e++;
+  return { bid, s, e, val: v };
+}
+function selectRunAt(bid, f) { selectedSeg = runAt(bid, f); updateSelStatus(); renderTimeline(); }
+function nearestRun(bid, f, W) {              // run under f, else the closest run within ~10px (grabs tiny segments)
+  const arr = labelState.get(bid); if (!arr) return null;
+  const direct = runAt(bid, f); if (direct) return direct;
+  const tol = Math.ceil(10 / Math.max(1, W) * meta.n_frames);
+  let best = null, bestD = Infinity;
+  for (const [s, e, v] of runsOf(arr)) {
+    const d = f < s ? s - f : (f >= e ? f - (e - 1) : 0);
+    if (d <= tol && d < bestD) { bestD = d; best = { bid, s, e, val: v }; }
+  }
+  return best;
+}
+function selectNearest(bid, f, W) { selectedSeg = nearestRun(bid, f, W); updateSelStatus(); renderTimeline(); }
+function setTool(t) {
+  if (t !== "paint" && painting) commitPaint();   // keep a pending anchor-paint (commit it), don't discard it
+  toolMode = t;
+  el("toolPaint").classList.toggle("on", t === "paint");
+  el("toolSelect").classList.toggle("on", t === "select");
+  renderTimeline();
+}
+function clearSel() { if (selectedSeg) { selectedSeg = null; updateSelStatus(); renderTimeline(); } }
+function updateSelStatus() {
+  const btn = el("delSeg");
+  segTrim = selectedSeg ? { s: selectedSeg.s, e: selectedSeg.e } : null;   // editable bounds mirror the selection
+  if (selectedSeg) {
+    const b = behaviors.find(x => x.id === selectedSeg.bid);
+    const kind = selectedSeg.val === 1 ? "Happening" : "Not-happening";
+    busy(`Selected ${b ? b.name : "?"} · ${kind} · track ${activeTrack} · frames ${selectedSeg.s}–${selectedSeg.e} — drag the ▮ handles or [ / ] to adjust · Delete to remove`);
+    btn.disabled = false;
+  } else { btn.disabled = true; busy(""); }              // nothing selected -> drop the stale "Selected …" message
+}
+async function deleteSelectedSeg() {
+  if (!selectedSeg) return;
+  const { bid, s, e } = selectedSeg;
+  selectedSeg = null; el("delSeg").disabled = true;
+  await applyPaint(bid, s, e, 0);             // erase the run (undoable)
+  busy(`deleted label · frames ${s}–${e}`);
+}
+
+// ---------- behaviors ----------
+const FEATSET_DESC = {
+  all: "<b>All features</b> — pose + social + spout (352). The model may use every signal; most flexible, but the extra columns can <i>overfit</i> and dilute a clean signal (for drinking, all-features actually scored <i>lower</i> than spout-only).",
+  spout: "<b>Spout only</b> — just nose→spout distance & inside-ROI (48). The model learns purely “is the nose at the spout,” ignoring pose & social. Best for a spout-defined behavior like drinking.",
+  no_social: "<b>No social</b> — pose + spout + cage, but the multi-mouse (social) features are dropped — they tend to add noise for single-animal behaviors. Best for cage-wall behaviors like rearing (cage + pose beats cage-only).",
+  pose: "<b>Pose only</b> — body kinematics/posture from the keypoints, no spout/cage landmark. The model infers the behavior from motion alone (e.g. grooming, freezing).",
+  cage: "<b>Cage only</b> — just distance-to-nearest-wall & normalized position in the cage (needs a cage ROI set). Isolates “where in the arena,” but usually pairs better with pose — try No social too.",
+  spout_cage: "<b>Spout + cage</b> — both arena-landmark families (nose→spout & distance-to-wall), no pose/social. For behaviors tied to arena geometry.",
+  social: "<b>Social only</b> — just the focal-vs-nearest-other features (distance, facing, approach rate). For interaction behaviors defined purely by another mouse; usually pair with pose (Social + pose).",
+  social_pose: "<b>Social + pose</b> — multi-mouse interaction features + individual body kinematics, no arena landmarks. Best for behaviors like fighting / following that need both proximity AND motion.",
+};
+let featSetInfo = null;   // {set: {n_cols, n_signals, by_family:{fam:[signals]}}} — exact composition, fetched once
+function featSetComposition(fs) {   // "exactly what informs the model": the base signals this set feeds, by family
+  const info = featSetInfo && featSetInfo.sets && featSetInfo.sets[fs];
+  if (!info) return "";
+  const fams = Object.entries(info.by_family || {})
+    .map(([fam, sigs]) => `<b style="color:#aeb6c2">${esc(fam)}</b> (${sigs.length}): <span style="color:#7b8494">${sigs.map(esc).join(", ")}</span>`)
+    .join("<br>");
+  return `<div style="margin-top:5px;font-size:11.5px">Feeds the model <b>${info.n_signals}</b> base signals `
+    + `(<b>${info.n_cols}</b> columns after windowing):<br>${fams}</div>`;
+}
+function syncFeatSet() {   // reflect the active behavior's feature subset in the dropdown + directions box
+  const sel = el("featSet"); if (!sel) return;
+  const b = behaviors.find(x => x.id === activeBid);
+  sel.value = (b && b.feature_set) || "all";
+  const d = el("featSetDesc"); if (d) d.innerHTML = (FEATSET_DESC[sel.value] || FEATSET_DESC.all) + featSetComposition(sel.value);
+}
+function renderBehaviorBar() {
+  syncFeatSet();
+  const bar = el("behaviorBar"); bar.innerHTML = "";
+  const lab = document.createElement("span"); lab.className = "status"; lab.textContent = "Behavior:"; bar.appendChild(lab);
+  for (const b of behaviors) {
+    const chip = document.createElement("label");   // whole chip is clickable; the checkbox = selected behavior
+    chip.className = "chip" + (b.id === activeBid ? " active" : "");
+    chip.innerHTML = `<input type="checkbox" class="behcheck" style="accent-color:${b.color}" ${b.id === activeBid ? "checked" : ""}>`
+      + `<span class="sw" style="background:${b.color}"></span><span class="bname">${b.name}</span>`
+      + `${b.key ? `<span class="k">${b.key}</span>` : ""}<span class="x" title="delete">✕</span>`;
+    chip.querySelector(".behcheck").onchange = () => selectBehavior(b.id);
+    chip.querySelector(".x").onclick = ev => {
+      ev.preventDefault(); ev.stopPropagation();
+      if (!confirm(`Delete behavior "${b.name}" and its labels?`)) return;
+      api(`/behaviors/${b.id}`, { method: "DELETE" }).then(reloadBehaviors);
+    };
+    bar.appendChild(chip);
+  }
+  const add = document.createElement("button"); add.textContent = "＋ behavior"; add.onclick = addBehavior; bar.appendChild(add);
+  if (activeBid != null) {
+    const cSame = document.createElement("button");
+    cSame.textContent = "⎘ clone (seed labels)";
+    cSame.title = "Parallel copy with only the INITIAL/seed labels (your hand-painted + imported bouts, NOT the candidate-review ones). Same starting point, but the copy runs its OWN candidate process + further labeling. (original untouched)";
+    cSame.onclick = () => cloneBehavior(true); bar.appendChild(cSame);
+    const cEmpty = document.createElement("button");
+    cEmpty.textContent = "⎘ clone (empty)";
+    cEmpty.title = "Parallel copy with 0 labels — relabel from scratch to compare how many labels are needed to reach the same performance. (original untouched)";
+    cEmpty.onclick = () => cloneBehavior(false); bar.appendChild(cEmpty);
+  }
+}
+async function cloneBehavior(withLabels) {
+  if (activeBid == null) return;
+  const src = behaviors.find(b => b.id === activeBid);
+  const msg = withLabels
+    ? `Clone "${src.name}" with its SEED labels only?\n\nCopies your initial hand-painted + imported bouts (NOT the candidate-review labels). The copy starts from the same seed but runs its own candidate process. "${src.name}" is untouched.`
+    : `Clone "${src.name}" EMPTY (0 labels)?\n\nRelabel the copy from scratch to compare how many labels reach the same performance. "${src.name}" is untouched.`;
+  if (!confirm(msg)) return;
+  const r = await api(`/behaviors/${activeBid}/clone?with_labels=${withLabels ? "true" : "false"}`, { method: "POST" });
+  if (!r.ok) { alert("Could not clone: " + (await r.json()).detail); return; }
+  const nb = await r.json();
+  await reloadBehaviors(); await selectBehavior(nb.id);
+  busy(withLabels
+    ? `created "${nb.name}" with ${nb.labels_copied ?? ""} seed-label frames (candidate labels excluded) — Train, then run its own candidate loop vs "${src.name}"`
+    : `created "${nb.name}" (0 labels) — label it from scratch; compare vs "${src.name}" in Stats`);
+}
+async function selectBehavior(bid) {
+  activeBid = bid; renderBehaviorBar();
+  invalidateTlCache();                 // don't let playback blit the previous behavior's cached base during the awaits
+  await loadModel(); await loadCandidates(bid);
+  if (showApproaches) { approachBouts = await loadConfirmedBouts(bid); drawPose(); }   // refresh the approach overlay for the new behavior
+  renderTimeline();
+}
+function clipShortName(vidId) {
+  const toks = vidId.split("_");
+  return toks.length >= 2 && /^\d+$/.test(toks[1]) ? `${toks[0]}_${toks[1]}` : vidId.slice(0, 16);
+}
+function renderClipBar() {
+  const bar = el("clipBar"); if (!bar) return; bar.innerHTML = "";
+  const vids = (projMeta && projMeta.videos) || [];
+  if (vids.length < 1) { bar.style.display = "none"; return; }
+  bar.style.display = "";
+  const lab = document.createElement("span"); lab.className = "status"; lab.textContent = "Clip:"; bar.appendChild(lab);
+  for (const v of vids) {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (v.video_id === vid ? " active" : "");
+    chip.title = v.video_id;
+    chip.onclick = () => { if (v.video_id !== vid) openVideo(v.video_id); };
+    const name = document.createElement("span"); name.textContent = clipShortName(v.video_id); chip.appendChild(name);
+    const x = document.createElement("span"); x.textContent = "✕";
+    x.title = "Remove this clip from the project"; x.style.cssText = "margin-left:7px; opacity:.5; font-size:11px";
+    x.onmouseenter = () => x.style.opacity = "1"; x.onmouseleave = () => x.style.opacity = ".5";
+    x.onclick = e => { e.stopPropagation(); removeClip(v.video_id); };
+    chip.appendChild(x);
+    bar.appendChild(chip);
+  }
+}
+async function removeClip(vidId) {
+  const label = clipShortName(vidId);
+  if (!confirm(`Remove clip "${label}" from this project?\n\nThis deletes its labels, cached features, and predictions for this project. `
+    + `The source video/SLP file on disk is NOT deleted.`)) return;
+  const r = await api(`/videos/${vidId}`, { method: "DELETE" });
+  if (!r.ok) { alert("Could not remove clip: " + ((await r.json()).detail || r.status)); return; }
+  const wasActive = vidId === vid;
+  projMeta = await (await api(``)).json(); behaviors = projMeta.behaviors;
+  if (wasActive || !projMeta.videos.some(v => v.video_id === vid)) {
+    if (projMeta.videos.length) await openVideo(projMeta.videos[projMeta.videos.length - 1].video_id);
+    else { vid = null; renderClipBar(); renderBehaviorBar(); metaEl.textContent = "No clips left — load a video + SLP to begin."; }
+  } else {
+    renderClipBar();   // removed a non-active clip — stay on the current one
+  }
+  busy(`removed clip "${label}"`);
+}
+function nTracks() { return Math.max(1, poseShape[1] || 1); }
+function renderTrackBar() {
+  const bar = el("trackBar"); if (!bar) return; bar.innerHTML = "";
+  const lab = document.createElement("span"); lab.className = "status"; lab.textContent = "Track:"; bar.appendChild(lab);
+  const T = nTracks();
+  for (let t = 0; t < T; t++) {
+    const color = TRACK_COLORS[t % TRACK_COLORS.length];
+    const chip = document.createElement("button");   // one animal's labels + predictions
+    chip.className = "chip trk" + (t === activeTrack ? " active" : "");
+    chip.style.borderRadius = "20px";
+    if (t === activeTrack) chip.style.boxShadow = "inset 0 0 0 2px " + color;
+    chip.innerHTML = `<span class="sw" style="background:${color}"></span><span class="bname">track ${t}</span>`
+      + (t < 9 ? `<span class="k">${t + 1}</span>` : "");
+    chip.onclick = () => setActiveTrack(t);
+    bar.appendChild(chip);
+  }
+  const fl = el("featTrackLabel"); if (fl) fl.textContent = "track " + activeTrack;
+}
+async function onTrackChange() {
+  invalidateTlCache();                 // the new track's labels/heatstrip load async — don't blit the old track's base meanwhile
+  await loadLabels(); await loadAllPredictions(); await loadSeries();
+  if (activeBid != null) await loadCandidates(activeBid);
+  drawPose(); renderTimeline();
+}
+async function setActiveTrack(t) {
+  activeTrack = Math.max(0, Math.min(nTracks() - 1, t));
+  renderTrackBar();
+  await onTrackChange();
+}
+function cycleTrack(dir) { setActiveTrack((activeTrack + dir + nTracks()) % nTracks()); }
+async function addBehavior() {
+  const name = prompt("Behavior name:"); if (!name) return;
+  const key = prompt("Hotkey (single char, optional):") || null;
+  const r = await api(`/behaviors`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, key }) });
+  if (!r.ok) { alert("Could not add: " + (await r.json()).detail); return; }
+  await reloadBehaviors();
+}
+async function reloadBehaviors() {
+  behaviors = await (await api(`/behaviors`)).json();
+  await loadLabels();
+  const bid = behaviors.find(b => b.id === activeBid) ? activeBid : (behaviors[0] && behaviors[0].id);
+  renderBehaviorBar(); if (bid != null) await selectBehavior(bid); else renderTimeline();
+}
+
+// ---------- train / predict / review ----------
+function busy(msg) { metricsEl.textContent = msg; }
+function fmt2(x) { return (x == null) ? "—" : Number(x).toFixed(2); }
+async function loadModel() {
+  const r = await api(`/behaviors/${activeBid}/model`);
+  if (!r.ok) { metricsEl.textContent = "no model yet — Train to build one"; return; }
+  const m = await r.json(), x = m.metrics || {};
+  const fs = (m.feature_set && m.feature_set !== "all") ? ` · ${m.feature_set} feats (${m.n_features})` : "";
+  metricsEl.textContent = x.warning
+    ? `⚠ ${x.warning} (${m.n_pos} pos / ${m.n_neg} neg frames)`
+    : `F1 ${fmt2(x.f1)} · AP ${fmt2(x.average_precision)} · frame P/R ${fmt2(x.precision)}/${fmt2(x.recall)} · bout P/R ${fmt2(x.bout_precision)}/${fmt2(x.bout_recall)} · ${x.n_pos_groups}/${x.n_neg_groups} bouts${fs}`;
+}
+let statsCompareBid = null, statsCompare = null, statsSources = null;   // A/B comparison + label-source breakdown
+async function openStats() {
+  if (activeBid == null) { busy("select a behavior first"); return; }
+  // populate the compare selector with the OTHER behaviors (default: none)
+  const sel = el("statsCompare");
+  sel.innerHTML = '<option value="">— none —</option>'
+    + behaviors.filter(b => b.id !== activeBid).map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
+  sel.value = statsCompareBid != null && behaviors.some(b => b.id === statsCompareBid) ? String(statsCompareBid) : "";
+  statsCompareBid = sel.value ? parseInt(sel.value, 10) : null;
+  await refreshStats();
+  el("statsPanel").classList.add("on");
+}
+async function refreshStats() {
+  if (activeBid == null) return;
+  statsSources = await (await api(`/label-stats`)).json().catch(() => null);   // seed-vs-candidate + training-set composition
+  const d = await (await api(`/behaviors/${activeBid}/history`)).json().catch(() => ({ history: [], meta: null }));
+  statsCompare = null;
+  if (statsCompareBid != null) {
+    const cd = await (await api(`/behaviors/${statsCompareBid}/history`)).json().catch(() => null);
+    const cb = behaviors.find(b => b.id === statsCompareBid);
+    if (cd && cb) statsCompare = { history: cd.history || [], meta: cd.meta, name: cb.name, color: cb.color || "#c9a227" };
+  }
+  renderStats(d.history || [], d.meta);
+}
+function sbar(label, pos, neg) {
+  const tot = Math.max(1, pos + neg);
+  return `<div class="sbar"><span class="lab">${label}</span><span class="track">`
+    + `<i style="width:${(pos / tot * 100).toFixed(1)}%;background:${HAPPENING_COLOR}"></i>`
+    + `<i style="width:${(neg / tot * 100).toFixed(1)}%;background:${NOTHAPPENING_COLOR}"></i></span>`
+    + `<span class="cnt"><b style="color:${HAPPENING_COLOR}">${pos}</b> pos · <b style="color:${NOTHAPPENING_COLOR}">${neg}</b> neg</span></div>`;
+}
+function renderStats(history, meta) {
+  const b = behaviors.find(x => x.id === activeBid) || {};
+  el("statsTitle").textContent = `${b.name} — precision stats`;
+  const m = (meta && meta.metrics) || {}, last = history.length ? history[history.length - 1] : {};
+  const posB = (meta && meta.n_pos_bouts) ?? last.n_pos_bouts ?? 0, negB = (meta && meta.n_neg_bouts) ?? last.n_neg_bouts ?? 0;
+  const posF = (meta && meta.n_pos) ?? last.n_pos ?? 0, negF = (meta && meta.n_neg) ?? last.n_neg ?? 0;
+  el("statsBreakdown").innerHTML =
+    `<div class="status" style="margin-bottom:9px">Frame-level — P <b>${fmt2(m.precision)}</b> · R <b>${fmt2(m.recall)}</b> · AP <b>${fmt2(m.average_precision)}</b>`
+    + ` &nbsp;·&nbsp; Bout-level — P <b>${fmt2(m.bout_precision)}</b> · R <b>${fmt2(m.bout_recall)}</b></div>`
+    + sbar("Bouts", posB, negB) + sbar("Frames", posF, negF)
+    + srcLine(activeBid)
+    + trainTimeLine(meta, last)
+    + compareTable(b, m, meta)
+    + convergenceCallout(history, meta)
+    + fsBreakdown(history, meta);
+  el("statsNote").textContent = history.length
+    ? `${history.length} training run${history.length > 1 ? "s" : ""} recorded — retrain after labeling more to extend the curve.`
+    : "Train (a point is recorded each time) to build the learning curve.";
+  lastStatsHistory = history;
+  drawStatsPlot(history, statsCompare);
+}
+function behSrc(bid) {   // aggregate a behavior's label provenance -> {seedB, candB, clips}
+  const b = (statsSources && statsSources.behaviors || []).find(x => x.behavior_id === bid);
+  if (!b) return null;
+  let seedB = 0, candB = 0;
+  for (const cl of b.clips) for (const t of cl.tracks)
+    for (const [src, s] of Object.entries(t.sources)) {
+      const n = (s.pos_bouts || 0) + (s.neg_bouts || 0);
+      if (src === "candidate") candB += n; else seedB += n;   // manual + imported = seed
+    }
+  return { seedB, candB, clips: b.clips.length };
+}
+function srcLine(bid) {   // always-shown: how many training bouts came from hand-labeling vs the candidate loop
+  const s = behSrc(bid); if (!s) return "";
+  return `<div class="status" style="margin-top:7px;color:#9aa3b2">Training labels — <b>${s.seedB}</b> seed (hand/imported) + `
+    + `<b>${s.candB}</b> from candidate review · across <b>${s.clips}</b> clip${s.clips === 1 ? "" : "s"}</div>`;
+}
+// how long the most recent training round took (feature-ensure + gather + CV + fit + save), with the
+// feature-compute portion called out so a slow round is attributable (pre-warmed => ≈0).
+function trainTimeLine(meta, last) {
+  const s = (meta && meta.train_seconds != null) ? meta.train_seconds : (last && last.train_seconds);
+  if (s == null) return "";
+  const fs = (meta && meta.feature_seconds != null) ? meta.feature_seconds : (last && last.feature_seconds);
+  const feat = fs == null ? "" : (fs >= 0.1 ? ` · ${(+fs).toFixed(1)}s feature compute` : " · features pre-warmed");
+  return `<div class="status" style="margin-top:6px;color:#9aa3b2">Last training round — <b>${(+s).toFixed(1)}s</b>${feat}</div>`;
+}
+const tShort = iso => { const t = Date.parse(iso); if (!t) return "—"; const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`; };
+// A/B scorecard: current behavior vs the compare behavior, side by side — metrics + training-set makeup.
+function compareTable(b, m, meta) {
+  if (!statsCompare || !statsCompare.meta) return "";
+  const cm = statsCompare.meta.metrics || {}, cn = statsCompare;
+  const as = behSrc(activeBid) || {}, cs = behSrc(statsCompareBid) || {};
+  const row = (label, cur, comp) => `<tr><td style="padding:2px 10px 2px 0;color:#7b8494">${label}</td>`
+    + `<td style="padding:2px 12px 2px 0"><b>${cur}</b></td><td style="padding:2px 0;color:${cn.color}"><b>${comp}</b></td></tr>`;
+  return `<div class="status" style="margin:11px 0 2px;color:#7b8494;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">A/B comparison</div>`
+    + `<table style="border-collapse:collapse;font-size:12px"><tr><td></td>`
+    + `<td style="padding:2px 12px 2px 0;color:${b.color}"><b>${esc(b.name)}</b></td><td style="color:${cn.color}"><b>${esc(cn.name)}</b></td></tr>`
+    + row("AP", fmt2(m.average_precision), fmt2(cm.average_precision))
+    + row("F1", fmt2(m.f1), fmt2(cm.f1))
+    + row("bout P", fmt2(m.bout_precision), fmt2(cm.bout_precision))
+    + row("bout R", fmt2(m.bout_recall), fmt2(cm.bout_recall))
+    + row("pos bouts", (meta && meta.n_pos_bouts) ?? "—", (statsCompare.meta.n_pos_bouts) ?? "—")
+    + row("seed bouts", as.seedB ?? "—", cs.seedB ?? "—")
+    + row("candidate bouts", as.candB ?? "—", cs.candB ?? "—")
+    + row("clips trained", as.clips ?? "—", cs.clips ?? "—")
+    + row("feature set", esc((meta && meta.feature_set) || "all"), esc(statsCompare.meta.feature_set || "all"))   // None === all features (the default)
+    + row("train time", (meta && meta.train_seconds != null) ? `${(+meta.train_seconds).toFixed(1)}s` : "—",
+                        (statsCompare.meta.train_seconds != null) ? `${(+statsCompare.meta.train_seconds).toFixed(1)}s` : "—")
+    + row("last trained", tShort(meta && meta.trained_at), tShort(statsCompare.meta.trained_at))
+    + `</table>`;
+}
+const FS_COLORS = { spout: "#4ad0ff", spout_cage: "#6ea8fe", cage: "#e0a340", no_social: "#7fb069",
+                    pose: "#b07cc6", social: "#e8709a", social_pose: "#cf5fb0", all: "#c26", "(unrecorded)": "#8b93a2" };
+// convergence signal — "is this behavior done, or keep labeling?" from the observational learning
+// curve (current feature set's runs). Regresses AP on positive-bout count over the MATURE part of the
+// curve (drops unreliable tiny-sample early runs), reports the slope per +10 bouts, and a verdict.
+// Honest: this is the noisy observational curve, not the controlled sample-efficiency experiment.
+function convergenceCallout(history, meta) {
+  if (!history || !history.length) return "";
+  const cur = meta ? (meta.feature_set || null) : null;
+  let runs = history.filter(h => (h.feature_set || null) === cur && h.ap != null && h.n_pos_bouts != null);
+  if (runs.length < 3) runs = history.filter(h => h.ap != null && h.n_pos_bouts != null);   // fallback: config not attributed
+  runs.sort((a, b) => a.n_pos_bouts - b.n_pos_bouts);
+  const maxB = runs.length ? runs[runs.length - 1].n_pos_bouts : 0;
+  const mature = runs.filter(h => h.n_pos_bouts >= Math.max(10, 0.4 * maxB));   // drop unreliable early tiny-sample points
+  const box = (txt, col) => `<div class="status" style="margin:11px 0 2px;padding:7px 11px;border-radius:7px;`
+    + `background:#12151b;border:1px solid #232833;border-left:3px solid ${col}"><b style="color:#cbd3df">Convergence</b> — ${txt}`
+    + ` <span style="color:#6b7280">· observational; run the sample-efficiency analysis for a rigorous check</span></div>`;
+  if (mature.length < 3) return box("not enough retrains yet at higher label counts — label more and retrain a few times to gauge whether it's still improving.", "#6b7280");
+  const span = mature[mature.length - 1].n_pos_bouts - mature[0].n_pos_bouts;
+  if (span < 6) return box("retrain at a few more label counts to gauge convergence (the recent runs span too few added bouts to tell).", "#6b7280");
+  const xs = mature.map(r => r.n_pos_bouts), ys = mature.map(r => r.ap);
+  const n = xs.length, mx = xs.reduce((a, v) => a + v, 0) / n, my = ys.reduce((a, v) => a + v, 0) / n;
+  let sxy = 0, sxx = 0; for (let i = 0; i < n; i++) { sxy += (xs[i] - mx) * (ys[i] - my); sxx += (xs[i] - mx) ** 2; }
+  const per10 = sxx > 0 ? (sxy / sxx) * 10 : 0;
+  const recent = ys[n - 1];
+  if (per10 >= 0.015) return box(`📈 <b>still improving</b> — AP is rising about <b>${(per10 >= 0 ? "+" : "") + per10.toFixed(3)}</b> per +10 positive bouts (now ${fmt2(recent)} @ ${maxB} bouts). <b>Keep labeling</b> — you're not at the ceiling.`, "#7fb069");
+  if (per10 <= 0.005) return box(`✅ <b>plateaued</b> — AP is flat (${(per10 >= 0 ? "+" : "") + per10.toFixed(3)} per +10 bouts) around <b>${fmt2(recent)}</b> over the last ${n} runs. More labels of this behavior likely won't help much — this model is about as good as it gets on this feature set.`, "#4ad0ff");
+  return box(`→ <b>slowing</b> — AP still creeping up (${"+" + per10.toFixed(3)} per +10 bouts, now ${fmt2(recent)}). A bit more labeling may help; diminishing returns.`, "#e0a340");
+}
+// color-coded per-feature-set summary. Each set is represented by its run at the MOST labeled bouts
+// (its most stable, comparable estimate — NOT best-AP, which would reward a lucky tiny-sample run and
+// make configs look better than they are). Colors match the learning-curve lines; ✓ = deployed.
+function fsBreakdown(history, meta) {
+  if (!history || !history.length) return "";
+  const cur = meta && meta.feature_set;
+  const groups = {};
+  for (const h of history) (groups[h.feature_set || "(unrecorded)"] ||= []).push(h);
+  // representative run = most positive bouts, tie-break latest
+  const rep = fs => groups[fs].reduce((a, h) =>
+    ((h.n_pos_bouts ?? 0) > (a.n_pos_bouts ?? 0) ||
+     ((h.n_pos_bouts ?? 0) === (a.n_pos_bouts ?? 0) && (h.trained_at || "") > (a.trained_at || ""))) ? h : a, groups[fs][0]);
+  const reps = Object.fromEntries(Object.keys(groups).map(fs => [fs, rep(fs)]));
+  const order = Object.keys(groups).sort((a, b) => (reps[b].ap ?? -1) - (reps[a].ap ?? -1));
+  const rows = order.map(fs => {
+    const r = reps[fs], col = FS_COLORS[fs] || "#8b93a2";
+    const isCur = fs === cur || (fs === "(unrecorded)" && cur == null && !history.some(h => h.feature_set));
+    return `<div class="sbar" style="gap:8px">`
+      + `<span class="sw" style="width:11px;height:11px;border-radius:3px;background:${col};box-shadow:0 0 0 1px rgba(0,0,0,.35)"></span>`
+      + `<span style="min-width:96px;color:${isCur ? "#e7eaf1" : "#aeb6c2"};font-weight:${isCur ? 600 : 400}">${esc(fs)}${isCur ? " ✓" : ""}</span>`
+      + `<span class="cnt" style="min-width:0">AP <b>${fmt2(r.ap)}</b> · F1 <b>${fmt2(r.f1)}</b>`
+      + ` · bout P/R <b>${fmt2(r.bout_precision)}</b>/<b>${fmt2(r.bout_recall)}</b>`
+      + ` <span style="color:#6b7280">· ${groups[fs].length} run${groups[fs].length > 1 ? "s" : ""}, shown @ ${r.n_pos_bouts ?? "?"} pos bouts`
+      + `${r.n_features ? ", " + r.n_features + " feats" : ""}</span></span></div>`;
+  }).join("");
+  return `<div class="status" style="margin:12px 0 2px;color:#7b8494;font-size:11px;text-transform:uppercase;letter-spacing:.5px;font-weight:700">`
+    + `Feature sets tried — each at its most-labeled run${cur ? "  (✓ = deployed)" : ""}</div>` + rows;
+}
+function drawStatsPlot(history, compare) {
+  const c = el("statsPlot"), dpr = window.devicePixelRatio || 1, W = c.clientWidth || 600, H = 230, ctx = c.getContext("2d");
+  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  const padL = 40, padR = 14, padT = 16, padB = 34, pw = W - padL - padR, ph = H - padT - padB;
+  ctx.strokeStyle = "#232833"; ctx.lineWidth = 1; ctx.fillStyle = "#6b7280"; ctx.font = "10px system-ui"; ctx.textBaseline = "middle";
+  for (let g = 0; g <= 4; g++) { const yy = padT + ph - g / 4 * ph; ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke(); ctx.fillText((g / 4).toFixed(2), 10, yy); }
+  if (!history.length && !(compare && compare.history && compare.history.length)) { ctx.fillStyle = "#6b7280"; ctx.font = "12px system-ui"; ctx.textAlign = "center"; ctx.fillText("no training runs yet — Train to plot", W / 2, H / 2); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; return; }
+  const isTime = statsXMode === "time", isCand = statsXMode === "candidates";
+  const xof = h => isTime ? (Date.parse(h.trained_at) || 0)
+                          : isCand ? (h.n_candidate_bouts ?? null)
+                          : (statsXMode === "frames" ? h.n_pos : h.n_pos_bouts) || 0;
+  // candidate-bouts wasn't recorded before this feature -> drop rows lacking it in that mode
+  const drop = p => (isTime && !p.x) || (isCand && p.x == null);
+  const pts = history.map(h => ({ x: xof(h), fs: h.feature_set || "(unrecorded)", ...h })).filter(p => !drop(p)).sort((a, b) => a.x - b.x);
+  const cpts = (compare && compare.history || []).map(h => ({ x: xof(h), ...h })).filter(p => p.ap != null && !drop(p)).sort((a, b) => a.x - b.x);
+  const allx = pts.map(p => p.x).concat(cpts.map(p => p.x));   // domain spans BOTH so the comparison fits
+  if (!allx.length) { ctx.fillStyle = "#6b7280"; ctx.font = "12px system-ui"; ctx.textAlign = "center"; ctx.fillText("no timestamped runs yet", W / 2, H / 2); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; return; }
+  const xmin = isTime ? Math.min(...allx) : Math.min(...allx, 0), xmax = Math.max(...allx, xmin + 1);
+  const X = v => padL + (xmax === xmin ? 0.5 : (v - xmin) / (xmax - xmin)) * pw, Y = v => padT + ph - Math.max(0, Math.min(1, v || 0)) * ph;
+  // one connected line PER feature_set (never join points from different configs — that would be a
+  // misleading trajectory). Color = feature set; solid = AP, dashed = bout recall.
+  const groups = {};
+  for (const p of pts) (groups[p.fs] ||= []).push(p);
+  const drawSeries = (gp, key, col, dash) => {
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2; ctx.setLineDash(dash); ctx.beginPath(); let started = false;
+    gp.forEach(p => { if (p[key] == null) return; const px = X(p.x), py = Y(p[key]); started ? ctx.lineTo(px, py) : ctx.moveTo(px, py); started = true; });
+    ctx.stroke(); ctx.setLineDash([]);
+    gp.forEach(p => { if (p[key] == null) return; ctx.beginPath(); ctx.arc(X(p.x), Y(p[key]), 3, 0, 2 * Math.PI); ctx.fill(); });
+  };
+  for (const [fs, gp] of Object.entries(groups)) {
+    const col = FS_COLORS[fs] || "#8b93a2";
+    drawSeries(gp, "ap", col, []);              // solid = AP
+    drawSeries(gp, "bout_recall", col, [4, 3]); // dashed = bout recall
+  }
+  // A/B compare overlay: the other behavior's AP as one connected line (its color), so you can read off
+  // how many labels each needs to reach the same AP.
+  if (cpts.length) {
+    ctx.strokeStyle = compare.color; ctx.fillStyle = compare.color; ctx.lineWidth = 2.4; ctx.beginPath();
+    cpts.forEach((p, i) => { const px = X(p.x), py = Y(p.ap); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); });
+    ctx.stroke();
+    cpts.forEach(p => { ctx.beginPath(); ctx.arc(X(p.x), Y(p.ap), 3, 0, 2 * Math.PI); ctx.fill(); });
+  }
+  ctx.fillStyle = "#6b7280"; ctx.font = "10px system-ui"; ctx.textBaseline = "top"; ctx.textAlign = "center";
+  const tlabel = ms => { const d = new Date(ms); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`; };
+  const xlab = v => isTime ? tlabel(v) : String(v);
+  ctx.fillText(xlab(xmin), X(xmin) + (isTime ? 16 : 0), H - padB + 6); ctx.fillText(xlab(xmax), X(xmax) - (isTime ? 16 : 0), H - padB + 6);
+  ctx.fillText(isTime ? "when trained →" : isCand ? "candidate bouts in training set →"
+               : (statsXMode === "frames" ? "positive frames labeled →" : "positive bouts labeled →"), W / 2, H - 13);
+  // legend: one swatch per feature set present, + a note that solid=AP / dashed=bout recall
+  ctx.textAlign = "left"; ctx.textBaseline = "top"; let lx = padL + 8;
+  for (const fs of Object.keys(groups)) {
+    const col = FS_COLORS[fs] || "#8b93a2"; ctx.fillStyle = col; ctx.fillRect(lx, padT + 1, 9, 9);
+    ctx.fillStyle = "#aeb6c2"; ctx.fillText(fs, lx + 13, padT + 1); lx += 22 + ctx.measureText(fs).width + 10;
+  }
+  ctx.fillStyle = "#6b7280"; ctx.fillText("— AP   ·· bout recall", padL + 8, padT + 14);
+  if (cpts.length) { ctx.fillStyle = compare.color; ctx.fillRect(padL + 8, padT + 26, 9, 9); ctx.fillStyle = "#aeb6c2"; ctx.fillText(`${compare.name} — AP (compare)`, padL + 21, padT + 26); }
+  ctx.textBaseline = "alphabetic";
+}
+// ---------- training-set provenance (what THIS model actually learned from) ----------
+async function openTrainset() {
+  if (activeBid == null) { busy("select a behavior first"); return; }
+  const bid = activeBid;
+  const r = await api(`/behaviors/${bid}/trainset`);
+  if (!r.ok) { busy("no model yet — Train to build one, then its training set appears here"); return; }
+  lastTrainset = await r.json();
+  lastTrainsetBid = bid;                 // freeze which behavior this panel belongs to (activeBid may change later)
+  renderTrainset(lastTrainset);
+  el("trainsetPanel").classList.add("on");
+}
+function boutChip(vidId, x) {
+  const chip = document.createElement("button");
+  chip.className = "chip";
+  const c = x.value === 1 ? HAPPENING_COLOR : NOTHAPPENING_COLOR;
+  chip.style.cssText = `padding:1px 7px; font-size:11px; border-color:${c}; color:${c}`;
+  chip.textContent = `${x.start}–${x.end}`;
+  chip.title = `${x.value === 1 ? "Happening" : "Not-happening"} · ${x.n_frames} frames · click to jump here`;
+  chip.onclick = () => jumpToTrainBout(vidId, x);
+  return chip;
+}
+function renderTrainset(ts) {
+  const b = behaviors.find(x => x.id === lastTrainsetBid) || {};
+  el("trainsetTitle").textContent = `${b.name || "behavior"} — training set`;
+  const when = ts.trained_at ? new Date(ts.trained_at).toLocaleString() : "";
+  el("trainsetSummary").innerHTML =
+    `<b>${ts.n_videos}</b> clip${ts.n_videos !== 1 ? "s" : ""} · `
+    + `<b style="color:${HAPPENING_COLOR}">${ts.n_pos_bouts}</b>+/<b style="color:${NOTHAPPENING_COLOR}">${ts.n_neg_bouts}</b>− bouts · `
+    + `<b>${ts.n_pos}</b>+/<b>${ts.n_neg}</b>− frames · model <code>v${(ts.version || "").slice(0, 8)}</code> · ${when}`
+    + (ts.stale ? ` <span style="color:${NOTHAPPENING_COLOR}">· ⚠ trained before per-bout tracking — retrain to record which bouts</span>` : "");
+  const host = el("trainsetList"); host.innerHTML = "";
+  const CAP = 60;   // keep the DOM light on huge label sets; Copy JSON exports everything
+  for (const v of ts.videos) {
+    const sec = document.createElement("div"); sec.style.margin = "4px 0 12px";
+    const isCur = v.video_id === vid;
+    const counts = v.pos_bouts == null ? "" : ` · ${v.pos_bouts}+/${v.neg_bouts}− bouts · ${v.pos_frames}+/${v.neg_frames}− frames`;
+    sec.innerHTML = `<div class="status" style="margin-bottom:5px">`
+      + `<b${isCur ? ` style="color:${HAPPENING_COLOR}"` : ""}>${v.name}</b>${isCur ? " (current clip)" : ""}${counts}</div>`;
+    for (const t of v.tracks) {
+      const trow = document.createElement("div");
+      trow.style.cssText = "display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin:3px 0 3px 10px";
+      const col = TRACK_COLORS[t.track % TRACK_COLORS.length];
+      const lab = document.createElement("span"); lab.className = "status";
+      lab.innerHTML = `<span class="sw" style="background:${col}"></span> track ${t.track} `
+        + `<span style="color:#6b7280">(${t.pos_bouts}+/${t.neg_bouts}−)</span>`;
+      trow.appendChild(lab);
+      const bts = ts.bouts.filter(x => x.video_id === v.video_id && x.track === t.track);
+      bts.slice(0, CAP).forEach(x => trow.appendChild(boutChip(v.video_id, x)));
+      if (bts.length > CAP) {
+        const more = document.createElement("span"); more.className = "status"; more.style.color = "#6b7280";
+        more.textContent = `+${bts.length - CAP} more (Copy JSON for all)`;
+        trow.appendChild(more);
+      }
+      sec.appendChild(trow);
+    }
+    host.appendChild(sec);
+  }
+}
+async function jumpToTrainBout(vidId, x) {
+  const bid = lastTrainsetBid;                     // the behavior this panel belongs to — NOT the live activeBid
+  closeReview();                                   // moving clip/track would strand an open review on stale state
+  if (vidId !== vid) {
+    if (!projMeta.videos.some(v => v.video_id === vidId)) { busy(`clip "${vidId}" is no longer in this project`); return; }
+    await openVideo(vidId);                         // resets activeBid to the first behavior…
+  }
+  if (bid != null && bid !== activeBid) await selectBehavior(bid);   // …so make the panel's behavior the active one
+  if (x.track >= nTracks()) {                       // frozen bout's track may exceed a since-shrunk clip's poses
+    busy(`track ${x.track} isn't in "${vidId}" (this clip now has ${nTracks()}) — poses changed since training`);
+    return;
+  }
+  await setActiveTrack(x.track);
+  playBout(x.start, x.end);                           // auto-play the clicked training-set bout
+  selectRunAt(bid, x.start);                         // best-effort highlight of the exact run (if still labeled)
+  busy(`${vidId} · track ${x.track} · bout ${x.start}–${x.end} (${x.value === 1 ? "Happening" : "Not-happening"})`);
+}
+async function copyTrainset() {
+  if (!lastTrainset) return;
+  const text = JSON.stringify(lastTrainset, null, 2);
+  try { await navigator.clipboard.writeText(text); busy("training set copied to clipboard (JSON)"); }
+  catch (e) { console.log(text); busy("clipboard blocked — training-set JSON logged to console instead"); }
+}
+
+// ---------- label provenance (by-hand vs from-candidates, per track) ----------
+const SOURCE_LABELS = { manual: "By hand", candidate: "From candidates", imported: "Imported" };
+const SOURCE_ORDER = ["manual", "candidate", "imported"];
+async function openLabelStats() {
+  const r = await api(`/label-stats`);
+  if (!r.ok) { busy("could not load label sources"); return; }
+  renderLabelStats(await r.json());
+  el("labelStatsPanel").classList.add("on");
+}
+function lsCell(c) {
+  if (!c || !(c.pos_bouts || c.neg_bouts)) return `<span style="color:#4b5563">·</span>`;
+  const pos = c.pos_bouts || 0, neg = c.neg_bouts || 0;
+  return `<b style="color:${HAPPENING_COLOR}">${pos}</b>${neg ? ` <span style="color:${NOTHAPPENING_COLOR}">(${neg})</span>` : ""}`;
+}
+function renderLabelStats(d) {
+  const host = el("labelStatsList"); host.innerHTML = "";
+  if (!d.behaviors || !d.behaviors.length) { host.innerHTML = `<div class="status">No labels yet — paint some or import annotations, then check back.</div>`; return; }
+  const present = new Set();
+  for (const b of d.behaviors) for (const cl of b.clips) for (const t of cl.tracks) for (const s of Object.keys(t.sources)) present.add(s);
+  const cols = SOURCE_ORDER.filter(s => present.has(s)).concat([...present].filter(s => !SOURCE_ORDER.includes(s)));
+  const th = "text-align:right; padding:3px 12px; color:#7b8494; font-weight:600";
+  const sw = c => `<span style="display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:middle; margin-right:5px; background:${c}"></span>`;
+  for (const b of d.behaviors) {
+    const sec = document.createElement("div"); sec.style.margin = "6px 0 18px";
+    let html = `<div class="status" style="margin-bottom:4px"><b style="color:${b.color || "#cbd3df"}">${esc(b.name) || ("behavior " + b.behavior_id)}</b></div>`;
+    const behTot = {}; let behGrand = 0;
+    for (const cl of b.clips) {                        // one table per clip
+      html += `<div style="color:#9aa3b2; font-size:12px; margin:9px 0 2px">🎬 ${esc(clipShortName(cl.video_id))}</div>`
+        + `<table style="border-collapse:collapse; font-size:12.5px"><thead><tr>`
+        + `<th style="text-align:left; padding:3px 10px 3px 2px; color:#7b8494; font-weight:600">Track</th>`
+        + cols.map(c => `<th style="${th}">${SOURCE_LABELS[c] || esc(c)}</th>`).join("")
+        + `<th style="${th}">Total</th></tr></thead><tbody>`;
+      const clipTot = {}; let clipGrand = 0;
+      for (const t of cl.tracks) {
+        const col = TRACK_COLORS[t.track % TRACK_COLORS.length];
+        let rowPos = 0;
+        html += `<tr><td style="padding:3px 10px 3px 2px">${sw(col)}track ${t.track}</td>`;
+        for (const c of cols) {
+          const cell = t.sources[c]; html += `<td style="text-align:right; padding:3px 12px">${lsCell(cell)}</td>`;
+          if (cell) { const p = cell.pos_bouts || 0; clipTot[c] = (clipTot[c] || 0) + p; behTot[c] = (behTot[c] || 0) + p; rowPos += p; }
+        }
+        html += `<td style="text-align:right; padding:3px 2px 3px 12px"><b>${rowPos}</b></td></tr>`;
+        clipGrand += rowPos;
+      }
+      html += `<tr style="border-top:1px solid #2a2e35"><td style="padding:5px 10px 3px 2px; color:#7b8494">all tracks</td>`
+        + cols.map(c => `<td style="text-align:right; padding:5px 12px"><b>${clipTot[c] || 0}</b></td>`).join("")
+        + `<td style="text-align:right; padding:5px 2px 3px 12px"><b>${clipGrand}</b></td></tr></tbody></table>`;
+      behGrand += clipGrand;
+    }
+    if (b.clips.length > 1) {                          // cross-clip total for the behavior
+      const parts = cols.map(c => `${SOURCE_LABELS[c] || esc(c)}: <b>${behTot[c] || 0}</b>`).join(" · ");
+      html += `<div style="font-size:12px; color:#cbd3df; margin-top:6px; border-top:2px solid #3a3f47; padding-top:5px"><b>all clips</b> — ${parts} · total <b>${behGrand}</b></div>`;
+    }
+    sec.innerHTML = html; host.appendChild(sec);
+  }
+}
+
+// ---------- feature differences: how keypoint features separate positive vs negative frames ----------
+async function openFeatureDiff() {
+  if (activeBid == null) { busy("select a behavior first"); return; }
+  busy("computing feature differences…");
+  const r = await api(`/behaviors/${activeBid}/feature-diff?top_n=12`);
+  const d = r.ok ? await r.json() : { error: "request failed" };
+  el("featDiffPanel").classList.add("on");          // show BEFORE drawing so canvases have a width
+  renderFeatureDiff(d);
+  busy("");
+}
+function drawHist(cv, h) {
+  const dpr = window.devicePixelRatio || 1, W = cv.clientWidth || 220, H = 76;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = "#0c0e13"; ctx.fillRect(0, 0, W, H);
+  const n = h.pos.length, mx = Math.max(1e-9, ...h.pos, ...h.neg), bw = W / n;
+  const bars = (arr, color) => { const c = hexRgb(color); ctx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.55)`;
+    for (let i = 0; i < n; i++) { const bh = arr[i] / mx * (H - 12); ctx.fillRect(i * bw, H - 8 - bh, Math.max(1, bw - 1), bh); } };
+  bars(h.neg, NOTHAPPENING_COLOR); bars(h.pos, HAPPENING_COLOR);   // negatives behind, positives in front
+  ctx.fillStyle = "#6b7280"; ctx.font = "9px system-ui"; ctx.textBaseline = "bottom";
+  ctx.textAlign = "left"; ctx.fillText((+h.lo).toFixed(1), 2, H - 1);
+  ctx.textAlign = "right"; ctx.fillText((+h.hi).toFixed(1), W - 2, H - 1);
+}
+function renderFeatureDiff(d) {
+  const b = behaviors.find(x => x.id === activeBid) || {};
+  el("featDiffTitle").textContent = `${b.name || "behavior"} — feature differences`;
+  const host = el("featDiffBody"); host.innerHTML = "";
+  if (d.error) { host.innerHTML = `<div class="status" style="color:${NOTHAPPENING_COLOR}">${d.error}</div>`; return; }
+  const sampled = d.sampled_pos < d.n_pos || d.sampled_neg < d.n_neg;
+  const sub = document.createElement("div"); sub.className = "status"; sub.style.margin = "0 0 12px";
+  sub.innerHTML = `<b style="color:${HAPPENING_COLOR}">${d.n_pos}</b> positive vs <b style="color:${NOTHAPPENING_COLOR}">${d.n_neg}</b> negative frames`
+    + (sampled ? ` <span style="color:#6b7280">(sampled ${d.sampled_pos}/${d.sampled_neg})</span>` : "")
+    + ` · ${d.D} features · bar = separation (|AUC−½|); <b style="color:${HAPPENING_COLOR}">blue</b> = higher in positive, <b style="color:${NOTHAPPENING_COLOR}">red</b> = higher in negative`;
+  host.appendChild(sub);
+  const bars = document.createElement("div"); bars.style.marginBottom = "16px";
+  for (const f of d.features) {
+    const col = f.auc >= 0.5 ? HAPPENING_COLOR : NOTHAPPENING_COLOR, pct = (f.sep * 100).toFixed(0);
+    const row = document.createElement("div"); row.style.cssText = "display:flex; align-items:center; gap:8px; margin:3px 0; font-size:12px";
+    row.innerHTML = `<span style="width:200px; color:#cbd3df; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${esc(f.name)}">${esc(f.name)}</span>`
+      + `<span style="flex:1; height:12px; background:#20242c; border-radius:6px; overflow:hidden"><i style="display:block; height:100%; width:${pct}%; background:${col}"></i></span>`
+      + `<span style="width:132px; text-align:right; color:#8b93a2">AUC ${f.auc.toFixed(2)} · d ${f.cohens_d >= 0 ? "+" : ""}${f.cohens_d.toFixed(2)}</span>`;
+    bars.appendChild(row);
+  }
+  host.appendChild(bars);
+  const gh = document.createElement("div"); gh.className = "status"; gh.style.cssText = "margin:4px 0 6px; color:#7b8494; font-size:11px; text-transform:uppercase; letter-spacing:.5px; font-weight:700";
+  gh.textContent = "Value distributions — positive vs negative (top features)"; host.appendChild(gh);
+  const grid = document.createElement("div"); grid.style.cssText = "display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:12px";
+  host.appendChild(grid);
+  const cvs = [];
+  for (const f of d.features.slice(0, 8)) {
+    if (!f.hist) continue;
+    const cell = document.createElement("div");
+    const cv = document.createElement("canvas"); cv.style.cssText = "width:100%; height:76px; display:block; border-radius:6px";
+    const cap = document.createElement("div"); cap.className = "status"; cap.style.cssText = "font-size:11px; margin-top:3px; color:#9aa3b2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap";
+    cap.innerHTML = `<b style="color:#cbd3df" title="${esc(f.name)}">${esc(f.name)}</b> · μ⁺ ${f.mean_pos.toFixed(2)} vs μ⁻ ${f.mean_neg.toFixed(2)}`;
+    cell.appendChild(cv); cell.appendChild(cap); grid.appendChild(cell); cvs.push([cv, f.hist]);
+  }
+  requestAnimationFrame(() => cvs.forEach(([cv, h]) => drawHist(cv, h)));   // draw once the grid has laid out
+}
+// Predicted bouts you HAVEN'T labeled yet — the model re-fires on its own training frames, so a raw
+// predicted bout sitting on a region you already labeled is not a "new" suggestion. Subtract the
+// labeled mask (any value) and keep only unlabeled sub-runs >= minBout, mirroring the backend's
+// candidates() so the clickable auto-lane bouts match the review queue.
+function unlabeledSubruns(bouts, arr, minBout = 3) {
+  if (!arr) return bouts;
+  const out = [];
+  for (const bt of bouts) {
+    let i = bt.s;
+    while (i < bt.e) {
+      if (arr[i]) { i++; continue; }
+      let j = i; while (j < bt.e && !arr[j]) j++;
+      if (j - i >= minBout) out.push({ s: i, e: j, p: bt.p });
+      i = j;
+    }
+  }
+  return out;
+}
+function recomputeBouts(bid) {   // refresh the clickable predicted bouts from cached proba minus current labels
+  const p = predsByBeh.get(bid);
+  if (!p) { predictedBouts.delete(bid); return; }
+  predictedBouts.set(bid, unlabeledSubruns(boutsFromProba(p), labelState.get(bid)));
+}
+async function loadPredictions(bid) {
+  const r = await api(`/predict/${vid}?behavior=${bid}&track=${activeTrack}`);
+  if (r.ok) { const p = new Float32Array(await r.arrayBuffer()); predsByBeh.set(bid, p); recomputeBouts(bid); }
+  else { predsByBeh.delete(bid); predictedBouts.delete(bid); }
+}
+async function loadAllPredictions() { for (const b of behaviors) await loadPredictions(b.id); }
+
+// JS port of the backend hysteresis (smooth -> hi/lo -> min-bout) for the clickable auto lane.
+function boutsFromProba(proba, hi = 0.6, lo = 0.4, smooth = 5, minBout = 3) {
+  const F = proba.length, r = Math.floor(smooth / 2), p = new Float32Array(F);
+  for (let i = 0; i < F; i++) { let s = 0, c = 0; for (let j = Math.max(0, i - r); j <= Math.min(F - 1, i + r); j++) { const v = proba[j]; if (!Number.isNaN(v)) { s += v; c++; } } p[i] = c ? s / c : 0; }
+  const bouts = []; let i = 0;
+  while (i < F) {
+    if (p[i] >= lo) {
+      let j = i; while (j < F && p[j] >= lo) j++;
+      let hasHi = false; for (let k = i; k < j; k++) if (p[k] >= hi) { hasHi = true; break; }
+      if (hasHi && j - i >= minBout) { let mp = 0; for (let k = i; k < j; k++) mp += p[k]; bouts.push({ s: i, e: j, p: mp / (j - i) }); }
+      i = j;
+    } else i++;
+  }
+  return bouts;
+}
+async function loadCandidates(bid) {
+  const n = Math.max(1, Math.min(50, parseInt(el("candN").value, 10) || 10));
+  const r = await api(`/behaviors/${bid}/candidates/${vid}?track=${activeTrack}&n=${n}&mode=${candidateMode}`);
+  reviewQueue = r.ok ? await r.json() : []; reviewIdx = 0;
+  const noun = candidateMode === "disagree" ? "disagreements" : candidateMode === "mislabel" ? "likely mislabels"
+             : candidateMode === "reviewed" ? "reviewed" : candidateMode === "dropped" ? "filtered-out" : "candidates";
+  el("review").disabled = reviewQueue.length === 0;
+  el("review").textContent = reviewQueue.length ? `Review ${noun} (${reviewQueue.length})` : `Review ${noun}`;
+}
+function pollJob(jid, onDone) {
+  const t = setInterval(async () => {
+    const s = await (await api(`/jobs/${jid}`)).json();
+    busy(`${s.kind}: ${s.msg || s.status}${s.pct != null ? " " + s.pct + "%" : ""}`);
+    if (s.status === "done" || s.status === "error") { clearInterval(t); onDone(s); }
+  }, 500);
+}
+// ---- session timer (testing aid): a stopwatch + a log of the model's AP at each Train, so you can
+// see how long it takes to reach good performance (target: a usable model in ~5 min). Self-contained.
+let timerRunning = true, timerAccum = 0, timerStart = Date.now(), timerMarks = [];
+function timerElapsedMs() { return timerAccum + (timerRunning ? Date.now() - timerStart : 0); }
+function fmtDur(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+function tickTimer() { const c = el("timerClock"); if (c) c.textContent = fmtDur(timerElapsedMs()); }
+setInterval(tickTimer, 1000);
+function toggleTimer() {
+  if (timerRunning) { timerAccum += Date.now() - timerStart; timerRunning = false; }
+  else { timerStart = Date.now(); timerRunning = true; }
+  el("timerToggle").textContent = timerRunning ? "⏸" : "▶"; tickTimer();
+}
+function resetTimer() {
+  timerAccum = 0; timerStart = Date.now(); timerRunning = true; timerMarks = [];
+  el("timerToggle").textContent = "⏸"; el("timerLog").textContent = ""; el("timerLog").title = ""; tickTimer();
+}
+function timerMark(ap, bid, name, trainMs, nCand) {   // called on each Train: log this round's duration, AP, and candidate-bout count, tagged with the model
+  if (ap == null || !isFinite(ap)) return;
+  const nm = name || (behaviors.find(x => x.id === bid) || {}).name || `beh ${bid}`;
+  const sessionMs = timerElapsedMs();
+  const prev = [...timerMarks].reverse().find(m => m.bid === bid);   // previous mark for THIS model -> this round's duration
+  const roundMs = prev ? sessionMs - prev.sessionMs : sessionMs;
+  timerMarks.push({ t: fmtDur(sessionMs), sessionMs, ap, bid, name: nm, trainMs, roundMs, nCand });
+  const short = s => s.split(" ")[0];
+  el("timerLog").textContent = "· " + timerMarks.slice(-3).map(m =>
+    `${short(m.name)} +${fmtDur(m.roundMs)}→${m.ap.toFixed(2)}${m.nCand != null ? `(${m.nCand}c)` : ""}`).join("  ");
+  el("timerLog").title = "each Train — model · this round's duration (train compute) · candidate bouts → AP  @session:\n"
+    + timerMarks.map(m => `  ${m.name} · +${fmtDur(m.roundMs)}`
+        + `${m.trainMs != null ? ` (train ${(m.trainMs / 1000).toFixed(1)}s)` : ""}`
+        + `${m.nCand != null ? ` · ${m.nCand} cand bouts` : ""} → AP ${m.ap.toFixed(3)}  @ ${m.t}`).join("\n");
+}
+if (el("timerToggle")) { el("timerToggle").onclick = toggleTimer; el("timerReset").onclick = resetTimer; }
+async function train() {
+  if (activeBid == null) return;
+  const bid = activeBid, bname = (behaviors.find(x => x.id === bid) || {}).name;   // capture the model being trained (activeBid may change during the async job)
+  const t0 = Date.now();                                                          // wall-clock of the train job (feature compute + CV + fit)
+  busy("starting…");
+  const r = await api(`/behaviors/${bid}/train`, { method: "POST" });
+  if (!r.ok) { busy("train error: " + (await r.json()).detail); return; }
+  const { job_id } = await r.json();
+  pollJob(job_id, async s => {
+    if (s.status === "error") { busy("train failed: " + (s.error ? s.error.split("\n")[0] : "error")); return; }
+    const trainMs = Date.now() - t0;
+    await loadAllPredictions(); await loadModel(); await loadCandidates(activeBid); renderTimeline();
+    const r = s.result;
+    if (r && r.metrics) timerMark(r.metrics.average_precision, bid, bname, trainMs, r.n_candidate_bouts);   // round duration + candidate-bout count, tagged with THIS model
+    if (r) {                                   // make it explicit that ALL tracks & clips were pooled, not just the active one
+      const tks = (r.tracks || []).map(t => `t${t}:${(r.pos_by_track || {})[t] || 0}+`).join(" ");
+      busy(`Trained on ${r.n_pos}+/${r.n_neg}− frames · ${r.n_pos_bouts}+/${r.n_neg_bouts}− bouts · `
+        + `${(r.tracks || []).length} tracks (${tks}) · ${(r.videos_used || []).length} clips`);
+    }
+  });
+}
+async function predictVideo() {   // apply existing model(s) to the current video (no retrain)
+  busy("starting prediction…");
+  const r = await api(`/videos/${vid}/predict`, { method: "POST" });
+  if (!r.ok) { busy("predict: " + (await r.json()).detail); return; }
+  const { job_id } = await r.json();
+  pollJob(job_id, async s => {
+    if (s.status === "error") { busy("predict failed: " + (s.error ? s.error.split("\n")[0] : "error")); return; }
+    await loadAllPredictions(); if (activeBid != null) await loadCandidates(activeBid); renderTimeline();
+    const res = s.result || {}, done = res.behaviors || [], skipped = res.skipped || [];
+    if (skipped.length) {
+      // don't let a skipped prediction fail silently — tell the user which behavior and why
+      const mism = skipped.find(k => (k.reason || "").startsWith("feature_mismatch"));
+      const msg = mism
+        ? `⚠ ${skipped.map(k => k.name).join(", ")} not predicted — ${mism.reason.replace("feature_mismatch: ", "")}`
+        : `⚠ ${skipped.length} behavior(s) skipped: ${skipped.map(k => k.name + " (" + (k.reason || "?") + ")").join(", ")}`;
+      busy(msg);
+      if (mism) alert(msg + "\n\n(Set the spout/cage ROI on this clip to match the training clips — via ◇/▢ on the video or the HCM import — then Predict again.)");
+    } else {
+      busy(done.length ? `prediction done (${done.length} behavior${done.length > 1 ? "s" : ""})` : "no trained models to predict with yet — Train a behavior first");
+    }
+  });
+}
+async function importFile() {
+  const path = prompt("Path to annotations on the server:\n • event-annotator export (.json), or\n • interval CSV (.csv: behavior,start,end in frames)");
+  if (!path) return;
+  const isJson = path.toLowerCase().endsWith(".json");
+  const url = isJson ? `/videos/${vid}/import-events` : `/videos/${vid}/import`;
+  const body = isJson ? { json_path: path } : { csv_path: path };
+  const r = await api(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) { alert("Import failed: " + (await r.json()).detail); return; }
+  const s = await r.json();
+  alert("Imported:\n" + Object.entries(s.behaviors).map(([k, v]) => `${k}: ${v.pos_frames} pos / ${v.neg_frames} neg frames`).join("\n"));
+  await reloadBehaviors();
+}
+
+function setReviewView(s, e) {                     // zoom the timeline x-axis to the bout (+ context)
+  const pad = Math.max(20, Math.round((e - s) * 0.35));
+  tlView = { s: Math.max(0, s - pad), e: Math.min(meta.n_frames, e + pad) };
+}
+function locStr(f) {   // where in the whole clip this frame sits: index, time, and % through
+  if (!meta) return `frame ${f}`;
+  const N = meta.n_frames, pct = N > 1 ? Math.round(f / (N - 1) * 100) : 0;
+  const sec = f / (meta.fps || 30), mm = Math.floor(sec / 60), ss = Math.floor(sec % 60);
+  return `frame <b>${f}</b>/${N - 1} · ${mm}:${String(ss).padStart(2, "0")} · <b>${pct}%</b> in`;
+}
+const MERGE_GAP = 5;   // bridge a candidate into an adjacent same-behavior Happening run within this many frames
+function mergeExtent(bid, s, e, maxGap = MERGE_GAP) {
+  // -> {s, e, merged, gapBefore, gapAfter}: s/e describe the resulting continuous run's shape (for the
+  // preview text); gapBefore/gapAfter are the ONLY frames that actually need to be (re)written — the
+  // currently-unlabeled gap between the candidate and the adjacent run. The adjacent run's own frames
+  // are already correctly labeled (value AND provenance) and must never be repainted just to bridge it.
+  const arr = labelState.get(bid);
+  if (!arr) return { s, e, merged: false, gapBefore: null, gapAfter: null };
+  let ns = s, ne = e, merged = false, gapBefore = null, gapAfter = null;
+  for (let g = 1; g <= maxGap; g++) {                   // look backward from s for a Happening frame within the gap
+    const f = s - g; if (f < 0) break;
+    if (arr[f] === 1) { gapBefore = [f + 1, s]; let k = f; while (k > 0 && arr[k - 1] === 1) k--; ns = k; merged = true; break; }
+  }
+  for (let g = 0; g < maxGap; g++) {                     // look forward from e (e itself is already outside the candidate)
+    const f = e + g; if (f >= arr.length) break;
+    if (arr[f] === 1) { gapAfter = [e, f]; let k = f; while (k + 1 < arr.length && arr[k + 1] === 1) k++; ne = k + 1; merged = true; break; }
+  }
+  return { s: ns, e: ne, merged, gapBefore, gapAfter };
+}
+function updateReviewText() {
+  if (!reviewCurrent) return;
+  const _sp = el("rvSplit"); if (_sp) _sp.style.display = reviewCurrent.mode === "new" ? "" : "none";   // split only makes sense for new detections
+  const b = behaviors.find(x => x.id === reviewCurrent.bid) || {}, t = reviewTrim || reviewCurrent;
+  const loc = `<span style="color:#8b93a2">📍 ${locStr(t.s)}</span>`;
+  const mrow = el("rvMergeRow"), merge = reviewCurrent.mode === "new" ? mergeExtent(reviewCurrent.bid, t.s, t.e) : { merged: false };   // merge only for new detections — not disagree/reviewed (would silently flip a label)
+  if (mrow) {
+    mrow.style.display = merge.merged ? "" : "none";
+    if (merge.merged) el("rvMerge").title = `Bridges frames ${t.s}–${t.e} to the adjacent bout -> one continuous run ${merge.s}–${merge.e} (m)`;
+  }
+  if (reviewCurrent.mode === "reviewed") {
+    const yours = reviewCurrent.labelValue === 1 ? "Happening" : "Not-happening";
+    const head = reviewQueue.length ? `Reviewed <b>${reviewIdx + 1}/${reviewQueue.length}</b>` : `Reviewed`;
+    const when = reviewCurrent.reviewedAt ? ` · checked ${esc(String(reviewCurrent.reviewedAt).slice(0, 10))}` : "";
+    el("reviewQ").innerHTML = `${head} · track ${activeTrack} · <b style="color:${b.color}">${b.name}</b> · `
+      + `frames <b>${t.s}–${t.e}</b> (${t.e - t.s}f) · you labeled <b>${yours}</b> · ✓ already reviewed${when}. &nbsp; ${loc}`;
+    el("rvProgress").textContent = "r replay · this bout is marked reviewed (won't show in the mislabel queue) · n un-review · ⏎ next";
+    return;
+  }
+  if (reviewCurrent.mode === "disagree") {
+    const yours = reviewCurrent.labelValue === 1 ? "Happening" : "Not-happening";
+    const sugPos = reviewCurrent.suggestVal === 1;
+    const sug = sugPos ? "Happening" : "Not-happening", sugCol = sugPos ? HAPPENING_COLOR : NOTHAPPENING_COLOR;
+    const head = reviewQueue.length ? `Disagreement <b>${reviewIdx + 1}/${reviewQueue.length}</b>` : `Disagreement`;
+    el("reviewQ").innerHTML = `${head} · track ${activeTrack} · <b style="color:${b.color}">${b.name}</b> · `
+      + `frames <b>${t.s}–${t.e}</b> (${t.e - t.s}f) · you labeled <b>${yours}</b>, `
+      + `model says <b style="color:${sugCol}">${sug}</b> (p=${(reviewCurrent.conf ?? 0).toFixed(2)}). &nbsp; Change to <b>${sug}</b>? &nbsp; ${loc}`;
+    el("rvProgress").textContent = "r replay · [ / ] or drag the ▮ handles to trim OR extend · y change to model · n keep yours · ⏎ next";
+    return;
+  }
+  const dropped = candidateMode === "dropped";
+  const label = dropped ? "Filtered-out" : "Candidate";
+  const head = reviewQueue.length ? `${label} <b>${reviewIdx + 1}/${reviewQueue.length}</b>` : `Predicted <b style="color:${b.color}">${b.name}</b>`;
+  const sd = reviewCurrent.spoutDist;
+  const spoutNote = (sd != null) ? ` · <span style="color:#4ad0ff">nose→spout ${sd.toFixed(2)} BL${sd <= 0.01 ? " (inside)" : ""}</span>` : "";
+  const socialNote = (reviewCurrent.maxConcurrent >= 2) ? ` · <span style="color:#e8a33d">⚠ ${reviewCurrent.maxConcurrent} mice at spout</span>` : "";
+  const dropNote = (dropped && reviewCurrent.dropReason) ? ` · <span style="color:#d9534f">🚫 dropped: ${esc(reviewCurrent.dropReason)}</span>` : "";
+  el("reviewQ").innerHTML = `${head} · track ${activeTrack} · bout <b>${reviewCurrent.s}–${reviewCurrent.e}</b> · `
+    + `accept <b style="color:${HAPPENING_COLOR}">${t.s}–${t.e}</b> (${t.e - t.s}f)${spoutNote}${socialNote}${dropNote}. &nbsp; ${dropped ? "Override — is this <b>" + b.name + "</b>?" : "Is this <b>" + b.name + "</b>?"} &nbsp; ${loc}`;
+  el("rvProgress").textContent = "r replay · [ / ] or drag the ▮ handles to trim OR extend · y accept · n reject · m merge (when adjacent) · ⏎ next · or paint the lane";
+}
+async function startReview() {
+  if (candidateMode === "mislabel") busy("cross-validating to find likely mislabels — first run for a behavior takes a moment…");
+  if (activeBid != null) await loadCandidates(activeBid);   // refresh against CURRENT labels (queue is otherwise only reloaded on train/predict/switch)
+  if (!reviewQueue.length) {
+    busy(candidateMode === "disagree" ? "no disagreements — the model agrees with your labels"
+         : candidateMode === "mislabel" ? "no likely mislabels on this clip/track — the cross-validated model agrees with your labels (or too few bouts to cross-validate)"
+         : candidateMode === "reviewed" ? "no reviewed bouts yet on this clip/track — check some in 'Likely mislabels' and they'll land here"
+         : candidateMode === "dropped" ? "no bouts were filtered out (no 2-mouse-overlap drops for this behavior/track)"
+         : "no unlabeled candidates — retrain after labeling more");
+    return;
+  }
+  clearReviewUndo(); el("reviewPanel").classList.add("on"); setReviewLayout(true); showCandidate(0);
+}
+// two-column review mode: video + review rail side-by-side, timeline pulled up beneath (CSS-only reflow)
+function setReviewLayout(on) {
+  document.querySelector("main").classList.toggle("reviewing", on);
+  if (on) window.scrollTo({ top: 0, behavior: "smooth" });
+  requestAnimationFrame(() => { if (meta) renderTimeline(); });   // widths reflowed → redraw the lanes
+}
+function openBoutReview(bid, bt) {   // clicked a predicted bout on the auto lane
+  activeBid = bid; reviewCurrent = { bid, s: bt.s, e: bt.e, p: bt.p, mode: "new" }; reviewTrim = { s: bt.s, e: bt.e };
+  reviewQueue = []; setReviewView(bt.s, bt.e);
+  el("rvYes").textContent = "✓ Accept (y)"; el("rvNo").textContent = "✗ Reject (n)";
+  clearReviewUndo(); el("reviewPanel").classList.add("on"); setReviewLayout(true);
+  renderBehaviorBar(); updateReviewText(); populateReclassifySelect(); playBout(bt.s, bt.e);   // auto-play the clicked bout
+}
+function showCandidate(i) {
+  reviewIdx = i;
+  if (i >= reviewQueue.length) { closeReview(); busy("reviewed — Train again to refine"); return; }
+  const c = reviewQueue[i];
+  const isReviewed = c.kind === "reviewed";
+  const isDis = c.kind === "disagree" || isReviewed;
+  reviewCurrent = { bid: activeBid, s: c.start, e: c.end, p: c.mean_proba, mode: isReviewed ? "reviewed" : isDis ? "disagree" : "new",
+                    labelValue: c.label_value, suggestVal: c.suggest_value, conf: c.disagreement, spoutDist: c.spout_dist, maxConcurrent: c.max_concurrent, dropReason: c.drop_reason, reviewedAt: c.reviewed_at };
+  reviewTrim = { s: c.start, e: c.end };
+  el("rvYes").textContent = isReviewed ? "✓ Keep reviewed (y)" : isDis ? "✓ Change (y)" : "✓ Accept (y)";
+  el("rvNo").textContent = isReviewed ? "↩ Un-review (n)" : isDis ? "✗ Keep (n)" : "✗ Reject (n)";
+  setReviewView(c.start, c.end);
+  updateReviewText(); populateReclassifySelect(); playBout(c.start, c.end);   // auto-play the candidate bout under review
+}
+function populateReclassifySelect() {   // every OTHER behavior, so you can mark a candidate as one of them instead
+  const sel = el("rvReclassify"); if (!sel || !reviewCurrent) return;
+  const others = behaviors.filter(b => b.id !== reviewCurrent.bid);
+  sel.innerHTML = '<option value="">↷ mark as other behavior…</option>'
+    + others.map(b => `<option value="${b.id}">${esc(b.name)}</option>`).join("");
+  sel.value = "";
+}
+async function reclassifyCandidate(otherBid) {
+  if (!reviewCurrent) return;
+  snapReview();
+  const { bid, s, e, mode } = reviewCurrent, t = reviewTrim || { s, e };
+  if (candidateMode === "mislabel") await markReviewedCurrent();   // resolved this mislabel by reclassifying
+  if (mode !== "disagree") {                        // this candidate ISN'T the behavior under review — same "Not-happening" call as Reject
+    await applyPaint(bid, s, e, 2, "candidate");
+  }
+  await applyPaint(otherBid, t.s, t.e, 1, "candidate");   // ...but IS the chosen one, over the (possibly trimmed) range
+  advanceReview();
+}
+function ensureTrimVisible() {   // widen the zoom window if the accept range now extends past it (so the grips stay on-screen)
+  if (!reviewTrim || !tlView || !meta) return;
+  const span = Math.max(reviewTrim.e - reviewTrim.s, 20), pad = Math.max(20, Math.round(span * 0.2));
+  let s = tlView.s, e = tlView.e;
+  if (reviewTrim.s < s + pad) s = Math.max(0, reviewTrim.s - pad);
+  if (reviewTrim.e > e - pad) e = Math.min(meta.n_frames, reviewTrim.e + pad);
+  if (s !== tlView.s || e !== tlView.e) tlView = { s, e };
+}
+// Trim clamps to [0, n_frames] — NOT the candidate bounds — so you can extend a bout past the model's
+// proposal as well as shorten it. Move the playhead to the boundary you want, then [ (start) / ] (end).
+function setTrimStart() { if (!reviewCurrent) return; reviewTrim.s = Math.max(0, Math.min(cur, reviewTrim.e - 1)); ensureTrimVisible(); updateReviewText(); renderTimeline(); }
+function setTrimEnd()   { if (!reviewCurrent) return; reviewTrim.e = Math.min(meta.n_frames, Math.max(cur + 1, reviewTrim.s + 1)); ensureTrimVisible(); updateReviewText(); renderTimeline(); }
+// mark the bout under review as mislabel-reviewed (so it drops out of the mislabel queue). Uses the
+// ORIGINAL labeled-run bounds (reviewCurrent.s/.e), which is the key mislabels()/reviewed use.
+async function markReviewedCurrent(action = "add") {
+  if (!reviewCurrent) return;
+  await api(`/behaviors/${reviewCurrent.bid}/reviewed`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vid, track: activeTrack, start: reviewCurrent.s, end: reviewCurrent.e,
+                           label_value: reviewCurrent.labelValue, action }),
+  });
+}
+async function acceptCandidate() {   // "y": accept the model. new: label inner as Happening, trimmed edges Not-happening. disagree: flip inner to the model's verdict.
+  if (!reviewCurrent) return;
+  snapReview();
+  const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
+  if (reviewCurrent.mode === "reviewed") { advanceReview(); return; }   // reviewed tab: 'y' keeps it reviewed, just advance
+  if (reviewCurrent.mode === "disagree") {
+    if (candidateMode === "mislabel") await markReviewedCurrent();   // resolved -> stop resurfacing it
+    await applyPaint(bid, t.s, t.e, reviewCurrent.suggestVal === 1 ? 1 : 2, "candidate");   // correct the label to what the model sees
+    advanceReview(); return;
+  }
+  await applyPaint(bid, t.s, t.e, 1, "candidate");
+  if (t.s > s) await applyPaint(bid, s, t.s, 2, "candidate");
+  if (t.e < e) await applyPaint(bid, t.e, e, 2, "candidate");
+  advanceReview();
+}
+async function mergeCandidate() {   // "m": accept, but bridge the gap to an adjacent same-behavior bout instead of leaving it split
+  if (!reviewCurrent || reviewCurrent.mode !== "new") return;   // new detections only (disagree/reviewed must not be silently relabeled by merge)
+  snapReview();
+  const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
+  const m = mergeExtent(bid, t.s, t.e);
+  if (!m.merged) return acceptCandidate();          // nothing adjacent (e.g. you trimmed away from it) — fall back to a normal accept
+  await applyPaint(bid, t.s, t.e, 1, "candidate");             // the candidate's own (possibly-trimmed) frames
+  if (m.gapBefore) await applyPaint(bid, m.gapBefore[0], m.gapBefore[1], 1, "candidate");   // bridge ONLY the gap —
+  if (m.gapAfter) await applyPaint(bid, m.gapAfter[0], m.gapAfter[1], 1, "candidate");      // the adjacent bout's own frames/provenance are never touched
+  if (t.s > s) await applyPaint(bid, s, t.s, 2, "candidate");   // still mark any trimmed-off edges Not-happening, same as Accept
+  if (t.e < e) await applyPaint(bid, t.e, e, 2, "candidate");
+  advanceReview();
+}
+// "s": the candidate spans MORE THAN ONE bout. Commit the part from the accept-range start up to the
+// playhead as one Happening bout (trimmed-off left edge -> Not-happening), then re-anchor the candidate
+// to the remainder [playhead, end] and keep reviewing it — so you can carve out several bouts in a row,
+// and the gaps between them become Not-happening when you trim+accept the next piece. New detections only.
+async function splitCandidate() {
+  if (!reviewCurrent || reviewCurrent.mode !== "new") return;
+  const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
+  const cut = cur;                                            // split at the playhead
+  if (cut <= t.s + 1 || cut >= t.e - 1) { busy("move the playhead inside the bout, then Split"); return; }
+  snapReview();
+  await applyPaint(bid, t.s, cut, 1, "candidate");            // left segment = one Happening bout
+  if (t.s > s) await applyPaint(bid, s, t.s, 2, "candidate"); // any trimmed-off left edge = Not-happening
+  reviewCurrent = { ...reviewCurrent, s: cut, e };            // keep reviewing the remainder
+  reviewTrim = { s: cut, e };
+  setReviewView(cut, e); updateReviewText(); renderTimeline(); playBout(cut, e);
+}
+async function rejectCandidate() {   // "n": new: mark Not-happening. disagree: keep your label. reviewed: un-review.
+  if (!reviewCurrent) return;
+  snapReview();
+  const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
+  if (reviewCurrent.mode === "reviewed") { await markReviewedCurrent("remove"); advanceReview(); return; }   // put back in the mislabel queue
+  if (reviewCurrent.mode === "disagree") {
+    if (candidateMode === "mislabel") await markReviewedCurrent();   // you checked it and kept your label -> don't resurface
+    advanceReview(); return;   // your call stands — no write, so a hand-labeled bout stays 'manual'
+  }
+  await applyPaint(bid, s, e, 2, "candidate");
+  advanceReview();
+}
+function nextCandidate() { if (reviewCurrent) advanceReview(); }   // advance without writing (e.g. after painting inside)
+function advanceReview() { if (reviewQueue.length) showCandidate(reviewIdx + 1); else closeReview(); }
+function closeReview() { reviewCurrent = null; reviewTrim = null; tlView = null; clearReviewUndo(); el("reviewPanel").classList.remove("on"); setReviewLayout(false); el("reviewQ").textContent = ""; renderTimeline(); }
+function endReview() { closeReview(); busy("reviewed — Train again to refine"); }
+// ---- review-level undo: a review action (accept/reject/split/merge/reclassify) is a COMPOUND edit
+// (several applyPaint writes + a queue move); snapshot the review position + the label-undo depth BEFORE
+// it, so one Undo reverts all its writes AND returns to that candidate. ----
+function clearReviewUndo() { reviewUndo.length = 0; const u = el("rvUndo"); if (u) u.disabled = true; }
+function snapReview() {
+  reviewUndo.push({ idx: reviewIdx, mark: undoStack.length,
+                    cur: reviewCurrent ? { ...reviewCurrent } : null,
+                    trim: reviewTrim ? { ...reviewTrim } : null });
+  if (reviewUndo.length > 100) reviewUndo.shift();
+  const u = el("rvUndo"); if (u) u.disabled = false;
+}
+async function undoReview() {
+  const s = reviewUndo.pop();
+  if (!s) { const u = el("rvUndo"); if (u) u.disabled = true; return; }
+  while (undoStack.length > s.mark) await undo();     // revert every label write this action made
+  reviewIdx = s.idx; reviewCurrent = s.cur; reviewTrim = s.trim;
+  const u = el("rvUndo"); if (u) u.disabled = reviewUndo.length === 0;
+  if (reviewCurrent) {                                // re-open + re-show that candidate (it may have closed on the last accept)
+    if (!el("reviewPanel").classList.contains("on")) { el("reviewPanel").classList.add("on"); setReviewLayout(true); }
+    setReviewView(reviewCurrent.s, reviewCurrent.e); updateReviewText(); populateReclassifySelect(); renderTimeline(); playBout(reviewCurrent.s, reviewCurrent.e);
+    busy("undid last review action");
+  } else { closeReview(); }
+}
+
+// ---------- playback (rAF clock; frames from the prefetched MediaBunny cache — event-annotator style) ----------
+let playBoutSeq = 0;
+function playBout(s, e) {   // jump to a bout's start and auto-play through it, stopping at the end
+  stop();
+  const seq = ++playBoutSeq;   // a newer playBout (rapid replay / advancing candidates) cancels this one's
+  show(s).finally(() => { if (seq === playBoutSeq && !playing) play(Math.max(s + 1, e - 1)); });  // deferred play — else a stale finally() could toggle playback off
+}
+function play(stopAt = null) {
+  if (playing) return stop();
+  if (!videoBackend) return;
+  playStopAt = Number.isFinite(stopAt) ? stopAt : null;   // null = play to end; a frame = stop there. (Guard: onclick=play would pass a MouseEvent.)
+  playing = true; el("play").textContent = "❚❚ Pause";
+  playAnchorT = null; playBusy = false;              // re-anchor the wall-clock on the first tick
+  renderTimeline();                                 // prime the base-bitmap cache before fast-repaint frames
+  schedulePrefetch(cur);
+  playRaf = requestAnimationFrame(playTick);
+}
+function stop() {
+  playing = false; el("play").textContent = "▶ Play";
+  if (playRaf) cancelAnimationFrame(playRaf);
+  playRaf = null; playBusy = false; playStopAt = null;
+}
+function playTick(now) {
+  // WALL-CLOCK clock: keep playback locked to real time. The target frame is derived from elapsed wall
+  // time since the anchor; we jump to it, dropping late frames only when decode/GC falls behind — so
+  // 1 s of video always takes 1 s. When decode keeps up, target == cur+1 each frame (no skips → smooth);
+  // only under load does it skip to stay in sync (real-time beats showing-every-frame-in-slow-motion).
+  if (!playing) return;
+  playRaf = requestAnimationFrame(playTick);
+  if (playBusy) return;                                       // a frame is in flight — don't overlap decodes
+  if (playAnchorT === null) { playAnchorT = now; playAnchorF = cur; }
+  const limit = (playStopAt != null) ? Math.min(playStopAt, meta.n_frames - 1) : meta.n_frames - 1;
+  if (cur >= limit) { stop(); return; }
+  const target = playAnchorF + Math.floor((now - playAnchorT) / 1000 * meta.fps * playbackSpeed);
+  if (target <= cur) return;                                  // ahead of real time → wait (caps playback AT real time)
+  const cap = Math.max(1, Math.round(meta.fps * 0.5));        // advance ≤0.5s per step: real-time when decode keeps up (target==cur+1), bounded skips under load — never a big lurch/race
+  playBusy = true; show(Math.min(limit, cur + Math.min(target - cur, cap))).finally(() => { playBusy = false; });
+}
+
+// ---------- mode ----------
+function setMode(m) {
+  mode = m;
+  el("mPos").classList.toggle("on", m === "pos");
+  el("mNeg").classList.toggle("on", m === "neg");
+  el("mErase").classList.toggle("on", m === "unknown");
+  if (painting) renderTimeline();   // recolor the in-progress segment
+}
+const bname = bid => (behaviors.find(b => b.id === bid) || {}).name || "";
+function startPaint(bid, m) {
+  activeBid = bid; renderBehaviorBar();
+  painting = { bid, anchor: cur, mode: m };
+  busy(`painting ${bname(bid)} · ${modeName(m)} — move the playhead, click ${modeName(m)} again (or the hotkey) to finish · Esc cancels`);
+}
+function commitPaint() {
+  if (!painting) return;
+  const s = Math.min(painting.anchor, cur), e = Math.max(painting.anchor, cur) + 1;
+  applyPaint(painting.bid, s, e, modeVal(painting.mode));
+  busy(`marked ${bname(painting.bid)}: ${s}–${e}`); painting = null;
+}
+function togglePaint(bid) {   // behavior hotkey: start (current mode) / commit
+  if (drag) return;           // ignore while a timeline lane drag is live (avoids a concurrent anchor-paint)
+  setTool("paint");
+  if (painting && painting.bid === bid) commitPaint();
+  else { if (painting) commitPaint(); startPaint(bid, mode); }
+  renderTimeline();
+}
+function clickState(m) {   // Happening/Not-happening/Unknown -> annotate the SELECTED (highlighted) behavior, shown in the track
+  setTool("paint");
+  setMode(m);
+  if (activeBid == null) { busy("select a behavior first (click its chip)"); return; }
+  if (painting && painting.bid === activeBid) {
+    const pm = painting.mode; commitPaint();
+    if (m !== pm) startPaint(activeBid, m);       // switching state mid-paint: commit, then start the new one
+  } else startPaint(activeBid, m);                 // the highlighted behavior is assumed — no re-selecting needed
+  renderTimeline();
+}
+
+// ---------- timeline pointer ----------
+function activeTrim() {   // the currently editable range + its behavior: a review candidate OR a selected labeled bout
+  if (reviewCurrent && reviewTrim) return { bid: reviewCurrent.bid, trim: reviewTrim };
+  if (selectedSeg && segTrim) return { bid: selectedSeg.bid, trim: segTrim };
+  return null;
+}
+function trimHandleAt(x, y, W) {   // is (x,y) near a draggable trim-edge grip? -> "s" | "e" | null
+  const at = activeTrim(); if (!at) return null;
+  const ri = laneList().findIndex(b => b.id === at.bid);
+  if (ri < 0) return null;
+  const rh = ROWH(), ry = RULER + ri * rh;
+  if (y < ry - 2 || y > ry + MANUAL_H + LANE_GAP) return null;
+  const ds = Math.abs(x - xOf(at.trim.s, W)), de = Math.abs(x - xOf(at.trim.e, W)), tol = 9;
+  if (ds <= tol && ds <= de) return "s";
+  if (de <= tol) return "e";
+  return null;
+}
+async function commitSegTrim() {   // apply the edited bounds of the selected labeled bout back to the labels
+  if (!selectedSeg || !segTrim) return;
+  const { bid, s, e, val } = selectedSeg, ns = segTrim.s, ne = segTrim.e;
+  if (ns === s && ne === e) return;                        // unchanged
+  if (ns > s) await applyPaint(bid, s, ns, 0);             // trimmed on the left -> unlabel [s, ns)
+  if (ne < e) await applyPaint(bid, ne, e, 0);             // trimmed on the right -> unlabel [ne, e)
+  await applyPaint(bid, ns, ne, val);                      // (re)label the new range (covers extensions), same value
+  selectRunAt(bid, ns);                                    // re-select the edited bout so you can keep adjusting
+  busy(`bout → frames ${ns}–${ne}`);
+}
+function rowArrowHit(x, y, i) {   // is (x,y) on the active row's prev/next label-nav arrow? -> -1 | +1 | 0
+  const ym = RULER + i * ROWH();
+  if (y < ym + MANUAL_H / 2 - 9 || y > ym + MANUAL_H / 2 + 9) return 0;
+  if (Math.abs(x - (TL_GUT - 30)) <= 9) return -1;
+  if (Math.abs(x - (TL_GUT - 12)) <= 9) return 1;
+  return 0;
+}
+function jumpToAdjacentLabel(bid, dir) {   // hop the playhead to the prev/next labeled bout on this row (handy when zoomed)
+  const arr = labelState.get(bid); if (!arr) return;
+  const runs = runsOf(arr);
+  if (!runs.length) { busy("no labels on this row yet"); return; }
+  let target = null;
+  if (dir > 0) target = runs.find(r => r[0] > cur);
+  else for (const r of runs) { if (r[0] < cur) target = r; else break; }
+  if (!target) { busy(dir > 0 ? "no later label" : "no earlier label"); return; }
+  const s = target[0], e = target[1];
+  if (tlView) {                                  // recenter the zoom window on the bout so it stays visible
+    const span = tlView.e - tlView.s, mid = (s + e) >> 1;
+    const ns = Math.max(0, Math.min(meta.n_frames - span, mid - (span >> 1)));
+    tlView = { s: ns, e: ns + span };
+  }
+  stop(); show(s); selectRunAt(bid, s); busy(`label ${s}–${e}`);
+}
+tl.addEventListener("pointerdown", ev => {
+  const W = tlWidth(), rect = tl.getBoundingClientRect(), x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+  tl.setPointerCapture(ev.pointerId);
+  const trimEdge = trimHandleAt(x, y, W);
+  if (trimEdge) { stop(); drag = { kind: "trim", edge: trimEdge }; return; }   // grab an accept-boundary to drag it (pause playback so the base can't go stale under it)
+  if (y < RULER) { drag = { kind: "scrub" }; stop(); show(frameAt(x, W)); return; }
+  if (x < TL_GUT) {                                                            // label gutter: only the active row's ‹ › nav arrows are interactive
+    const gi = Math.floor((y - RULER) / ROWH());
+    if (gi >= 0 && gi < behaviors.length && laneList()[gi].id === activeBid) {
+      const d = rowArrowHit(x, y, gi); if (d) jumpToAdjacentLabel(activeBid, d);
+    }
+    return;
+  }
+  const rh = ROWH(), i = Math.floor((y - RULER) / rh);
+  if (i < 0 || i >= behaviors.length) return;
+  const bid = laneList()[i].id, yInRow = (y - RULER) - i * rh, f = frameAt(x, W);
+  if (bid !== activeBid) selectBehavior(bid);       // only reload when the behavior actually changes
+  if (yInRow <= MANUAL_H + LANE_GAP) {              // manual lane
+    if (painting) commitPaint();                     // commit a pending anchor-paint before this lane interaction
+    if (toolMode === "select") {                    // Select tool -> drag scrubs the playhead along the bar; a click selects + plays the bout
+      stop(); show(f);
+      drag = { kind: "laneScrub", bid, startX: x, curF: f, moved: false };
+    } else {                                         // Paint tool -> drag to paint, small click still selects the run
+      drag = { kind: "paint", bid, start: f, curFrame: f, startX: x, moved: false }; renderTimeline();
+    }
+  } else {                                          // auto lane -> click a predicted bout to review
+    const bt = (predictedBouts.get(bid) || []).find(b => f >= b.s && f < b.e);
+    if (bt) openBoutReview(bid, bt);
+  }
+});
+tl.addEventListener("pointermove", ev => {
+  const W = tlWidth(), rect = tl.getBoundingClientRect(), x = ev.clientX - rect.left, y = ev.clientY - rect.top, f = frameAt(x, W);
+  if (!drag) { updateHoverCursor(x, y, f); return; }        // idle hover: show a pointer over selectable runs
+  if (drag.kind === "scrub") scrubTo(f);
+  else if (drag.kind === "laneScrub") {                     // drag along the labeled bar to scrub to a bout
+    if (Math.abs(x - drag.startX) > CLICK_SLOP) drag.moved = true;
+    drag.curF = f; scrubTo(f);
+  } else if (drag.kind === "paint") {                       // paint only once the pointer travels past the slop
+    if (Math.abs(x - drag.startX) > CLICK_SLOP) drag.moved = true;
+    drag.curFrame = f; renderTimeline();
+  } else if (drag.kind === "trim") {                        // drag an edit-boundary (review candidate OR selected labeled bout)
+    const trim = reviewCurrent ? reviewTrim : segTrim; if (!trim) return;
+    // NB: no ensureTrimVisible() here — widening tlView mid-drag re-maps the cursor's frame (frameAt reads
+    // tlView) and creates a runaway. To extend PAST the window, scrub the playhead out and press [ or ].
+    if (drag.edge === "s") trim.s = Math.max(0, Math.min(f, trim.e - 1));
+    else trim.e = Math.min(meta.n_frames, Math.max(f + 1, trim.s + 1));
+    if (reviewCurrent) updateReviewText();
+    show(drag.edge === "s" ? trim.s : trim.e - 1);          // show() moves video+playhead & re-renders
+  }                                                         // kind === "select": swallow, selection already made
+});
+function updateHoverCursor(x, y, f) {
+  if (trimHandleAt(x, y, tlWidth())) { tl.style.cursor = "ew-resize"; return; }   // over a trim handle
+  if (y < RULER) { tl.style.cursor = "ew-resize"; return; }
+  if (x < TL_GUT) {                                                               // the label gutter — pointer over the active row's nav arrows
+    const gi = Math.floor((y - RULER) / ROWH());
+    const onArrow = gi >= 0 && gi < behaviors.length && laneList()[gi].id === activeBid && rowArrowHit(x, y, gi);
+    tl.style.cursor = onArrow ? "pointer" : "default"; return;
+  }
+  const rh = ROWH(), i = Math.floor((y - RULER) / rh), yInRow = (y - RULER) - i * rh;
+  const inLane = i >= 0 && i < behaviors.length && yInRow <= MANUAL_H + LANE_GAP;
+  if (toolMode === "select") { tl.style.cursor = inLane ? "pointer" : "default"; return; }
+  const onRun = inLane && !!runAt(laneList()[i].id, f);
+  tl.style.cursor = onRun ? "pointer" : "crosshair";       // pointer = an annotation you can click to select
+}
+tl.addEventListener("pointerup", () => {
+  if (drag && drag.kind === "trim" && !reviewCurrent) { commitSegTrim(); drag = null; return; }   // finished editing a labeled bout's bounds
+  if (drag && drag.kind === "laneScrub") {
+    selectNearest(drag.bid, drag.curF, tlWidth());          // select the bout you landed on (if any)
+    if (!drag.moved) { const hit = runAt(drag.bid, drag.curF); if (hit) playBout(hit.s, hit.e); }   // a click (no drag) -> also play it
+    drag = null; return;
+  }
+  if (drag && drag.kind === "paint") {
+    if (!drag.moved) {                              // a click (no drag) -> select the run under it, if any
+      selectRunAt(drag.bid, drag.start);
+      const hit = runAt(drag.bid, drag.start); if (hit) playBout(hit.s, hit.e);   // clicked a labeled bout -> auto-play it
+    } else {
+      clearSel();
+      const s = Math.min(drag.start, drag.curFrame), e = Math.max(drag.start, drag.curFrame) + 1;
+      applyPaint(drag.bid, s, e, modeVal()); show(drag.curFrame);
+    }
+  }
+  drag = null;
+});
+tl.addEventListener("pointercancel", () => { if (drag) { drag = null; renderTimeline(); } });      // capture loss -> no stale preview
+tl.addEventListener("lostpointercapture", () => { if (drag) { drag = null; renderTimeline(); } });
+function zoomTimeline(factor, clientX) {   // zoom the timeline x-window around the frame under the cursor (for precise labeling)
+  if (!meta) return;
+  const N = meta.n_frames, W = tlWidth(), rect = tl.getBoundingClientRect();
+  const fx = frameAt(clientX - rect.left, W), curSpan = viewE() - viewS();
+  let span = Math.max(20, Math.min(N, Math.round(curSpan / factor)));   // clamp 20 frames .. whole clip
+  if (span >= N) { if (tlView) { tlView = null; renderTimeline(); } return; }   // fully out -> whole clip (overview hides)
+  const frac = (fx - viewS()) / Math.max(1, curSpan);                  // keep the cursor frame under the cursor
+  const s = Math.max(0, Math.min(N - span, Math.round(fx - frac * span)));
+  tlView = { s, e: s + span }; renderTimeline();
+}
+tl.addEventListener("wheel", ev => {   // scroll over the timeline = zoom in/out (Shift+scroll pans when zoomed)
+  if (!meta) return;
+  ev.preventDefault();
+  if (ev.shiftKey && tlView) {                                         // pan while zoomed
+    const span = viewE() - viewS(), step = Math.round(span * 0.15) * (ev.deltaY < 0 ? -1 : 1);
+    const s = Math.max(0, Math.min(meta.n_frames - span, tlView.s + step));
+    tlView = { s, e: s + span }; renderTimeline(); return;
+  }
+  zoomTimeline((ev.deltaY < 0 ? 1.25 : 1 / 1.25), ev.clientX);
+}, { passive: false });
+if (ov) {                                            // overview strip: click/drag to jump anywhere in the clip
+  let ovDrag = false;
+  ov.addEventListener("pointerdown", ev => { ovDrag = true; try { ov.setPointerCapture(ev.pointerId); } catch (e) {} overviewNav(ev.clientX); });
+  ov.addEventListener("pointermove", ev => { if (ovDrag) overviewNav(ev.clientX); });
+  ov.addEventListener("pointerup", () => { ovDrag = false; });
+  ov.addEventListener("pointercancel", () => { ovDrag = false; });
+}
+
+// ---------- wiring ----------
+el("prev").onclick = () => { stop(); show(cur - 1); };
+el("next").onclick = () => { stop(); show(cur + 1); };
+el("first").onclick = () => { stop(); show(0); };
+el("last").onclick = () => { stop(); show(meta.n_frames - 1); };
+el("play").onclick = () => play();   // don't pass the click event as stopAt
+scrub.oninput = e => { stop(); scrubTo(Number(e.target.value)); };
+el("speedSel").onchange = e => { playbackSpeed = parseFloat(e.target.value); playAnchorT = null; };   // re-anchor the wall-clock at the new rate
+const gotoFrame = () => { stop(); show(parseInt(el("frameInput").value) || 0); };
+el("frameInput").onchange = gotoFrame;
+el("frameInput").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); gotoFrame(); el("frameInput").blur(); } });
+el("mPos").onclick = () => clickState("pos");
+el("mNeg").onclick = () => clickState("neg");
+el("mErase").onclick = () => clickState("unknown");
+el("undo").onclick = undo; el("redo").onclick = redo;
+el("toolPaint").onclick = () => setTool("paint");
+el("toolSelect").onclick = () => setTool("select");
+el("delSeg").onclick = deleteSelectedSeg;
+el("train").onclick = train; el("predict").onclick = predictVideo; el("importBtn").onclick = importFile; el("review").onclick = startReview;
+el("candMode").onchange = async e => { candidateMode = e.target.value; if (activeBid != null) await loadCandidates(activeBid); };
+el("candN").value = localStorage.getItem("ll_candN") || "10";
+el("candN").onchange = async e => {
+  localStorage.setItem("ll_candN", e.target.value);
+  if (activeBid != null) await loadCandidates(activeBid);
+};
+el("featSet").onchange = async e => {   // set the active behavior's feature subset; retrain to apply
+  if (activeBid == null) { syncFeatSet(); return; }
+  const fs = e.target.value;
+  const r = await api(`/behaviors/${activeBid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feature_set: fs }) });
+  if (!r.ok) { busy("could not set feature set"); syncFeatSet(); return; }
+  const b = behaviors.find(x => x.id === activeBid); if (b) b.feature_set = fs;
+  const d = el("featSetDesc"); if (d) d.innerHTML = (FEATSET_DESC[fs] || FEATSET_DESC.all) + featSetComposition(fs);
+  busy(`${bname(activeBid)} feature set → ${fs === "all" ? "all features" : fs} · Train to apply`);
+};
+el("statsBtn").onclick = openStats; el("statsClose").onclick = () => el("statsPanel").classList.remove("on");
+el("statsExport").onclick = () => {   // download the full precision-stats history for the active behavior as CSV
+  const h = lastStatsHistory || [];
+  if (!h.length) return busy("no training runs to export yet");
+  const cols = ["trained_at", "feature_set", "n_features", "n_videos", "n_pos", "n_neg", "n_pos_bouts", "n_neg_bouts",
+                "ap", "f1", "precision", "recall", "bout_precision", "bout_recall", "version"];
+  const esc = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = [cols.join(",")].concat(h.map(r => cols.map(c => esc(r[c])).join(","))).join("\n");
+  const name = `${(bname(activeBid) || "behavior").replace(/[^\w]+/g, "_")}_stats_history.csv`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = name; a.click();
+  URL.revokeObjectURL(a.href); busy(`exported ${h.length} run(s) -> ${name}`);
+};
+el("statsXMode").onchange = e => { statsXMode = e.target.value; drawStatsPlot(lastStatsHistory, statsCompare); };
+el("statsCompare").onchange = async e => { statsCompareBid = e.target.value ? parseInt(e.target.value, 10) : null; await refreshStats(); };
+el("trainsetBtn").onclick = openTrainset;
+el("trainsetClose").onclick = () => el("trainsetPanel").classList.remove("on");
+el("trainsetCopy").onclick = copyTrainset;
+el("labelStatsBtn").onclick = openLabelStats;
+el("labelStatsClose").onclick = () => el("labelStatsPanel").classList.remove("on");
+el("featDiffBtn").onclick = openFeatureDiff;
+el("featDiffClose").onclick = () => el("featDiffPanel").classList.remove("on");
+function replayCandidate() { if (reviewCurrent) playBout(reviewCurrent.s, reviewCurrent.e); }   // re-watch the bout under review from its start
+el("rvReplay").onclick = replayCandidate;
+el("rvYes").onclick = acceptCandidate;
+el("rvMerge").onclick = mergeCandidate;
+el("rvNo").onclick = rejectCandidate;
+el("rvSkip").onclick = nextCandidate;
+el("rvStop").onclick = endReview;
+el("rvReclassify").onchange = e => {
+  const otherBid = parseInt(e.target.value, 10);
+  e.target.value = "";                              // reset immediately so it never looks "stuck" on a choice
+  if (Number.isFinite(otherBid)) reclassifyCandidate(otherBid);
+};
+el("rvTrimS").onclick = setTrimStart;
+el("rvTrimE").onclick = setTrimEnd;
+el("rvSplit").onclick = splitCandidate;
+el("rvUndo").onclick = undoReview;
+
+// ---------- zoom + pan ----------
+el("showPoses").onchange = e => { showPoses = e.target.checked; drawPose(); };
+el("setSpout").onclick = () => setSpoutMode(!settingSpout);
+el("setSpoutRoi").onclick = () => setRoiMode(!settingRoi);
+el("setCageRoi").onclick = () => setCageMode(!settingCage);
+// collapsible help / "direction" boxes (state persisted per box)
+function wireCollapse(btnId) {
+  const btn = el(btnId); if (!btn) return;
+  const target = el(btn.dataset.target); const key = "ll_collapse_" + btn.dataset.target;
+  const apply = c => { target.classList.toggle("is-collapsed", c); btn.textContent = c ? "show ▸" : "hide ▾"; };
+  apply(localStorage.getItem(key) === "1");
+  btn.onclick = () => { const c = !target.classList.contains("is-collapsed"); apply(c); localStorage.setItem(key, c ? "1" : "0"); };
+}
+wireCollapse("featHelpToggle"); wireCollapse("hintsToggle");
+el("showApproaches").onclick = () => toggleApproaches();
+el("zIn").onclick = () => setZoom(zoom * 1.3);
+el("zOut").onclick = () => setZoom(zoom / 1.3);
+el("zReset").onclick = () => setZoom(1);
+stageInner.addEventListener("wheel", ev => {
+  if (!(ev.ctrlKey || ev.metaKey)) return;         // plain scroll -> page scrolls; Ctrl/⌘+scroll (or pinch) -> zoom
+  ev.preventDefault();
+  const rect = stage.getBoundingClientRect();
+  setZoom(zoom * (ev.deltaY < 0 ? 1.12 : 1 / 1.12), ev.clientX - rect.left, ev.clientY - rect.top);
+}, { passive: false });
+stageInner.addEventListener("pointerdown", ev => {
+  if (settingRoi) { ev.preventDefault(); addRoiPoint(ev.clientX, ev.clientY); return; }    // add a spout-ROI vertex, not pan
+  if (settingCage) { ev.preventDefault(); addCagePoint(ev.clientX, ev.clientY); return; } // add a cage-ROI vertex, not pan
+  if (settingSpout) { ev.preventDefault(); pickSpout(ev.clientX, ev.clientY); return; }   // place the spout, not pan
+  stageDrag = { x: ev.clientX, y: ev.clientY, px: panX, py: panY }; panMoved = false;
+  stage.classList.add("grabbing"); stageInner.setPointerCapture(ev.pointerId);
+});
+stageInner.addEventListener("contextmenu", ev => {   // right-click: undo an ROI vertex, or clear the ROI/spout
+  if (settingRoi) { ev.preventDefault(); roiPts.pop(); drawPose(); return; }               // undo last in-progress spout vertex
+  if (settingCage) { ev.preventDefault(); cagePts.pop(); drawPose(); return; }             // undo last in-progress cage vertex
+  if (spoutRoi) { ev.preventDefault(); if (confirm("Clear the spout ROI?")) applySpoutRoi(null); return; }
+  if (cageRoi) { ev.preventDefault(); if (confirm("Clear the cage ROI?")) applyCageRoi(null); return; }
+  if (!spout) return;
+  ev.preventDefault();
+  if (confirm("Clear the spout location?")) applySpout(null, null);
+});
+stageInner.addEventListener("pointermove", ev => {
+  if (!stageDrag) return;
+  panX = stageDrag.px + (ev.clientX - stageDrag.x);
+  panY = stageDrag.py + (ev.clientY - stageDrag.y);
+  panMoved = true; applyZoom();
+});
+stageInner.addEventListener("pointerup", ev => {
+  if (stageDrag) { stageDrag = null; stage.classList.remove("grabbing"); try { stageInner.releasePointerCapture(ev.pointerId); } catch (e) {} }
+});
+stageInner.addEventListener("dblclick", ev => {   // double-click to zoom in on that spot, again to reset — then drag to pan
+  if (settingRoi || settingCage) return;           // don't zoom while drawing an ROI
+  const rect = stage.getBoundingClientRect();
+  setZoom(zoom > 1 ? 1 : 2.2, ev.clientX - rect.left, ev.clientY - rect.top);
+});
+
+window.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") return;
+  const reviewing = el("reviewPanel").classList.contains("on");
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (settingRoi && e.key === "Enter") { e.preventDefault(); finishRoi(); return; }         // finish drawing the spout ROI
+  if (settingRoi && e.key === "Escape") { e.preventDefault(); setRoiMode(false); busy("spout ROI cancelled"); return; }
+  if (settingCage && e.key === "Enter") { e.preventDefault(); finishCage(); return; }       // finish drawing the cage ROI
+  if (settingCage && e.key === "Escape") { e.preventDefault(); setCageMode(false); busy("cage ROI cancelled"); return; }
+  if (e.key === "Escape" && painting) { painting = null; busy(""); renderTimeline(); return; }
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedSeg) { e.preventDefault(); deleteSelectedSeg(); return; }
+  if (e.key === "Tab") { e.preventDefault(); cycleTrack(e.shiftKey ? -1 : 1); return; }        // cycle tracks
+  if (e.key >= "1" && e.key <= "9") { const t = +e.key - 1; if (t < nTracks()) { setActiveTrack(t); return; } }
+  if (reviewing && e.key === "y") return acceptCandidate();
+  if (reviewing && e.key === "n") return rejectCandidate();
+  if (reviewing && (e.key === "r" || e.key === "R")) { e.preventDefault(); return replayCandidate(); }
+  if (reviewing && (e.key === "m" || e.key === "M") && el("rvMergeRow").style.display !== "none") { e.preventDefault(); return mergeCandidate(); }
+  if (reviewing && e.key === "[") { e.preventDefault(); return setTrimStart(); }
+  if (reviewing && e.key === "]") { e.preventDefault(); return setTrimEnd(); }
+  if (reviewing && (e.key === "s" || e.key === "S") && reviewCurrent && reviewCurrent.mode === "new") { e.preventDefault(); return splitCandidate(); }
+  if (reviewing && (e.key === "z" || e.key === "Z")) { e.preventDefault(); return undoReview(); }   // review-level undo (with or without ⌘/Ctrl)
+  if (!reviewing && selectedSeg && segTrim && e.key === "[") { e.preventDefault(); segTrim.s = Math.max(0, Math.min(cur, segTrim.e - 1)); return commitSegTrim(); }   // set the selected bout's start to the playhead
+  if (!reviewing && selectedSeg && segTrim && e.key === "]") { e.preventDefault(); segTrim.e = Math.min(meta.n_frames, Math.max(cur + 1, segTrim.s + 1)); return commitSegTrim(); }   // set its end to the playhead
+  if (reviewing && e.key === "Enter") return nextCandidate();
+  if (e.key === "ArrowLeft") { stop(); show(cur - (e.ctrlKey ? 30 : 1)); }       // arrows always scrub frames (even in review)
+  else if (e.key === "ArrowRight") { stop(); show(cur + (e.ctrlKey ? 30 : 1)); }
+  else if (e.key === " ") { e.preventDefault(); play(); }
+  else if (e.key === "p") setMode("pos");
+  else if (e.key === "n" && !reviewing) setMode("neg");
+  else if (e.key === "u" || e.key === "x") setMode("unknown");
+  else if (e.key === "+" || e.key === "=") setZoom(zoom * 1.3);
+  else if (e.key === "-" || e.key === "_") setZoom(zoom / 1.3);
+  else if (e.key === "0") setZoom(1);
+  else if (e.key === "v" && !behaviors.some(b => b.key === "v")) setTool("select");
+  else if (e.key === "b" && !behaviors.some(b => b.key === "b")) setTool("paint");
+  else { const b = behaviors.find(b => b.key === e.key); if (b) togglePaint(b.id); }
+});
+
+boot().catch(err => { metaEl.textContent = "error: " + err.message; console.error(err); });
+</script>
+</body>
+</html>
