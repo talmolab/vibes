@@ -22,7 +22,7 @@
 {"@context":"https://schema.org","@type":"WebPage","description":"Self-contained HTML vibes for the web","headline":"laras-labeler","url":"http://vibes.tlab.sh/laras-labeler/"}</script>
 <!-- End Jekyll SEO tag -->
 
-    <link rel="stylesheet" href="/assets/css/style.css?v=2cc6bbd5bb3998f64c81908969b7fffaf7958362">
+    <link rel="stylesheet" href="/assets/css/style.css?v=e844ca64179be542ac0796012674a78c25b89788">
     <style>
 /* README badge styling for vibe list */
 .readme-badge {
@@ -78,15 +78,17 @@ prediction heatstrip.</li>
 
 <p>The heavy part is the <code class="language-plaintext highlighter-rouge">movement</code> install; on Intel macOS it needs the viz-free recipe (PLAN §1):</p>
 
-<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nb">cd </span>laras-labeler
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/talmolab/vibes.git
+<span class="nb">cd </span>vibes/laras-labeler          <span class="c"># run all commands from inside this folder</span>
 uv venv <span class="nt">--python</span> 3.12 .venv
-uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv sleap-io scikit-learn fastapi <span class="s2">"uvicorn[standard]"</span> <span class="se">\</span>
+uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv sleap-io scikit-learn fastapi <span class="s2">"uvicorn[standard]"</span> python-multipart <span class="se">\</span>
     pandas pyarrow joblib pydantic numpy scipy xarray
 uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv <span class="nv">movement</span><span class="o">==</span>0.17.0 <span class="nt">--no-deps</span>
 uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv attrs pooch tqdm shapely PyYAML loguru orjson bottleneck
 uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv <span class="nt">-e</span> <span class="nb">.</span> <span class="nt">--no-deps</span>
 
-.venv/bin/laras-labeler            <span class="c"># -&gt; http://127.0.0.1:8760/  (opens the browser)</span>
+<span class="c"># launch — pass a folder for your projects (created on first run); it prints the URL and opens the browser</span>
+.venv/bin/laras-labeler ~/laras-projects
 </code></pre></div></div>
 
 <p>Verify the core pipeline headlessly:</p>
