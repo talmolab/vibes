@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>laras-labeler | vibes.tlab.sh</title>
+<meta name="generator" content="Jekyll v3.10.0" />
+<meta property="og:title" content="laras-labeler" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Self-contained HTML vibes for the web" />
+<meta property="og:description" content="Self-contained HTML vibes for the web" />
+<link rel="canonical" href="http://vibes.tlab.sh/laras-labeler/" />
+<meta property="og:url" content="http://vibes.tlab.sh/laras-labeler/" />
+<meta property="og:site_name" content="vibes.tlab.sh" />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="laras-labeler" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","description":"Self-contained HTML vibes for the web","headline":"laras-labeler","url":"http://vibes.tlab.sh/laras-labeler/"}</script>
+<!-- End Jekyll SEO tag -->
+
+    <link rel="stylesheet" href="/assets/css/style.css?v=e230df978d7a6bb3cabb20bad8a12b16026881e5">
+    <style>
+/* README badge styling for vibe list */
+.readme-badge {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    color: #1a7f9c !important;
+    text-decoration: none;
+    margin-left: 0.35em;
+}
+.readme-badge:hover {
+    color: #0969da !important;
+    text-decoration: underline;
+}
+
+/* Vibe description caption styling */
+.vibe-desc {
+    font-size: 0.9em;
+    color: #656d76;
+    display: inline;
+}
+</style>
+
+  </head>
+  <body>
+    <div class="container-lg px-3 my-5 markdown-body">
+      
+      <h1><a href="http://vibes.tlab.sh/">vibes.tlab.sh</a></h1>
+      
+
+      <h1 id="laras-labeler">laras-labeler</h1>
+
+<p>A local, pose-based, human-in-the-loop behavior classifier — a lightweight, modern
+<a href="https://jaaba.sourceforge.net/">JAABA</a>. Annotate positive/negative <strong>frames</strong> across videos, derive
+features from multi-animal poses (<code class="language-plaintext highlighter-rouge">sleap-io</code> + <code class="language-plaintext highlighter-rouge">movement</code>), train a <code class="language-plaintext highlighter-rouge">scikit-learn</code> classifier, and
+get per-frame predictions back in the annotation UI to guide the next labels.</p>
+
+<p><strong>See <a href="/laras-labeler/PLAN.html"><code class="language-plaintext highlighter-rouge">PLAN.md</code></a> for the full design</strong> (data contracts, feature/ML pipeline, API, on-disk
+format, milestones).</p>
+
+<h2 id="status">Status</h2>
+
+<ul>
+  <li><strong>v0a foundation — DONE &amp; verified.</strong> <code class="language-plaintext highlighter-rouge">uv</code> package scaffold; core <code class="language-plaintext highlighter-rouge">SLP → Labels.numpy() → movement
+clean → kinematics/pairwise</code> pipeline verified on the mice sample; FastAPI backend serving
+<strong>authoritative frames + pose blob</strong>; minimal browser viewer (frame + skeleton overlay, scrub,
+play, arrow-key step).</li>
+  <li><strong>Next:</strong> labeling (paint pos/neg ranges → per-frame parquet store, ethogram timeline, undo/redo)
+→ on-disk project layer (PLAN §9) → feature cache job (PLAN §4) → <strong>v0b</strong> train/predict loop +
+prediction heatstrip.</li>
+</ul>
+
+<h2 id="run-dev">Run (dev)</h2>
+
+<p>The heavy part is the <code class="language-plaintext highlighter-rouge">movement</code> install; on Intel macOS it needs the viz-free recipe (PLAN §1):</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>git clone https://github.com/talmolab/vibes.git
+<span class="nb">cd </span>vibes/laras-labeler          <span class="c"># run all commands from inside this folder</span>
+uv venv <span class="nt">--python</span> 3.12 .venv
+uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv sleap-io scikit-learn fastapi <span class="s2">"uvicorn[standard]"</span> python-multipart <span class="se">\</span>
+    pandas pyarrow joblib pydantic numpy scipy xarray
+uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv <span class="nv">movement</span><span class="o">==</span>0.17.0 <span class="nt">--no-deps</span>
+uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv attrs pooch tqdm shapely PyYAML loguru orjson bottleneck
+uv pip <span class="nb">install</span> <span class="nt">--python</span> .venv <span class="nt">-e</span> <span class="nb">.</span> <span class="nt">--no-deps</span>
+
+<span class="c"># launch — pass a folder for your projects (created on first run); it prints the URL and opens the browser</span>
+.venv/bin/laras-labeler ~/laras-projects
+</code></pre></div></div>
+
+<p>Verify the core pipeline headlessly:</p>
+
+<div class="language-bash highlighter-rouge"><div class="highlight"><pre class="highlight"><code>.venv/bin/python scripts/verify_pipeline.py
+</code></pre></div></div>
+
+<p>v0a bootstraps an in-memory “dev” project pointing at
+<code class="language-plaintext highlighter-rouge">../slp-viewer/mice.tracked.slp</code>. Point it at your own data once the
+on-disk project layer lands.</p>
+
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/anchor-js/4.1.0/anchor.min.js" integrity="sha256-lZaRhKri35AyJSypXXs4o6OPFTbTmUoltBbDCbdzegg=" crossorigin="anonymous"></script>
+    <script>anchors.add();</script>
+  </body>
+</html>
