@@ -19,8 +19,11 @@ import uvicorn
 from .config import Settings
 from .project import ProjectStore
 
+# Optional dev sample, off by default. Hard-coding a path here made a fresh install crash in
+# ensure_dev on any machine that did not happen to have that file, and it is not needed for normal
+# use — a project folder is passed on the command line.
 _sample = os.environ.get("LARAS_SAMPLE_SLP", "").strip()
-SAMPLE_SLP = Path(_sample).expanduser() if _sample else None   # optional dev sample; unset for normal use
+SAMPLE_SLP = Path(_sample).expanduser() if _sample else None
 
 
 def _free_port(host: str, preferred: int) -> int:
@@ -57,7 +60,7 @@ def main(argv: list[str] | None = None) -> None:
     settings = Settings(projects_root=projects_root, host=args.host, port=port)
     store = ProjectStore(projects_root)
     if SAMPLE_SLP and SAMPLE_SLP.exists():
-        store.ensure_dev(SAMPLE_SLP)          # first-run demo project only if a sample SLP is configured
+        store.ensure_dev(SAMPLE_SLP)          # first-run demo project only if configured
 
     from .app import create_app
 

@@ -1,8 +1,8 @@
 """VideoManager: authoritative frame serving + pose transport (PLAN.md §7).
 
 - Frames come from sleap-io's video backend (exact get_frame(idx)) -> JPEG, LRU-cached.
-- Poses come from Labels.numpy(return_confidence=True) -> (F, T, N, 3) float32, sent as a
-  little-endian binary blob (shape in the X-Pose-Shape header).
+- Poses come from poseio's vectorized HDF5 read (falling back to Labels.numpy) -> (F, T, N, 3)
+  float32, sent as a little-endian binary blob (shape in the X-Pose-Shape header).
 """
 
 from __future__ import annotations
@@ -10,20 +10,51 @@ from __future__ import annotations
 import io
 import threading
 from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
 import sleap_io as sio
 from PIL import Image
 
+from . import poseio
+
 
 class OpenVideo:
-    """A lazily-opened sleap-io Labels + Video, with cached pose array."""
+    """A lazily-opened sleap-io Labels + Video, with cached pose array.
 
-    def __init__(self, video_path: str, slp_path: str | None = None) -> None:
-        source = str(slp_path or video_path)
-        self.labels = sio.load_file(source)
-        self.video = self.labels.videos[0]
+    Constructing this is cheap: the sleap-io `Labels` object costs seconds to build, so it is loaded
+    only when something actually needs it (frame serving, skeleton edges). Poses, node names and track
+    names all come from `poseio`'s HDF5 reads, so a feature build never materializes it at all."""
+
+    def __init__(self, video_path: str, slp_path: str | None = None,
+                 n_frames_hint: int | None = None) -> None:
+        self.source = str(slp_path or video_path)
+        # Callers (and the HTTP layer) rely on a missing source failing here, as FileNotFoundError.
+        if not Path(self.source).exists():
+            raise FileNotFoundError(self.source)
+        self._labels: sio.Labels | None = None
+        self._header: poseio.PoseHeader | None = None
+        self._header_read = False
         self._poses: np.ndarray | None = None
+        self._n_frames_hint = n_frames_hint
+
+    @property
+    def labels(self) -> sio.Labels:
+        if self._labels is None:
+            self._labels = sio.load_file(self.source)
+        return self._labels
+
+    @property
+    def video(self):
+        return self.labels.videos[0]
+
+    @property
+    def header(self) -> poseio.PoseHeader | None:
+        """Node/track names from the .slp's JSON header (~2 ms), or None for a non-.slp source."""
+        if not self._header_read:
+            self._header = poseio.read_header(self.source)
+            self._header_read = True
+        return self._header
 
     @property
     def n_frames(self) -> int:
@@ -41,10 +72,24 @@ class OpenVideo:
     def width(self) -> int:
         return int(self.video.shape[2])
 
+    @property
+    def node_names(self) -> list[str]:
+        h = self.header
+        return list(h.node_names) if h else list(self.labels.skeletons[0].node_names)
+
+    @property
+    def track_names(self) -> list[str]:
+        h = self.header
+        return list(h.track_names) if h else [t.name for t in self.labels.tracks]
+
     def poses(self) -> np.ndarray:
         if self._poses is None:
             # (F, T, N, 3) = [x, y, score]; padded to full video length, NaN for gaps.
-            self._poses = self.labels.numpy(return_confidence=True).astype("float32")
+            fast = poseio.read_poses(self.source, n_frames_hint=self._n_frames_hint,
+                                     header=self.header)
+            if fast is None:
+                fast = self.labels.numpy(return_confidence=True).astype("float32")
+            self._poses = fast
         return self._poses
 
     def skeleton(self) -> dict:
@@ -94,7 +139,9 @@ class VideoManager:
         ov = self._open.get(key)
         if ov is None:
             entry = self._entry(pid, vid)
-            ov = OpenVideo(entry["video_path"], entry.get("slp_path"))
+            # n_frames was recorded from video.shape[0] at add_video time — the same length sleap-io
+            # pads Labels.numpy() to — so passing it lets the pose read skip opening the video.
+            ov = OpenVideo(entry["video_path"], entry.get("slp_path"), entry.get("n_frames"))
             self._open[key] = ov
         return ov
 

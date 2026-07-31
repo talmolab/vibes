@@ -129,19 +129,16 @@ def _signed_angle(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.arctan2(cross, dot)
 
 
-def _poly_signed_dist(pts: np.ndarray, poly: np.ndarray):
-    """Distance from each query point to a polygon, 0 when inside, + an inside indicator.
+def _poly_scan(pts: np.ndarray, poly: np.ndarray, want_inside: bool):
+    """One pass over the polygon edges -> (nearest-edge distance, inside mask or None).
 
-    pts: (F, T, 2) query points; poly: (V, 2) polygon vertices (open ring — the closing edge is
-    implicit). Returns (dist, inside, boundary) each (F,T): dist is the Euclidean distance to the
-    polygon boundary clamped to 0 wherever the point is inside; inside is 1.0/0.0; boundary is the
-    UNCLAMPED distance to the nearest edge (nonzero even inside — used for wall-proximity). All are
-    NaN where the query point is NaN, so absent animals stay NaN rather than reading as 'outside'."""
-    px, py = pts[..., 0], pts[..., 1]                                # (F,T)
+    Shared kernel: the edge loop is the expensive part (O(V) numpy ops over every query point), so
+    callers that only need the distance skip the even-odd crossing test rather than paying for it."""
+    px, py = pts[..., 0], pts[..., 1]
     ax, ay = poly[:, 0], poly[:, 1]
     bx, by = np.roll(ax, -1), np.roll(ay, -1)                        # next vertex (closes the ring)
     dmin = np.full(px.shape, np.inf)
-    inside = np.zeros(px.shape, dtype=bool)
+    inside = np.zeros(px.shape, dtype=bool) if want_inside else None
     with np.errstate(invalid="ignore", divide="ignore"):
         for i in range(len(poly)):
             ex, ey = bx[i] - ax[i], by[i] - ay[i]
@@ -152,14 +149,52 @@ def _poly_signed_dist(pts: np.ndarray, poly: np.ndarray):
                 t = np.clip(((px - ax[i]) * ex + (py - ay[i]) * ey) / l2, 0.0, 1.0)
                 d = np.hypot(px - (ax[i] + t * ex), py - (ay[i] + t * ey))
             dmin = np.minimum(dmin, d)
-            cond = ((ay[i] > py) != (by[i] > py)) & \
-                   (px < (bx[i] - ax[i]) * (py - ay[i]) / (by[i] - ay[i] + 1e-12) + ax[i])
-            inside ^= cond
-    nan = np.isnan(px) | np.isnan(py)
+            if want_inside:
+                cond = ((ay[i] > py) != (by[i] > py)) & \
+                       (px < (bx[i] - ax[i]) * (py - ay[i]) / (by[i] - ay[i] + 1e-12) + ax[i])
+                inside ^= cond
+    return dmin, inside
+
+
+def _poly_signed_dist(pts: np.ndarray, poly: np.ndarray):
+    """Distance from each query point to a polygon, 0 when inside, + an inside indicator.
+
+    pts: (F, T, 2) query points; poly: (V, 2) polygon vertices (open ring — the closing edge is
+    implicit). Returns (dist, inside, boundary) each (F,T): dist is the Euclidean distance to the
+    polygon boundary clamped to 0 wherever the point is inside; inside is 1.0/0.0; boundary is the
+    UNCLAMPED distance to the nearest edge (nonzero even inside — used for wall-proximity). All are
+    NaN where the query point is NaN, so absent animals stay NaN rather than reading as 'outside'."""
+    dmin, inside = _poly_scan(pts, poly, want_inside=True)
+    nan = np.isnan(pts[..., 0]) | np.isnan(pts[..., 1])
     dist = np.where(nan, np.nan, np.where(inside, 0.0, dmin))
     inside_f = np.where(nan, np.nan, inside.astype("float64"))
     boundary = np.where(nan, np.nan, dmin)          # nearest-edge distance, unclamped (nonzero inside too)
     return dist, inside_f, boundary
+
+
+# Cap on query points per polygon scan. The edge loop allocates several temporaries the size of its
+# input, so batching every keypoint of a 180k-frame clip at once would add hundreds of MB of peak RSS
+# for no extra speed — the win is amortizing numpy's per-op overhead, which saturates well below this.
+_POLY_CHUNK_ELEMS = 4_000_000
+
+
+def _nearest_node_wall_dist(P: np.ndarray, poly: np.ndarray) -> np.ndarray:
+    """(F,T) distance from the CLOSEST keypoint of each animal to the nearest polygon edge.
+
+    Batches the keypoint axis into the polygon scan — one scan over V edges for many keypoints instead
+    of one scan per keypoint — which is ~2.9x faster and bit-identical (each point's arithmetic is
+    independent of the others, and min is exact). NaN where every keypoint of that animal is NaN."""
+    F, T, N, _ = P.shape
+    per = max(1, _POLY_CHUNK_ELEMS // max(F * T, 1))
+    out = np.full((F, T), np.inf)
+    for s in range(0, N, per):
+        blk = P[:, :, s:s + per, :]
+        n = blk.shape[2]
+        dmin, _ = _poly_scan(blk.reshape(F, T * n, 2), poly, want_inside=False)
+        nan = np.isnan(blk[..., 0]) | np.isnan(blk[..., 1])
+        # fmin/nanmin both ignore NaN, so a missing keypoint never wins the min.
+        out = np.fmin(out, np.nanmin(np.where(nan, np.nan, dmin.reshape(F, T, n)), axis=2))
+    return np.where(np.isfinite(out), out, np.nan)
 
 
 def _clean(pose_xy: np.ndarray, conf: np.ndarray, node_names: list[str],
@@ -223,19 +258,60 @@ def _radii(config: dict, fps: float) -> list[int]:
 
 
 def _window_signals(signals: dict[str, np.ndarray], radii: list[int]):
-    """Expand each 1D signal into raw + {mean,std,min,max,change} x radii -> (F, D), names."""
+    """Expand each 1D signal into raw + {mean,std,min,max,change} x radii -> (F, D), names.
+
+    min/max come from bottleneck's moving-window kernels and `change` from plain slicing, which
+    together cut this step ~38% (0.403 -> 0.250 s per track on a 5-min clip). Bottleneck windows are
+    TRAILING, so a centered window of radius r is a trailing window of width 2r+1 read r samples late:
+    pad the signal with r NaNs and drop the first r outputs. Both ends then match pandas
+    `min_periods=1`, which shrinks the window at the edges rather than emitting NaN.
+
+    mean and std deliberately STAY on pandas even though bottleneck is ~3x faster at them, because
+    bottleneck is not bit-identical here: its streaming sum-of-squares loses precision on signals with
+    a large offset and small variance, and swapping it changed all 114 std columns and 15 of the 114
+    mean columns of a real clip (worst 1.1e-4 absolute on `stillness_duration__std__r2`, ~4.5e-7
+    relative — float32 last-bit, but nonzero). Every feature cache, trained model and published metric
+    in this project was produced by the pandas path, and feature_config_hash does not cover this
+    difference, so a fresh build would silently disagree with a cache it considers valid. The extra
+    ~0.1 s/track is not worth that. If it ever becomes worth it, bump FEATURE_CODE_VERSION so caches
+    invalidate, and expect to retrain.
+
+    Trap for whoever revisits that: bottleneck's `move_std` defaults to `ddof=0` while pandas uses
+    `ddof=1` (naively swapping shifts every std column by up to ~0.4 in feature units), and it returns
+    a value rather than NaN where a window holds a single observation."""
+    import bottleneck as bn
     import pandas as pd
+
     names, cols = [], []
+    rmax = max(radii) if radii else 0
     for sig, s in signals.items():
+        s = np.asarray(s, dtype="float64")
+        F = s.shape[0]
         ser = pd.Series(s)
         names.append(f"{sig}__raw"); cols.append(s.astype("float32"))
+        pad = np.full(F + rmax, np.nan)          # one buffer per signal; pad[F:] stays NaN
+        pad[:F] = s
         for r in radii:
-            roll = ser.rolling(2 * r + 1, center=True, min_periods=1)
-            for stat, fn in (("mean", roll.mean), ("std", roll.std),
-                             ("min", roll.min), ("max", roll.max)):
-                names.append(f"{sig}__{stat}__r{r}"); cols.append(fn().to_numpy("float32"))
-            change = (ser.shift(-r) - ser.shift(r)).to_numpy("float32")
-            names.append(f"{sig}__change__r{r}"); cols.append(change)
+            w, end = 2 * r + 1, F + r
+            roll = ser.rolling(w, center=True, min_periods=1)
+            if w <= end:
+                mn = bn.move_min(pad[:end], w, min_count=1)[r:].astype("float32")
+                mx = bn.move_max(pad[:end], w, min_count=1)[r:].astype("float32")
+            else:
+                # bottleneck rejects a window longer than the array; pandas just truncates it. Only
+                # reachable for a signal shorter than one window (2r+1 frames), so take the slow path.
+                mn = roll.min().to_numpy("float32")
+                mx = roll.max().to_numpy("float32")
+            for stat, arr in (("mean", roll.mean().to_numpy("float32")),
+                              ("std", roll.std().to_numpy("float32")),
+                              ("min", mn), ("max", mx)):
+                names.append(f"{sig}__{stat}__r{r}"); cols.append(arr)
+            # change = s[i+r] - s[i-r], NaN wherever either end falls outside the signal
+            ahead, behind = np.full(F, np.nan), np.full(F, np.nan)
+            if F > r:
+                ahead[:F - r] = s[r:]
+                behind[r:] = s[:F - r]
+            names.append(f"{sig}__change__r{r}"); cols.append((ahead - behind).astype("float32"))
     X = np.ascontiguousarray(np.stack(cols, axis=1), dtype="float32")
     return X, names
 
@@ -429,12 +505,7 @@ def _base_features(pose_xyc: np.ndarray, node_names: list[str], track_names: lis
             base["cage_y"] = (centroid[..., 1] - cy0) / max(cy1 - cy0, 1e-6)   # 0=top .. 1=bottom (image coords)
             # closest of ANY keypoint to the wall — a rearing/climbing mouse plants some body part at the
             # wall even when the nose is elsewhere (EDA: strongest rearing signal, AUC 0.83).
-            wall_min = np.full((F, T), np.inf)
-            for n in range(N):
-                _, _, wn = _poly_signed_dist(P[:, :, n, :], cpoly)
-                wall_min = np.fmin(wall_min, wn)              # fmin ignores NaN (missing keypoints)
-            wall_min = np.where(np.isfinite(wall_min), wall_min, np.nan)
-            base["cage_min_dist"] = wall_min * invv
+            base["cage_min_dist"] = _nearest_node_wall_dist(P, cpoly) * invv
             # bearing/direction to the wall (mirrors spout_facing/spout_approach_rate):
             base["cage_approach"] = -_grad_t(wall_cent, fps) * invv   # closing speed toward the nearest wall (centroid)
             if has_axis:
