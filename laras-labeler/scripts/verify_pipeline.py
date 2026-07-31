@@ -9,6 +9,7 @@ Usage:
 
 import os
 import sys
+
 import numpy as np
 import sleap_io as sio
 from movement.io import load_poses
@@ -19,7 +20,7 @@ from movement.filtering import (
 )
 from movement.kinematics import compute_speed, compute_pairwise_distances
 
-SLP = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LARAS_SAMPLE_SLP","")
+SLP = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("LARAS_SAMPLE_SLP", "")
 
 
 def main() -> int:

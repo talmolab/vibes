@@ -305,16 +305,24 @@
       <option value="social">Social only</option>
       <option value="social_pose">Social + pose</option>
     </select>
+    <select id="trainScope" title="After fitting, which clips to re-predict. Fitting always pools every labeled clip — this only controls how far the fresh model is applied. On a project with many (or long) clips the sweep costs far more than the fit, so 'this clip' keeps a label→train→review round fast; use 'all clips' before reading Stats, so no clip is left showing an older model's predictions.">
+      <option value="clip">predict: this clip</option>
+      <option value="all">predict: all clips</option>
+    </select>
     <button id="predict" title="Apply the already-trained model(s) to THIS video — builds its features first if needed. Use on a newly loaded clip.">▶ Predict this video</button>
     <div class="sep"></div>
     <!-- ④ Review -->
     <span class="stg">④ Review</span>
     <select id="candMode" title="What to review — newly-detected bouts, labeled bouts the model thinks you got wrong, or bouts the filters removed">
       <option value="new">New detections</option>
-      <option value="disagree">Label disagreements</option>
-      <option value="mislabel">Likely mislabels (cross-val)</option>
-      <option value="reviewed">Reviewed mislabels</option>
+      <option value="mislabel">Correct mislabels</option>
       <option value="dropped">Filtered out</option>
+    </select>
+    <select id="candOrder" title="WHICH of this clip+track's detected bouts to review (New detections only). Least confident is active learning — a borderline call teaches the model most. Half and half alternates least-confident with random picks: measured BEST for jump-down (0.77 AP vs 0.54 for pure uncertainty) in tools/acquisition_sim.py, though there is no universal winner — supported rearing preferred pure uncertainty, climb-up preferred random. The other two TEST the model rather than teach it: Most confident exposes false positives where it is surest (confident-first lost on every behavior as a LEARNING strategy), and Random is the only order giving an unbiased precision estimate, since every other order selects on the score being measured.">
+      <option value="uncertain">order: least confident</option>
+      <option value="mixed">order: half and half</option>
+      <option value="random">order: random</option>
+      <option value="confident">order: most confident</option>
     </select>
     <input type="number" id="candN" value="10" min="1" max="50" step="1" style="width:52px"
            title="Max candidates to suggest per review, best-ranked first (retrain or reopen the dropdown above to apply a change)">
@@ -495,7 +503,8 @@ let playRaf = null, playAnchorT = null, playAnchorF = 0, playBusy = false, playb
 const PF_CHUNK = 40, PF_TRIGGER = 20;
 const undoStack = [], redoStack = [], reviewUndo = [];   // reviewUndo: compound review actions (accept/reject/split/merge/reclassify) as single undo units
 let drag = null, reviewQueue = [], reviewIdx = 0, reviewHi = null, painting = null;
-let candidateMode = "new";               // "new" (unlabeled detections) | "disagree" (model⊥your labels)
+let candidateMode = "new";               // "new" (unlabeled detections) | "mislabel" (cross-val says you got it wrong) | "dropped" (filtered out)
+let candidateOrder = "uncertain";        // which detections to review: "uncertain" | "confident" | "random" | "mixed" ("new" mode only)
 let lastTrainset = null, lastTrainsetBid = null, statsXMode = "bouts", lastStatsHistory = [];   // training-set panel + learning-curve x-axis
 let tlView = null, reviewTrim = null;   // timeline zoom window during candidate review + the accept sub-range {s,e}
 let selectedSeg = null;                     // {bid, s, e, val} — a labeled run clicked in a lane
@@ -555,7 +564,7 @@ async function initWorkspace() {   // multi-project: dropdown switcher + ?pid= U
   let projects = await (await fetch("/api/projects")).json();
   if (!projects.length) projects = [await (await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "default" }) })).json()];
   const sel = el("projSel");
-  sel.innerHTML = projects.map(p => `<option value="${p.pid}">${p.name}</option>`).join("");
+  sel.innerHTML = projects.map(p => `<option value="${esc(p.pid)}">${esc(p.name)}</option>`).join("");
   const want = new URLSearchParams(location.search).get("pid");
   const start = projects.find(p => p.pid === want) ? want : (projects.find(p => p.pid === "default") ? "default" : projects[0].pid);
   sel.value = start;
@@ -569,6 +578,7 @@ async function initWorkspace() {   // multi-project: dropdown switcher + ?pid= U
 async function selectProject(pid) {
   PID = pid;
   const sel = el("projSel"); if (sel && sel.value !== pid) sel.value = pid;   // keep switcher in sync
+  resetWorkspaceState();
   projMeta = await (await api(``)).json();
   featSetInfo = await (await api(`/feature-sets`)).json().catch(() => null);   // exact per-set composition for the help box
   behaviors = projMeta.behaviors;
@@ -577,7 +587,37 @@ async function selectProject(pid) {
   cageRoi = projMeta.cage_roi || null;            // shared cage-boundary ROI polygon
   updateSpoutCtl(); updateCageCtl();
   if (projMeta.videos.length) await openVideo(projMeta.videos[projMeta.videos.length - 1].video_id);   // most recently loaded
-  else metaEl.textContent = "Load a video + SLP to begin.";
+  else { clearStage(); metaEl.textContent = "Load a video + SLP to begin."; }
+}
+
+// Nothing from the previous workspace may survive a switch: behavior ids are per-project integers, so a
+// kept activeBid silently lands on a DIFFERENT behavior, and a kept undo entry would replay the old
+// project's labels into the new one.
+function resetWorkspaceState() {
+  closeReview();
+  activeBid = null; selectedSeg = null; segTrim = null; tlView = null;
+  undoStack.length = 0; redoStack.length = 0; reviewUndo.length = 0;
+  lastTrainset = null; lastTrainsetBid = null; lastStatsHistory = [];
+}
+
+// Return the viewer to the "no clip loaded" state, for a project that has no clips yet. Deliberately
+// avoids renderTimeline()/loadLabels(), which need meta.n_frames.
+function clearStage() {
+  stop();
+  if (videoBackend) { try { videoBackend.close(); } catch (e) {} videoBackend = null; }
+  frameOrder = null; pfStart = 0; pfEnd = -1;
+  vid = null; meta = null; poses = null; poseShape = null; skeleton = null;
+  predsByBeh = new Map(); predictedBouts = new Map();
+  labelState = new Map(); sourceState = new Map();
+  reviewQueue = []; reviewIdx = 0; activeTrack = 0;
+  el("review").disabled = true; el("review").textContent = "Review candidates";
+  metricsEl.textContent = "";                          // the old project's model scores are not this one's
+  cur = 0; scrub.value = 0; scrub.max = 0; counter.textContent = "0 / 0";
+  const fi = el("frameInput"); fi.value = ""; fi.max = 0;
+  vctx.clearRect(0, 0, frameEl.width, frameEl.height);
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tl.width, tl.height);
+  renderClipBar(); renderTrackBar(); renderBehaviorBar();
 }
 
 async function openVideo(vidId) {
@@ -619,18 +659,24 @@ async function openVideo(vidId) {
   show(0);
   autoloadCageRoi();                                   // best-effort: fill a missing cage ROI from the HCM DB
 }
-async function autoloadCageRoi() {   // when a clip has no cage ROI, pull its camera's medoid from the HCM DB (no-op off-VPN)
+async function autoloadCageRoi() {   // when a clip has no cage ROI, pull this recording's polygon from the HCM DB (no-op off-VPN)
   if (cageRoi) return;                                 // already set — don't clobber or re-hit the DB
   const reqVid = vid;                                  // guard against a clip switch mid-request
   let d; try { const r = await api(`/videos/${vid}/autoload-roi`, { method: "POST" }); if (!r.ok) return; d = await r.json(); }
   catch (e) { return; }
   if (vid !== reqVid || !d || !d.set) return;
-  let msg = [];
-  if (d.set.cage_roi) { cageRoi = d.set.cage_roi; msg.push("cage"); }
-  if (d.set.spout_roi && !spoutRoi) { spoutRoi = d.set.spout_roi; msg.push("spout"); }
-  if (msg.length) {
+  const src = d.source || {}, got = [];
+  if (d.set.cage_roi) { cageRoi = d.set.cage_roi; got.push(["cage", src.cage_roi]); }
+  if (d.set.spout_roi && !spoutRoi) { spoutRoi = d.set.spout_roi; got.push(["spout", src.spout_roi]); }
+  if (got.length) {
     updateCageCtl(); updateSpoutCtl(); drawPose();     // reflect the new ROI(s) on the overlay
-    busy(`auto-loaded ${msg.join(" + ")} ROI from HCM DB (${d.camera || "?"}) — Train/Predict to use it`);
+    // Name where each polygon came from: this clip's own recording, or the camera-median fallback. The
+    // spout in particular shifts between recordings, so which one you got changes spout-distance features.
+    const pretty = s => s === "recording" ? "this recording" : s === "camera medoid" ? "camera median" : null;
+    const uniq = [...new Set(got.map(([, s]) => pretty(s)).filter(Boolean))];
+    const prov = uniq.length === 1 ? `, ${uniq[0]}`
+               : uniq.length ? "; " + got.map(([n, s]) => `${n}: ${pretty(s) || "?"}`).join(", ") : "";
+    busy(`auto-loaded ${got.map(([n]) => n).join(" + ")} ROI from HCM DB (${d.camera || "?"}${prov}) — Train/Predict to use it`);
   }
 }
 
@@ -1024,7 +1070,11 @@ async function loadVideoBackend() {
   if (videoBackend) { try { videoBackend.close(); } catch (e) {} videoBackend = null; }
   frameOrder = null; pfStart = 0; pfEnd = -1;
   try {
-    const blob = await (await api(`/video/${vid}/stream.mp4`)).blob();
+    let blob = null;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      try { const r = await api(`/video/${vid}/stream.mp4`); if (!r.ok) throw new Error("http " + r.status); blob = await r.blob(); break; }
+      catch (err) { if (attempt === 11) throw err; await new Promise(res => setTimeout(res, Math.min(3000, 600 * (attempt + 1)))); }  // "Failed to fetch" while the load-burst saturates the single-worker server -> back off & retry (~25s)
+    }
     // Cap the decoded-frame cache by MEMORY, not a fixed count: 128 frames of 1280×1024 RGBA is ~670MB,
     // which starves GC and makes the backend's decode churn stall the main thread. Budget ~200MB (still
     // ~1–1.5s of buffer at these sizes), clamped to a sane frame count.
@@ -1153,6 +1203,7 @@ function laneList() {
   return a ? [a, ...behaviors.filter(b => b.id !== activeBid)] : behaviors;
 }
 function renderTimeline() {
+  if (!meta) return;   // no clip loaded (boot, or a project with no clips) — frame math has no extent yet
   const dpr = window.devicePixelRatio || 1, W = tlWidth(), rh = ROWH();
   const H = RULER + behaviors.length * rh;
   fitCanvas(tl, W, H, dpr);
@@ -1617,6 +1668,8 @@ async function removeClip(vidId) {
 function nTracks() { return Math.max(1, poseShape[1] || 1); }
 function renderTrackBar() {
   const bar = el("trackBar"); if (!bar) return; bar.innerHTML = "";
+  if (!poseShape) { bar.style.display = "none"; return; }   // no clip loaded — nothing to pick a track from
+  bar.style.display = "";
   const lab = document.createElement("span"); lab.className = "status"; lab.textContent = "Track:"; bar.appendChild(lab);
   const T = nTracks();
   for (let t = 0; t < T; t++) {
@@ -1669,6 +1722,22 @@ async function loadModel() {
   metricsEl.textContent = x.warning
     ? `⚠ ${x.warning} (${m.n_pos} pos / ${m.n_neg} neg frames)`
     : `F1 ${fmt2(x.f1)} · AP ${fmt2(x.average_precision)} · frame P/R ${fmt2(x.precision)}/${fmt2(x.recall)} · bout P/R ${fmt2(x.bout_precision)}/${fmt2(x.bout_recall)} · ${x.n_pos_groups}/${x.n_neg_groups} bouts${fs}`;
+  // A Train that replaced a stronger model is the one failure mode you cannot see from the metrics line
+  // (the new model's own CV score looks fine in isolation), so it gets its own persistent banner. Shown
+  // on every behavior switch, not just after training — that damage is always found later.
+  showDowngrade(m.downgrade_warning);
+}
+function showDowngrade(msg) {
+  let el0 = el("downgradeWarn");
+  if (!el0) {
+    el0 = document.createElement("div");
+    el0.id = "downgradeWarn";
+    el0.style.cssText = "margin:6px 0;padding:7px 10px;border-left:3px solid #8e2b8e;"
+      + "background:#faf2fa;color:#4a2148;font-size:12px;line-height:1.45;border-radius:3px;display:none";
+    metricsEl.parentNode.insertBefore(el0, metricsEl.nextSibling);
+  }
+  el0.style.display = msg ? "block" : "none";
+  el0.textContent = msg ? `⚠ ${msg}` : "";
 }
 let statsCompareBid = null, statsCompare = null, statsSources = null;   // A/B comparison + label-source breakdown
 async function openStats() {
@@ -2133,10 +2202,9 @@ function boutsFromProba(proba, hi = 0.6, lo = 0.4, smooth = 5, minBout = 3) {
 }
 async function loadCandidates(bid) {
   const n = Math.max(1, Math.min(50, parseInt(el("candN").value, 10) || 10));
-  const r = await api(`/behaviors/${bid}/candidates/${vid}?track=${activeTrack}&n=${n}&mode=${candidateMode}`);
+  const r = await api(`/behaviors/${bid}/candidates/${vid}?track=${activeTrack}&n=${n}&mode=${candidateMode}&order=${candidateOrder}`);
   reviewQueue = r.ok ? await r.json() : []; reviewIdx = 0;
-  const noun = candidateMode === "disagree" ? "disagreements" : candidateMode === "mislabel" ? "likely mislabels"
-             : candidateMode === "reviewed" ? "reviewed" : candidateMode === "dropped" ? "filtered-out" : "candidates";
+  const noun = candidateMode === "mislabel" ? "mislabels" : candidateMode === "dropped" ? "filtered-out" : "candidates";
   el("review").disabled = reviewQueue.length === 0;
   el("review").textContent = reviewQueue.length ? `Review ${noun} (${reviewQueue.length})` : `Review ${noun}`;
 }
@@ -2184,7 +2252,10 @@ async function train() {
   const bid = activeBid, bname = (behaviors.find(x => x.id === bid) || {}).name;   // capture the model being trained (activeBid may change during the async job)
   const t0 = Date.now();                                                          // wall-clock of the train job (feature compute + CV + fit)
   busy("starting…");
-  const r = await api(`/behaviors/${bid}/train`, { method: "POST" });
+  // Scope the post-fit prediction sweep (the fit itself always pools every labeled clip). Sweeping a
+  // 17-clip project costs minutes; re-predicting just the clip under review costs seconds.
+  const scope = (el("trainScope") || {}).value === "all" ? "" : `?predict_videos=${encodeURIComponent(vid)}`;
+  const r = await api(`/behaviors/${bid}/train${scope}`, { method: "POST" });
   if (!r.ok) { busy("train error: " + (await r.json()).detail); return; }
   const { job_id } = await r.json();
   pollJob(job_id, async s => {
@@ -2195,8 +2266,13 @@ async function train() {
     if (r && r.metrics) timerMark(r.metrics.average_precision, bid, bname, trainMs, r.n_candidate_bouts);   // round duration + candidate-bout count, tagged with THIS model
     if (r) {                                   // make it explicit that ALL tracks & clips were pooled, not just the active one
       const tks = (r.tracks || []).map(t => `t${t}:${(r.pos_by_track || {})[t] || 0}+`).join(" ");
+      // ...and equally explicit about how far the fresh model was APPLIED, which is a separate choice
+      const nPred = ((r.predict || {}).videos || []).length;
+      const applied = nPred === (r.videos_used || []).length && nPred > 1 ? `re-predicted all ${nPred} clips`
+                    : nPred ? `re-predicted ${nPred} clip${nPred > 1 ? "s" : ""} (others show the previous model)`
+                    : "no clips re-predicted";
       busy(`Trained on ${r.n_pos}+/${r.n_neg}− frames · ${r.n_pos_bouts}+/${r.n_neg_bouts}− bouts · `
-        + `${(r.tracks || []).length} tracks (${tks}) · ${(r.videos_used || []).length} clips`);
+        + `${(r.tracks || []).length} tracks (${tks}) · ${(r.videos_used || []).length} clips · ${applied}`);
     }
   });
 }
@@ -2274,15 +2350,6 @@ function updateReviewText() {
     mrow.style.display = merge.merged ? "" : "none";
     if (merge.merged) el("rvMerge").title = `Bridges frames ${t.s}–${t.e} to the adjacent bout -> one continuous run ${merge.s}–${merge.e} (m)`;
   }
-  if (reviewCurrent.mode === "reviewed") {
-    const yours = reviewCurrent.labelValue === 1 ? "Happening" : "Not-happening";
-    const head = reviewQueue.length ? `Reviewed <b>${reviewIdx + 1}/${reviewQueue.length}</b>` : `Reviewed`;
-    const when = reviewCurrent.reviewedAt ? ` · checked ${esc(String(reviewCurrent.reviewedAt).slice(0, 10))}` : "";
-    el("reviewQ").innerHTML = `${head} · track ${activeTrack} · <b style="color:${b.color}">${b.name}</b> · `
-      + `frames <b>${t.s}–${t.e}</b> (${t.e - t.s}f) · you labeled <b>${yours}</b> · ✓ already reviewed${when}. &nbsp; ${loc}`;
-    el("rvProgress").textContent = "r replay · this bout is marked reviewed (won't show in the mislabel queue) · n un-review · ⏎ next";
-    return;
-  }
   if (reviewCurrent.mode === "disagree") {
     const yours = reviewCurrent.labelValue === 1 ? "Happening" : "Not-happening";
     const sugPos = reviewCurrent.suggestVal === 1;
@@ -2309,9 +2376,7 @@ async function startReview() {
   if (candidateMode === "mislabel") busy("cross-validating to find likely mislabels — first run for a behavior takes a moment…");
   if (activeBid != null) await loadCandidates(activeBid);   // refresh against CURRENT labels (queue is otherwise only reloaded on train/predict/switch)
   if (!reviewQueue.length) {
-    busy(candidateMode === "disagree" ? "no disagreements — the model agrees with your labels"
-         : candidateMode === "mislabel" ? "no likely mislabels on this clip/track — the cross-validated model agrees with your labels (or too few bouts to cross-validate)"
-         : candidateMode === "reviewed" ? "no reviewed bouts yet on this clip/track — check some in 'Likely mislabels' and they'll land here"
+    busy(candidateMode === "mislabel" ? "no likely mislabels on this clip/track — the cross-validated model agrees with your labels (or too few bouts to cross-validate)"
          : candidateMode === "dropped" ? "no bouts were filtered out (no 2-mouse-overlap drops for this behavior/track)"
          : "no unlabeled candidates — retrain after labeling more");
     return;
@@ -2335,13 +2400,12 @@ function showCandidate(i) {
   reviewIdx = i;
   if (i >= reviewQueue.length) { closeReview(); busy("reviewed — Train again to refine"); return; }
   const c = reviewQueue[i];
-  const isReviewed = c.kind === "reviewed";
-  const isDis = c.kind === "disagree" || isReviewed;
-  reviewCurrent = { bid: activeBid, s: c.start, e: c.end, p: c.mean_proba, mode: isReviewed ? "reviewed" : isDis ? "disagree" : "new",
-                    labelValue: c.label_value, suggestVal: c.suggest_value, conf: c.disagreement, spoutDist: c.spout_dist, maxConcurrent: c.max_concurrent, dropReason: c.drop_reason, reviewedAt: c.reviewed_at };
+  const isDis = c.kind === "disagree";
+  reviewCurrent = { bid: activeBid, s: c.start, e: c.end, p: c.mean_proba, mode: isDis ? "disagree" : "new",
+                    labelValue: c.label_value, suggestVal: c.suggest_value, conf: c.disagreement, spoutDist: c.spout_dist, maxConcurrent: c.max_concurrent, dropReason: c.drop_reason };
   reviewTrim = { s: c.start, e: c.end };
-  el("rvYes").textContent = isReviewed ? "✓ Keep reviewed (y)" : isDis ? "✓ Change (y)" : "✓ Accept (y)";
-  el("rvNo").textContent = isReviewed ? "↩ Un-review (n)" : isDis ? "✗ Keep (n)" : "✗ Reject (n)";
+  el("rvYes").textContent = isDis ? "✓ Change (y)" : "✓ Accept (y)";
+  el("rvNo").textContent = isDis ? "✗ Keep (n)" : "✗ Reject (n)";
   setReviewView(c.start, c.end);
   updateReviewText(); populateReclassifySelect(); playBout(c.start, c.end);   // auto-play the candidate bout under review
 }
@@ -2377,19 +2441,18 @@ function setTrimStart() { if (!reviewCurrent) return; reviewTrim.s = Math.max(0,
 function setTrimEnd()   { if (!reviewCurrent) return; reviewTrim.e = Math.min(meta.n_frames, Math.max(cur + 1, reviewTrim.s + 1)); ensureTrimVisible(); updateReviewText(); renderTimeline(); }
 // mark the bout under review as mislabel-reviewed (so it drops out of the mislabel queue). Uses the
 // ORIGINAL labeled-run bounds (reviewCurrent.s/.e), which is the key mislabels()/reviewed use.
-async function markReviewedCurrent(action = "add") {
+async function markReviewedCurrent() {
   if (!reviewCurrent) return;
   await api(`/behaviors/${reviewCurrent.bid}/reviewed`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vid, track: activeTrack, start: reviewCurrent.s, end: reviewCurrent.e,
-                           label_value: reviewCurrent.labelValue, action }),
+                           label_value: reviewCurrent.labelValue, action: "add" }),
   });
 }
 async function acceptCandidate() {   // "y": accept the model. new: label inner as Happening, trimmed edges Not-happening. disagree: flip inner to the model's verdict.
   if (!reviewCurrent) return;
   snapReview();
   const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
-  if (reviewCurrent.mode === "reviewed") { advanceReview(); return; }   // reviewed tab: 'y' keeps it reviewed, just advance
   if (reviewCurrent.mode === "disagree") {
     if (candidateMode === "mislabel") await markReviewedCurrent();   // resolved -> stop resurfacing it
     await applyPaint(bid, t.s, t.e, reviewCurrent.suggestVal === 1 ? 1 : 2, "candidate");   // correct the label to what the model sees
@@ -2433,7 +2496,6 @@ async function rejectCandidate() {   // "n": new: mark Not-happening. disagree: 
   if (!reviewCurrent) return;
   snapReview();
   const { bid, s, e } = reviewCurrent, t = reviewTrim || { s, e };
-  if (reviewCurrent.mode === "reviewed") { await markReviewedCurrent("remove"); advanceReview(); return; }   // put back in the mislabel queue
   if (reviewCurrent.mode === "disagree") {
     if (candidateMode === "mislabel") await markReviewedCurrent();   // you checked it and kept your label -> don't resurface
     advanceReview(); return;   // your call stands — no write, so a hand-labeled bout stays 'manual'
@@ -2729,6 +2791,7 @@ el("toolSelect").onclick = () => setTool("select");
 el("delSeg").onclick = deleteSelectedSeg;
 el("train").onclick = train; el("predict").onclick = predictVideo; el("importBtn").onclick = importFile; el("review").onclick = startReview;
 el("candMode").onchange = async e => { candidateMode = e.target.value; if (activeBid != null) await loadCandidates(activeBid); };
+el("candOrder").onchange = async e => { candidateOrder = e.target.value; if (activeBid != null) await loadCandidates(activeBid); };
 el("candN").value = localStorage.getItem("ll_candN") || "10";
 el("candN").onchange = async e => {
   localStorage.setItem("ll_candN", e.target.value);

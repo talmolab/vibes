@@ -23,7 +23,7 @@ from sklearn.metrics import (average_precision_score, confusion_matrix,
 from sklearn.model_selection import StratifiedGroupKFold, cross_val_predict
 from sklearn.pipeline import Pipeline
 
-from .featurestore import feature_config_hash, select_feature_cols
+from .featurestore import feature_config_hash, feature_set_fallback, select_feature_cols
 
 
 def make_model() -> Pipeline:
@@ -82,6 +82,48 @@ def _auc(pos: np.ndarray, neg: np.ndarray) -> float:
     r = rankdata(np.concatenate([pos, neg]))
     u = r[:n_pos].sum() - n_pos * (n_pos + 1) / 2.0
     return float(u / (n_pos * n_neg))
+
+
+# A Train replaces the behavior's model outright. That is correct for the human-in-the-loop loop, but it
+# silently destroys a model when the project cannot see the labels the old one was trained on — which is
+# exactly what happens to a project SEEDED with models trained elsewhere: it holds 2 clips, the model
+# came from 15, so the first Train refits on a fraction of the evidence.
+#
+# This has now happened twice for real, both times unnoticed until predictions were compared:
+#   day25-day150 jump down: 297-bout/15-video model -> 10-bout/1-video model, f1 0.861 -> 0.632, and the
+#       replacement fired on 43% of all frames for a punctate behavior.
+#   day25-day150 climb up:  297-bout/15-video model -> 3-bout/2-video model, f1 0.820 -> 0.234.
+# Nothing warned, because a Train that is legitimate and a Train that is destructive look identical from
+# inside: both are "fit on the labels this project has".
+_DOWNGRADE_BOUT_RATIO = 3.0      # new model trained on <1/3 the positive bouts of the best prior round
+_DOWNGRADE_MIN_POS_BOUTS = 10    # or on fewer than this many positive bouts outright
+_DOWNGRADE_F1_DROP = 0.15        # or with cross-validated f1 this much below the best prior round
+
+
+def _downgrade_warning(prev_model, history, version, n_pos_bouts, n_videos, f1) -> str | None:
+    """Human-readable warning when this round looks like it destroyed a stronger model, else None.
+
+    Deliberately a warning, not a refusal: the user may genuinely intend to retrain from scratch, and a
+    tool that blocks a legitimate action is worse than one that flags a suspicious one. The point is that
+    the degradation stops being invisible."""
+    prior = [h for h in history[:-1] if h.get("version") != version]
+    if not prior:
+        return None
+    best = max(prior, key=lambda h: (h.get("n_pos_bouts") or 0))
+    best_bouts = best.get("n_pos_bouts") or 0
+    best_f1 = best.get("f1")
+    reasons = []
+    if best_bouts >= _DOWNGRADE_MIN_POS_BOUTS and n_pos_bouts * _DOWNGRADE_BOUT_RATIO < best_bouts:
+        reasons.append(f"{n_pos_bouts} positive bouts across {n_videos} video(s), where an earlier "
+                       f"round used {best_bouts} across {best.get('n_videos')}")
+    if best_f1 is not None and f1 is not None and (best_f1 - f1) > _DOWNGRADE_F1_DROP:
+        reasons.append(f"cross-validated f1 {f1:.3f} vs {best_f1:.3f} before")
+    if not reasons:
+        return None
+    return ("This model may be WEAKER than the one it replaced: " + "; ".join(reasons) +
+            f". The previous model ({prev_model.get('version')}) is still in the model folder — if this "
+            f"project was seeded with a model trained on other clips, those labels are not visible here, "
+            f"so this round refit on a fraction of the evidence. Re-predict before comparing anything.")
 
 
 def _build_trainset(proj, used, bouts, version, trained_at,
@@ -318,7 +360,12 @@ class Trainer:
         # per-behavior feature subset (lean models): e.g. drinking learns better from spout-only
         beh = next((b for b in proj.behaviors if b["id"] == bid), {})
         feature_set = beh.get("feature_set")
+        # NB feature_names is read from used[0] ONLY, so a first clip whose ROI never loaded decides the
+        # subset for the whole pool. That is where a mislabelled model comes from: the fit silently uses
+        # every column while meta.json still records feature_set='cage'. Record the fallback so the model
+        # is at least honestly labelled and the UI can say so.
         fnames = self.features.meta(pid, used[0]).get("feature_names") or []
+        feature_set_note = feature_set_fallback(fnames, feature_set)
         cols = select_feature_cols(fnames, feature_set)
         if len(cols) != X.shape[1]:
             X = X[:, cols]
@@ -338,16 +385,25 @@ class Trainer:
         d = self._dir(pid, bid)
         d.mkdir(parents=True, exist_ok=True)
         joblib.dump(pipe, d / f"{version}.joblib")
+        # computed before meta is written so the warning can be persisted with the model it describes:
+        # a destructive Train is usually noticed long after the round that caused it, so a message that
+        # only appears once at train time is a message nobody sees.
+        _hist_path = d / "history.json"
+        _prior_hist = json.loads(_hist_path.read_text()) if _hist_path.exists() else []
+        _prev_model = next((x for x in proj.behaviors if x["id"] == bid), {}).get("model") or {}
         # how long this training round took: total wall time (feature-ensure + gather + CV + fit + save),
         # with the feature-ensure portion broken out (≈0 when the cache was pre-warmed, large on a cold
         # compute) so a slow round is attributable. NB: excludes the separate predict-over-videos step.
         train_seconds = round(time.perf_counter() - _t0, 2)
+        downgrade = _downgrade_warning(_prev_model, _prior_hist + [{"version": version}], version,
+                                       n_pos_bouts, len(used), metrics.get("f1"))
         meta = {"behavior_id": bid, "version": version, "trained_at": _now(),
                 "feature_config_hash": cfg_hash, "feature_set": feature_set, "n_features": int(X.shape[1]),
                 "n_pos": n_pos, "n_neg": n_neg,
                 "n_pos_bouts": n_pos_bouts, "n_neg_bouts": n_neg_bouts,
                 "train_seconds": train_seconds, "feature_seconds": feature_seconds,
-                "videos_used": used, "skipped": skipped, "metrics": metrics}
+                "videos_used": used, "skipped": skipped, "metrics": metrics,
+                "downgrade_warning": downgrade, "feature_set_note": feature_set_note}
         (d / "meta.json").write_text(json.dumps(meta, indent=2))
 
         # frozen training-set provenance: exactly which videos/tracks/bouts fed THIS model version
@@ -375,8 +431,12 @@ class Trainer:
                       "f1": metrics.get("f1"), "n_pos": n_pos, "n_neg": n_neg}
         proj.save()
 
+        if downgrade:
+            progress(99, downgrade)
+
         progress(100, "done")
         return {"version": version, "metrics": metrics, "n_pos": n_pos, "n_neg": n_neg,
+                "downgrade_warning": downgrade,
                 "n_pos_bouts": n_pos_bouts, "n_neg_bouts": n_neg_bouts,
                 "n_seed_bouts": n_seed_bouts, "n_candidate_bouts": n_candidate_bouts,
                 "train_seconds": train_seconds, "feature_seconds": feature_seconds,

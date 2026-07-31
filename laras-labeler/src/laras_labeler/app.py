@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import json
+import os
 import shutil
 import threading
 
@@ -23,7 +24,7 @@ from .featurestore import FeatureStore
 from .importers import Importer
 from .jobs import JobManager
 from .labels import LabelStore
-from .predict import Predictor
+from .predict import CANDIDATE_ORDERS, Predictor
 from .project import DEFAULT_FEATURE_CONFIG, ProjectStore
 from .training import Trainer
 from .video import VideoManager
@@ -163,17 +164,44 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
     # as soon as a clip is added or the project is opened, so by train time the cache is already warm.
     # Fire-and-forget + de-duped against in-flight warms; repeated calls (e.g. project-state polls) are
     # cheap no-ops once a clip is ready or already warming.
+    #
+    # BOUNDED, because a big project makes the naive version dangerous. Opening a 99-clip longitudinal
+    # project with evicted caches used to start 99 jobs at once — 99 OS threads, each a single-threaded
+    # build peaking around 700 MB RSS, all racing to write 104.4 MiB of features, i.e. ~10 GiB onto a
+    # volume that may have less than that free. Three guards, in order of what they protect:
+    #   PREWARM_MAX_INFLIGHT  how many actually compute at once (the RAM/CPU bound)
+    #   PREWARM_MAX_PER_CALL  how many get queued per call (the thread-count bound); the rest stay cold
+    #                         and warm on the next project-open poll or lazily at train time
+    #   PREWARM_MIN_FREE_GIB  refuse entirely when the disk is nearly full — filling the boot volume is
+    #                         far worse than a slow first Train
+    PREWARM_MAX_INFLIGHT = 2
+    PREWARM_MAX_PER_CALL = 12
+    PREWARM_MIN_FREE_GIB = 3.0
     _prewarming: set = set()
     _prewarm_lock = threading.Lock()
+    _prewarm_slots = threading.Semaphore(PREWARM_MAX_INFLIGHT)
+
+    def _free_gib(path) -> float:
+        try:
+            st = os.statvfs(path)
+            return st.f_bavail * st.f_frsize / 2 ** 30
+        except OSError:
+            return float("inf")
 
     def _prewarm_features(pid: str, vids=None) -> list[str]:
         proj = store.get(pid)
         if proj is None:
             return []
+        explicit = vids is not None      # an explicit add/upload is always worth one warm
         if vids is None:
             vids = [v["video_id"] for v in proj.videos]
+        free = _free_gib(proj.path)
+        if free < PREWARM_MIN_FREE_GIB:
+            return []
         started = []
         for vid in vids:
+            if not explicit and len(started) >= PREWARM_MAX_PER_CALL:
+                break
             entry = proj.video(vid)
             if not entry or not entry.get("has_poses"):
                 continue
@@ -186,7 +214,14 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
 
             def _fn(progress, _pid=pid, _vid=vid):
                 try:
-                    return features.compute(_pid, _vid, progress)
+                    with _prewarm_slots:
+                        # re-check under the slot: the cache may have been built while we queued, and
+                        # the disk may have filled up behind us.
+                        if features.status(_pid, _vid).get("status") == "ready":
+                            return {"skipped": "already ready"}
+                        if _free_gib(store.get(_pid).path) < PREWARM_MIN_FREE_GIB:
+                            return {"skipped": "low disk"}
+                        return features.compute(_pid, _vid, progress)
                 finally:
                     with _prewarm_lock:
                         _prewarming.discard((_pid, _vid))
@@ -373,10 +408,11 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
 
     @app.post("/api/projects/{pid}/videos/{vid}/autoload-roi")
     def autoload_roi(pid: str, vid: str, overwrite: bool = False):
-        """Best-effort: fill THIS clip's cage (and spout) ROI from the HCM database by matching the
-        clip's camera to the medoid segmentation polygon. Only fills a MISSING ROI unless overwrite=true.
-        Silently no-ops (set: {}) if the DB is unreachable (off-VPN), sqlalchemy isn't installed, the
-        camera can't be parsed, or no valid polygon exists — so video loading never depends on it."""
+        """Best-effort: fill THIS clip's cage (and spout) ROI from the HCM database, preferring the
+        clip's own recording and falling back per class to the camera's medoid polygon. Only fills a
+        MISSING ROI unless overwrite=true. Silently no-ops (set: {}) if the DB is unreachable (off-VPN),
+        sqlalchemy isn't installed, the camera can't be parsed, or no valid polygon exists — so video
+        loading never depends on it. `source` reports which polygon each field came from."""
         from . import hcm_roi
         p = _video(pid, vid)
         entry = p.video(vid)
@@ -388,7 +424,7 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
                 set_fields[field] = got[field]
         if set_fields:
             p.save()
-        return {"camera": got.get("camera"), "set": set_fields}
+        return {"camera": got.get("camera"), "source": got.get("source", {}), "set": set_fields}
 
     @app.post("/api/projects/{pid}/videos")
     def add_video(pid: str, body: NewVideo):
@@ -489,12 +525,24 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
 
     # ---- training + prediction (the human-in-the-loop) ----
     @app.post("/api/projects/{pid}/behaviors/{bid}/train")
-    def train_behavior(pid: str, bid: int):
+    def train_behavior(pid: str, bid: int, predict_videos: str | None = None):
+        """Fit this behavior's model, then apply it. `predict_videos` scopes that second step:
+        omitted = every clip in the project (what the UI wants, so its timeline refreshes);
+        empty (`?predict_videos=`) = train only, no prediction; a comma-separated list of video_ids =
+        just those. Worth scoping — on a project with many or long clips the sweep costs far more than
+        the fit itself."""
         _behavior(pid, bid)
+        scope = None if predict_videos is None else [s for s in (x.strip() for x in predict_videos.split(",")) if s]
 
         def job(progress):
             r = trainer.train(pid, bid, lambda p, m: progress(int(p * 0.7), m))
-            r["predict"] = predictor.predict_behavior(pid, bid, lambda p, m: progress(70 + int(p * 0.3), m))
+            step = lambda p, m: progress(70 + int(p * 0.3), m)
+            if scope is None:
+                r["predict"] = predictor.predict_behavior(pid, bid, step)
+            elif scope:
+                r["predict"] = predictor.predict_behavior(pid, bid, step, videos=scope)
+            else:
+                r["predict"] = {"videos": [], "skipped": [], "note": "no prediction — predict_videos was empty"}
             return r
 
         j = jobs.start("train", job, meta={"pid": pid, "behavior_id": bid})
@@ -571,10 +619,13 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
                         headers={"X-Shape": str(len(proba)), "Cache-Control": "no-cache"})
 
     @app.get("/api/projects/{pid}/behaviors/{bid}/candidates/{vid}")
-    def get_candidates(pid: str, vid: str, bid: int, track: int = 0, n: int = 12, mode: str = "new"):
+    def get_candidates(pid: str, vid: str, bid: int, track: int = 0, n: int = 12, mode: str = "new",
+                       order: str = "uncertain"):
         _behavior(pid, bid)
         _video(pid, vid)
-        return predictor.candidates(pid, vid, bid, track, n, mode)
+        if order not in CANDIDATE_ORDERS:
+            raise HTTPException(400, f"order must be one of {', '.join(CANDIDATE_ORDERS)}")
+        return predictor.candidates(pid, vid, bid, track, n, mode, order)
 
     @app.post("/api/projects/{pid}/behaviors/{bid}/reviewed")
     def set_reviewed(pid: str, bid: int, body: ReviewedBout):
@@ -605,7 +656,7 @@ def create_app(settings: Settings, store: ProjectStore) -> FastAPI:
         except FileNotFoundError:
             raise HTTPException(404, _SRC_MISSING)
         pose = ov.poses()                                    # (F, T, N, 3)
-        nodes = list(ov.labels.skeletons[0].node_names)
+        nodes = ov.node_names
         roles = proj.manifest.get("skeleton_roles", {})
         series = quick_series(pose, nodes, float(vm.meta(pid, vid)["fps"]), roles)
         F, T = pose.shape[0], pose.shape[1]
