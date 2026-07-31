@@ -53,6 +53,39 @@ def select_feature_cols(feature_names: list[str], feature_set: str | None) -> li
     return cols or list(range(n))
 
 
+def feature_set_fallback(feature_names: list[str], feature_set: str | None) -> str | None:
+    """Why `select_feature_cols` fell back to ALL columns, or None if it selected a real subset.
+
+    The fallback exists so a fit never hard-fails, but silently it is dangerous in two different ways
+    and this function is what lets callers say which one happened:
+
+      * at TRAIN time it mislabels the model permanently — meta.json records `feature_set: "cage"`
+        while the classifier was actually fit on all 608 columns, and nothing downstream can tell.
+      * at PREDICT time the n_features_in_ guard notices the count is wrong but infers the WRONG cause:
+        a clip missing its cage ROI yields MORE columns than the model expects (all 496 instead of the
+        112 cage ones), which looks identical to a model trained on an older feature version.
+
+    The usual trigger is a clip whose per-clip ROI never loaded (hcm_roi degrades to None off-VPN), so
+    no cage_*/spout_roi_* columns exist for a behavior whose feature_set asks only for those."""
+    if not feature_set or feature_set == "all":
+        return None
+    known = {"spout", "spout_only", "cage", "spout_cage", "no_social", "pose", "social", "social_pose"}
+    if feature_set not in known:
+        return (f"unknown feature_set {feature_set!r} — using all {len(feature_names)} columns; "
+                f"pick one of {', '.join(sorted(known))}")
+    if select_feature_cols(feature_names, feature_set) == list(range(len(feature_names))):
+        # distinguish a genuine all-columns match (e.g. 'no_social' on a clip with no social features)
+        # from the empty-match fallback, by checking whether ANY name is in the requested family
+        base = lambda nm: nm.split("__")[0]
+        fams = {"spout": ("spout",), "spout_only": ("spout",), "cage": ("cage",),
+                "spout_cage": ("spout", "cage"), "social": ("social",)}.get(feature_set)
+        if fams and not any(base(nm).startswith(f) for nm in feature_names for f in fams):
+            return (f"feature_set {feature_set!r} matched NO columns on this clip, so all "
+                    f"{len(feature_names)} were used instead. The clip is almost certainly missing the "
+                    f"ROI that produces those features — set its spout/cage ROI and rebuild features.")
+    return None
+
+
 def suggest_feature_set(name: str) -> tuple[str | None, str]:
     """Heuristic default feature set for a NEW behavior from its name, per the empirically-validated axis
     rule (see ~/Downloads/mouse_behavior_feature_guide.md): social/interaction → social_pose; location →
@@ -185,8 +218,8 @@ class FeatureStore:
         progress(5, "loading poses")
         ov = self.vm._get(pid, vid)
         pose = ov.poses()                                  # (F, T, N, 3)
-        node_names = [n for n in ov.labels.skeletons[0].node_names]
-        track_names = [t.name for t in ov.labels.tracks]
+        node_names = ov.node_names
+        track_names = ov.track_names
         fps = float(entry["fps"])
 
         progress(20, f"features: {pose.shape[0]} frames x {pose.shape[1]} animals (per-track)")

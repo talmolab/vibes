@@ -8,12 +8,14 @@ Suggestions rank UNLABELED frames by uncertainty (|p-0.5|), diversified so you d
 
 from __future__ import annotations
 
+import random
+from itertools import zip_longest
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from .featurestore import select_feature_cols
+from .featurestore import feature_set_fallback, select_feature_cols
 
 DEFAULT_POSTPROC = {"smooth": 5, "hi": 0.6, "lo": 0.4, "min_bout": 3, "min_gap": 3,
                     "social_gate_s": 0.5,   # drop a candidate if >=2 mice are in the spout ROI this long (v8 drinking filter)
@@ -90,6 +92,60 @@ def _split_capped(s: int, e: int, max_len: int):
     return [(int(edges[i]), int(edges[i + 1])) for i in range(k) if edges[i + 1] > edges[i]]
 
 
+CANDIDATE_ORDERS = ("uncertain", "confident", "random", "mixed")
+
+
+def _order_candidates(cands: list[dict], order: str, n: int, seed_key: tuple) -> list[dict]:
+    """Pick which n of the predicted bouts to review, and in what order.
+
+    `uncertain` (default) TEACHES the model — least-confidence-first active learning, mean proba nearest
+    0.5 first, where a label is worth most. A controlled AL simulation on rearing showed that adding
+    feature-space diversity on top of this HURT (it chased outliers away from the decision boundary and
+    lost to even random order past ~20 bouts), so pure uncertainty stays the default; spout distance is
+    only a tiebreak.
+
+    `mixed` alternates uncertainty-first with RANDOM picks (not confident ones). That specific blend is
+    what tools/acquisition_sim.py measured as the best strategy for jump-down — 0.77 AP against 0.54 for
+    pure uncertainty — while confident-first lost on every behavior it was tried on.
+
+    The other two TEST the model instead of teaching it: `confident` surfaces what it is surest of, so a
+    false positive there is a real indictment; `random` is the only order that yields an UNBIASED
+    precision estimate, because every other order selects on the very score being measured. Both sample
+    the bouts of THIS clip and track only — neither is a project-wide sample.
+    """
+    def by_uncertainty(c):
+        return (-c["uncertainty"], c.get("spout_dist") if c.get("spout_dist") is not None else 0.0)
+
+    def by_confidence(c):
+        return -c["mean_proba"]
+
+    def shuffled():
+        # Seeded on clip/behavior/track so the queue is stable across reloads and retrains — a queue
+        # that reshuffles under you loses your place mid-review.
+        out = list(cands)
+        random.Random(repr(seed_key)).shuffle(out)
+        return out
+
+    if order == "confident":
+        return sorted(cands, key=by_confidence)[:n]
+    if order == "random":
+        return shuffled()[:n]
+    if order == "mixed":
+        seen, out = set(), []
+        for a, b in zip_longest(sorted(cands, key=by_uncertainty), shuffled()):
+            for c in (a, b):
+                if c is None:
+                    continue
+                key = (c["start"], c["end"])
+                if key not in seen:
+                    seen.add(key)
+                    out.append(c)
+                    if len(out) >= n:
+                        return out
+        return out[:n]
+    return sorted(cands, key=by_uncertainty)[:n]
+
+
 class Predictor:
     def __init__(self, store, features, trainer, labels) -> None:
         self.store = store
@@ -125,17 +181,21 @@ class Predictor:
         cols = select_feature_cols(fnames, fset) if fnames else list(range(D))
         exp = getattr(model, "n_features_in_", None)               # model trained on a different feature set/version
         if exp is not None and exp != len(cols):
-            # two distinct causes, opposite directions: clip has FEWER features than the model -> it's
-            # missing an ROI the model was trained with (set the ROI); clip has MORE -> the model is stale
-            # (trained on an older feature-code version), so retrain the behavior on the current features.
-            if len(cols) < exp:
+            # THREE causes, and the count alone cannot tell them apart — a clip whose ROI never loaded
+            # yields MORE columns than the model expects (the empty-match fallback hands back all of
+            # them), which is indistinguishable by count from a stale model. So ask why the subset came
+            # out the size it did before blaming the model.
+            fallback = feature_set_fallback(fnames, fset) if fnames else None
+            if fallback:
+                why = fallback
+            elif len(cols) < exp:
                 why = ("this clip is missing the spout/cage ROI the model was trained with — "
                        "set the same ROIs as the training clips, then predict again")
             else:
                 why = ("this behavior's model is out of date (trained on an older feature version) — "
                        "retrain the behavior on the current features, then predict again")
             return (f"feature_mismatch: model expects {exp} features (set '{fset or 'all'}'), "
-                    f"this clip has {len(cols)} — {why}.")
+                    f"this clip has {len(cols)} — {why}")
         sub = len(cols) != D
         proba = np.empty((F, T), dtype="float32")
         for t in range(T):
@@ -146,11 +206,17 @@ class Predictor:
         np.save(p, proba)                                          # (F, T)
         return "ok"
 
-    def predict_behavior(self, pid: str, bid: int, progress=lambda p, m: None) -> dict:
+    def predict_behavior(self, pid: str, bid: int, progress=lambda p, m: None,
+                         videos: list[str] | None = None) -> dict:
+        """Apply this behavior's model to every ready clip, or only to `videos` when given (order and
+        membership follow the project's ready clips, so an unknown id is simply absent from the result)."""
         model = self.trainer.load_model(pid, bid)
         if model is None:
             raise ValueError("no trained model for this behavior")
         vids = self._ready_videos(pid)
+        if videos is not None:
+            want = set(videos)
+            vids = [v for v in vids if v in want]
         done, skipped = [], []
         for i, vid in enumerate(vids):
             status = self.predict_one(pid, vid, bid, model=model)
@@ -225,8 +291,10 @@ class Predictor:
         return (inside == 1.0).sum(axis=1).astype("int32")            # (F,) # mice at the spout each frame
 
     def candidates(self, pid: str, vid: str, bid: int, track: int, n: int = 12,
-                   mode: str = "new") -> list[dict]:
-        """Ranked yes/no review items for one behavior+track. Three modes:
+                   mode: str = "new", order: str = "uncertain") -> list[dict]:
+        """Ranked yes/no review items for one behavior+track. `order` picks WHICH of the predicted
+        bouts you see (see _order_candidates) and applies to `new` only — the other modes have their
+        own ranking. Three modes:
 
         `new` (default) — predicted-positive regions you HAVEN'T labeled yet, most-uncertain first.
         `disagree` — labeled bouts the model confidently CONTRADICTS (the label-error finder).
@@ -295,13 +363,7 @@ class Predictor:
             dropped.sort(key=lambda c: -c.get("social_overlap", 0))
             return dropped[:n]
 
-        # Least-confidence first (active-learning uncertainty sampling): the model's most-borderline
-        # predictions — mean proba nearest 0.5 — first, where a label teaches the model the most.
-        # NB: a controlled AL simulation on rearing showed that ADDING feature-space DIVERSITY on top of
-        # this HURT (it chased outliers away from the decision boundary and underperformed even random
-        # order past ~20 bouts) — so pure uncertainty is the default. spout distance is only a tiebreak.
-        cands.sort(key=lambda c: (-c["uncertainty"], c.get("spout_dist") if c.get("spout_dist") is not None else 0.0))
-        return cands[:n]
+        return _order_candidates(cands, order, n, (vid, bid, track))
 
     def disagreements(self, pid: str, vid: str, bid: int, track: int, n: int = 12) -> list[dict]:
         """Labeled bouts the model is *confident* you got wrong — the "annotations aren't perfect"
