@@ -8,6 +8,10 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 
 ## Features
 
+- **Player** - once a file is loaded, a player sits above the tabs (present on all of them, dismissable via **Hide Player**, vertically resizable by its corner). The `<video>` element only decodes and plays; every control is custom, because the native ones can neither address frames nor show where the keyframes are:
+  - The seekbar carries a **tick per keyframe**, so seek cost is visible at a glance - the bundled samples read as a 29-tooth comb and as two lonely ticks
+  - A live readout of which **frame** the playhead is on and **how far back the nearest keyframe is** (the exact quantity the seeking test measures in bulk), updated per presented frame via `requestVideoFrameCallback` rather than four times a second
+  - Frame-by-frame and keyframe-to-keyframe stepping, keyboard control (space, arrows, Home/End), and one click to send the current playhead to the Encode Test as its start time
 - **Inspect** - rich metadata plus a visual MP4 **atom map** (`ftyp`/`moov`/`mdat`/`moof`, byte offsets & sizes, moov-before-mdat "faststart" detection) and per-frame GOP/I-frame/B-frame structure
 - **Identify the codec** - infers the codec family from the container (H.264/AVC, H.265/HEVC, VP8/VP9, AV1, AAC, Opus, FLAC, MP3, AC-3/E-AC-3, PCM) and decodes its embedded profile/level/tier straight out of the RFC 6381 codec string, with a short explainer on what that codec actually is and why you'd (not) choose it
 - **Teach** - interactive explanations tied to the loaded file: CRF vs. bitrate, x264 presets, GOP/keyframe interval, I/P/B frames, `yuv420p` chroma subsampling, even-dimension requirements, and the moov-atom/faststart tradeoff
@@ -15,19 +19,27 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 - **Re-encode** - H.264/MP4 directly in the browser, saved back to disk via the File System Access API, with two engines:
   - **ffmpeg.wasm (exact)** - runs the literal CRF/preset command, byte-for-byte equivalent to the CLI, lazy-loaded (~30 MB), GPL
   - **mediabunny / WebCodecs (fast)** - hardware-accelerated, no CRF (bitrate/quality-preset only), surfaced honestly as an approximation
-- **Encode Test (A/B)** - encodes just a short window (1-10s) of the video at the chosen CRF/preset, then decodes the original and the result side-by-side with synchronized pixel-level zoom & pan, one-click **Fit**/**Actual Size (100%)** buttons, a pixel grid that appears once zoomed in far enough to make individual pixels visible, and a scrub slider — so you can judge a quality setting before committing to a full re-encode
+- **Encode Test (A/B + metrics)** - encodes just a short window (1-10s) of the video at the chosen CRF/preset, then compares it against the original **frame for frame**:
+  - **Side-by-side + difference pane** with synchronized pixel-level zoom & pan (trackpad pinch, gentle delta-proportional scroll zoom, drag to pan, double-click for 1:1, clamped between fit and 16 screen px per source pixel), a pixel grid past 8x, and a frame-stepping scrub slider
+  - **Amplified diff map** (heat or grayscale, adjustable gain) - real CRF differences are a few code values wide and invisible without gain
+  - **Per-frame metrics**: PSNR (luma and RGB), SSIM, mean/p95/max RGB Euclidean distance, share of pixels changed, and a log-scaled **distance histogram**
+  - **Whole-segment analysis**: PSNR and SSIM plotted per frame with the encoded keyframe interval marked, mean/min summaries, a pooled distance histogram, and a jump-to-worst-frame button
+  - **Video-only byte comparison** against the same window of the source (from the sample table), with a warning when the re-encode comes out *larger* than the original
+  - The window's start is snapped to a real frame boundary and ffmpeg's input seek is frame-accurate, so frame *i* on the left is always frame *i* on the right
 - **Always emits a CLI command** - a live, editable `ffmpeg` command mirroring [sleap-io](https://github.com/talmolab/sleap-io)'s `reencode`, for anyone who wants to run it locally, headless, or in batch
 - **Report / Export** - compiles metadata, the codec explainer, the atom map, GOP/keyframe stats, the seeking test and Encode Test results (if run), and the CLI command into one report — copy as Markdown, download a `.md` file, or print to PDF via the browser's native print dialog
 
 ## Usage
 
-1. Load a video via drag-and-drop, the file picker, or **Load Sample** (bundled `mice.mp4`)
+1. Load a video by dropping it anywhere on the page, via the file picker, from a URL, or with one of the two bundled samples:
+   - **Load Sample** - `mice.mp4`, grayscale behavior footage, 1024x768 @ 47 fps, keyframe every ~1 s (29 of them)
+   - **Load Sample 2** - `ngai-interview.mp4`, color interview footage, 1920x1080 @ 29.97 fps, only **2** keyframes in 10 s. A deliberately different encode: expensive to seek, and the only one of the two where luma and RGB PSNR diverge (on grayscale footage they are identical by construction)
 2. Explore the **Inspect** tab for metadata, the codec explainer, the atom map, and GOP/frame structure
 3. Run the **Seeking Test** to measure nearest-keyframe distance and decode latency across the timeline (and see it plotted)
-4. Tune CRF, preset, keyframe interval, B-frames, faststart, and audio handling in the **Re-encode** tab
-5. Copy the generated `ffmpeg` command, or click **Encode (exact)** / **Encode (fast)** to transcode in-browser and save the result
-6. Try different CRF/preset values on a short clip in the **Encode Test** tab and compare against the original side-by-side before running the full encode
-7. Head to the **Report** tab to copy/download a Markdown summary of everything above, or print it to PDF
+4. Try a CRF/preset on a short window in the **Encode Test** tab: pixel-peep the diff, read PSNR/SSIM, and see whether the file grows or shrinks - all in seconds, before committing to a full pass
+5. Once a setting looks right, tune the remaining knobs (keyframe interval, B-frames, faststart, audio) in the **Re-encode & CLI** tab
+6. Copy the generated `ffmpeg` command, or click **Encode (exact)** / **Encode (fast)** to transcode in-browser and save the result
+7. Head to the **Report** tab to copy/download a Markdown summary of everything above (including the quality metrics), or print it to PDF
 
 ## Dependencies (CDN)
 
@@ -41,6 +53,8 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 - WebCodecs exposes no CRF control, only target bitrate/quality presets - the "fast" engine cannot byte-match the CLI command, and the UI says so
 - Firefox's H.264 WebCodecs *encoder* support is weak; the fast engine feature-detects and falls back to ffmpeg.wasm/CLI-only
 - ffmpeg.wasm is GPL-licensed; credited in the footer
+- PSNR/SSIM are computed from the **decoded RGB** frames a canvas gives us (luma reconstructed with BT.709 weights; SSIM averaged over non-overlapping 8x8 blocks rather than an 11x11 Gaussian window), so they land close to but not identical to ffmpeg's `psnr`/`ssim` filters, which read the coded Y plane. They are for ranking settings against each other on one file, not for quoting as reference values
+- ffmpeg.wasm needs the whole input file in WebAssembly memory; the Encode Test warns above ~600 MB and keeps the written copy cached across runs so repeated CRF trials don't re-upload it
 
 ## Initial prompt
 
