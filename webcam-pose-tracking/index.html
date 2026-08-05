@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Webcam Pose Tracking</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🕺</text></svg>">
     <style>
         * { box-sizing: border-box; }
         body {
@@ -52,6 +53,28 @@
         }
         button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
         button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        button.recording { background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%); }
+        .recording-indicator {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            color: #ff6b6b;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .recording-indicator.active { display: flex; }
+        .recording-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            animation: pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
         .status {
             text-align: center;
             padding: 20px;
@@ -70,7 +93,7 @@
         .stat-value { color: #667eea; font-weight: bold; }
         .options {
             display: flex;
-            gap: 20px;
+            gap: 16px;
             justify-content: center;
             flex-wrap: wrap;
             margin: 15px 0;
@@ -124,11 +147,16 @@
     <div class="controls">
         <button id="startBtn">Start Camera</button>
         <button id="stopBtn" disabled>Stop Camera</button>
+        <button id="recordBtn" disabled>Start Recording</button>
+    </div>
+
+    <div class="recording-indicator" id="recordingIndicator">
+        <span class="recording-dot"></span> Recording <span id="recordingTime">0:00</span>
     </div>
 
     <div class="options">
         <div class="model-selector">
-            <label for="modelSelect">Model:</label>
+            <label for="modelSelect">Pose Model:</label>
             <select id="modelSelect">
                 <option value="lite">Lite (Fast)</option>
                 <option value="full">Full (Balanced)</option>
@@ -138,6 +166,7 @@
         <label><input type="checkbox" id="showSkeleton" checked> Show Skeleton</label>
         <label><input type="checkbox" id="showPoints" checked> Show Points</label>
         <label><input type="checkbox" id="showHands"> Show Hands</label>
+        <label><input type="checkbox" id="showSegmentation"> Show Segmentation</label>
         <label><input type="checkbox" id="mirrorVideo" checked> Mirror Video</label>
     </div>
 
@@ -147,7 +176,7 @@
     </footer>
 
     <script type="module">
-        import { PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+        import { PoseLandmarker, HandLandmarker, ImageSegmenter, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
@@ -158,19 +187,37 @@
         const keypointsDisplay = document.getElementById('keypoints');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const recordingIndicator = document.getElementById('recordingIndicator');
+        const recordingTimeDisplay = document.getElementById('recordingTime');
         const showSkeleton = document.getElementById('showSkeleton');
         const showPoints = document.getElementById('showPoints');
         const showHands = document.getElementById('showHands');
+        const showSegmentation = document.getElementById('showSegmentation');
         const mirrorVideo = document.getElementById('mirrorVideo');
         const modelSelect = document.getElementById('modelSelect');
 
         let poseLandmarker = null;
         let handLandmarker = null;
+        let imageSegmenter = null;
         let stream = null;
         let animationId = null;
         let lastTime = 0;
         let frameCount = 0;
         let fps = 0;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let recordingStartTime = 0;
+
+        const maskCanvas = document.createElement('canvas');
+        const maskCtx = maskCanvas.getContext('2d');
+        let previousMaskData = null;
+        const MASK_SMOOTHING = 0.3;
+
+        const recordingSupported = !!(canvas.captureStream && window.MediaRecorder);
+        if (!recordingSupported) {
+            recordBtn.title = 'Recording is not supported in this browser';
+        }
 
         const POSE_CONNECTIONS = [
             [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], // Arms
@@ -190,6 +237,37 @@
             [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
             [5, 9], [9, 13], [13, 17] // Palm
         ];
+
+        function drawSegmentationMask(mask) {
+            const w = mask.width;
+            const h = mask.height;
+            const maskData = mask.getAsFloat32Array();
+
+            // Temporal smoothing: blend with the previous frame to stop edge pixels
+            // that hover near the threshold from flickering in and out frame to frame.
+            if (previousMaskData && previousMaskData.length === maskData.length) {
+                for (let i = 0; i < maskData.length; i++) {
+                    maskData[i] = previousMaskData[i] * MASK_SMOOTHING + maskData[i] * (1 - MASK_SMOOTHING);
+                }
+            }
+            previousMaskData = maskData.slice();
+
+            maskCanvas.width = w;
+            maskCanvas.height = h;
+            const imageData = maskCtx.createImageData(w, h);
+            const pixels = imageData.data;
+            for (let i = 0; i < maskData.length; i++) {
+                pixels[i * 4] = 102;
+                pixels[i * 4 + 1] = 126;
+                pixels[i * 4 + 2] = 234;
+                pixels[i * 4 + 3] = maskData[i] > 0.1 ? Math.round(maskData[i] * 200) : 0;
+            }
+            maskCtx.putImageData(imageData, 0, 0);
+            ctx.filter = 'blur(2px)';
+            ctx.drawImage(maskCanvas, 0, 0, canvas.width, canvas.height);
+            ctx.filter = 'none';
+            mask.close();
+        }
 
         async function initPoseLandmarker(modelType = 'lite') {
             status.textContent = `Loading ${modelType} pose model...`;
@@ -231,6 +309,29 @@
             }
         }
 
+        async function initImageSegmenter() {
+            try {
+                const vision = await FilesetResolver.forVisionTasks(
+                    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+                );
+                imageSegmenter = await ImageSegmenter.createFromOptions(vision, {
+                    baseOptions: {
+                        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter_landscape/float16/latest/selfie_segmenter_landscape.tflite',
+                        delegate: 'GPU'
+                    },
+                    runningMode: 'VIDEO',
+                    outputCategoryMask: false,
+                    outputConfidenceMasks: true
+                });
+            } catch (err) {
+                console.error('Failed to load segmentation model:', err);
+                status.textContent = 'Failed to load segmentation model: ' + err.message;
+                status.classList.add('error');
+                status.style.display = 'block';
+                showSegmentation.checked = false;
+            }
+        }
+
         async function startCamera() {
             if (!poseLandmarker) {
                 await initPoseLandmarker(modelSelect.value);
@@ -252,6 +353,7 @@
                 stats.style.display = 'flex';
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
+                recordBtn.disabled = !recordingSupported;
                 detectPose();
             } catch (err) {
                 status.textContent = 'Camera error: ' + err.message;
@@ -260,6 +362,8 @@
         }
 
         function stopCamera() {
+            previousMaskData = null;
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
             if (animationId) cancelAnimationFrame(animationId);
             if (stream) stream.getTracks().forEach(t => t.stop());
             stream = null;
@@ -270,6 +374,54 @@
             stats.style.display = 'none';
             startBtn.disabled = false;
             stopBtn.disabled = true;
+            recordBtn.disabled = true;
+        }
+
+        function getSupportedMimeType() {
+            const types = [
+                'video/mp4;codecs=avc1.42E01E',
+                'video/mp4',
+                'video/webm;codecs=vp9',
+                'video/webm;codecs=vp8',
+                'video/webm'
+            ];
+            return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+        }
+
+        function startRecording() {
+            const mimeType = getSupportedMimeType();
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(canvas.captureStream(30), mimeType ? { mimeType } : undefined);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
+                const extension = mimeType.startsWith('video/mp4') ? 'mp4' : 'webm';
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pose-tracking-${Date.now()}.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+            mediaRecorder.start();
+            recordingStartTime = performance.now();
+            recordBtn.textContent = 'Stop Recording';
+            recordBtn.classList.add('recording');
+            recordingIndicator.classList.add('active');
+            recordingTimeDisplay.textContent = '0:00';
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.classList.remove('recording');
+            recordingIndicator.classList.remove('active');
         }
 
         function detectPose() {
@@ -285,6 +437,14 @@
                 lastTime = now;
             }
 
+            // Update recording timer
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                const elapsed = Math.floor((now - recordingStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                recordingTimeDisplay.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            }
+
             // Mirror canvas if needed
             ctx.save();
             if (mirrorVideo.checked) {
@@ -293,6 +453,21 @@
             }
             ctx.drawImage(video, 0, 0);
             ctx.restore();
+
+            // Segmentation runs independently of pose detection
+            if (showSegmentation.checked && imageSegmenter) {
+                imageSegmenter.segmentForVideo(video, now, (result) => {
+                    if (result.confidenceMasks && result.confidenceMasks.length > 0) {
+                        ctx.save();
+                        if (mirrorVideo.checked) {
+                            ctx.scale(-1, 1);
+                            ctx.translate(-canvas.width, 0);
+                        }
+                        drawSegmentationMask(result.confidenceMasks[0]);
+                        ctx.restore();
+                    }
+                });
+            }
 
             // Detect pose
             const results = poseLandmarker.detectForVideo(video, now);
@@ -381,6 +556,13 @@
 
         startBtn.addEventListener('click', startCamera);
         stopBtn.addEventListener('click', stopCamera);
+        recordBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
 
         // Handle model changes
         modelSelect.addEventListener('change', async () => {
@@ -400,6 +582,13 @@
         showHands.addEventListener('change', async () => {
             if (showHands.checked && !handLandmarker) {
                 await initHandLandmarker();
+            }
+        });
+
+        // Handle segmentation toggle
+        showSegmentation.addEventListener('change', async () => {
+            if (showSegmentation.checked && !imageSegmenter) {
+                await initImageSegmenter();
             }
         });
 
