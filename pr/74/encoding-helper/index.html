@@ -32,18 +32,20 @@ h1 { text-align: center; margin-bottom: 5px; }
 }
 .drop-zone.dragover { border-color: #6c9fff; background: rgba(108,159,255,0.08); }
 .drop-zone .hint { color: #888; font-size: 13px; margin-top: 8px; }
-.drop-zone .drop-mini { display: none; }
-.drop-zone.collapsed {
-    padding: 10px 16px;
-    text-align: left;
-    cursor: default;
-    border-style: solid;
-}
-.drop-zone.collapsed .drop-full { display: none; }
-.drop-zone.collapsed .drop-mini { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.drop-mini .fname { font-weight: 600; word-break: break-all; }
-.drop-mini .fsize { color: #888; font-size: 13px; }
 .load-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+
+/* Loaded-file pill: what is loaded, and the actions that apply to it. Kept separate
+   from the player below so neither has to make room for the other. */
+.file-bar {
+    display: none;
+    align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #252540; border: 1px solid #3a3a5c; border-radius: 999px;
+    padding: 7px 10px 7px 18px; margin-bottom: 12px;
+}
+.file-bar.on { display: flex; }
+.file-bar .fname { font-weight: 600; word-break: break-all; }
+.file-bar .fsize { color: #888; font-size: 13px; }
+.file-actions { margin-left: auto; display: flex; gap: 8px; }
 .url-row { display: flex; gap: 8px; margin-top: 12px; max-width: 500px; margin-left: auto; margin-right: auto; }
 .url-row input { flex: 1; margin-bottom: 0; }
 
@@ -227,23 +229,62 @@ table.data th { color: #888; font-weight: 600; font-size: 11px; text-transform: 
 .legend { display: flex; gap: 16px; font-size: 12px; color: #999; flex-wrap: wrap; margin: 2px 0 8px; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
-/* Inline player, in the loaded-file bar at the top of the page. It sits with the
-   file it belongs to rather than floating over the content. */
-.file-player { display: none; gap: 14px; margin-top: 10px; align-items: center; }
-.file-player.on { display: flex; }
-.file-player video {
-    display: block; background: #000; border-radius: 6px;
-    max-height: 190px; max-width: 45%;
+/* ---- Player for the loaded file ----
+   The <video> element does the decoding, buffering and audio, but none of the UI:
+   native controls look nothing like the rest of the page and give no access to the
+   frame/keyframe positions this tool is actually about. Everything visible below is
+   ours. */
+.player-card {
+    display: none;
+    gap: 20px; align-items: center; justify-content: center;
+    background: #252540; border-radius: 8px; padding: 16px 20px; margin-bottom: 14px;
 }
-.fp-side { flex: 1; min-width: 200px; }
+.player-card.on { display: flex; }
+/* Height is the resizable dimension; width follows from the video's aspect ratio,
+   which JS pins from the parsed metadata so the box is correct before any frame
+   decodes and stays correct while being dragged. */
+.player-view {
+    position: relative;
+    height: 260px; min-height: 130px; max-height: 70vh;
+    background: #000; border-radius: 6px; overflow: hidden;
+    resize: vertical; flex: 0 0 auto;
+}
+.player-view video { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* Nudge the native resize corner into view without competing with the picture. */
+.player-view::after {
+    content: ''; position: absolute; right: 3px; bottom: 3px;
+    width: 10px; height: 10px; pointer-events: none;
+    border-right: 2px solid rgba(255,255,255,0.45); border-bottom: 2px solid rgba(255,255,255,0.45);
+    border-bottom-right-radius: 3px;
+}
+.player-side { flex: 0 1 430px; min-width: 0; }
 .player-meta { font-family: Monaco, Consolas, monospace; font-size: 12px; color: #99a; line-height: 1.7; }
 .player-meta b { color: #6c9fff; font-weight: 600; }
-.player-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.player-actions .btn.sm { padding: 5px 9px; font-size: 11.5px; }
+
+/* Seekbar. The amber ticks are this file's keyframes: with a 1s GOP they look like a
+   comb, and on a file that only has one they are conspicuously absent. */
+.seekbar { position: relative; height: 24px; margin: 8px 0 4px; cursor: pointer; touch-action: none; }
+.seekbar:focus-visible { outline: 2px solid #9dbcff; outline-offset: 2px; border-radius: 4px; }
+.seek-track, .seek-fill { position: absolute; left: 0; top: 13px; height: 4px; border-radius: 2px; }
+.seek-track { right: 0; background: #3d3d5c; }
+.seek-fill { background: #6c9fff; }
+.seek-thumb {
+    position: absolute; top: 8px; width: 14px; height: 14px; margin-left: -7px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+.kf-tick { position: absolute; top: 3px; width: 1px; height: 8px; background: #fbbf24; opacity: 0.8; }
+.seek-legend { font-size: 11px; color: #777; }
+.seek-legend .kf-swatch { display: inline-block; width: 2px; height: 9px; background: #fbbf24; vertical-align: -1px; margin-right: 5px; }
+
+.player-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.player-actions .btn.sm { padding: 5px 10px; font-size: 11.5px; }
+.player-actions .btn.play { min-width: 42px; font-size: 13px; }
 .player-error { font-size: 12.5px; color: #fbbf24; }
-@media (max-width: 600px) {
-    .file-player { flex-direction: column; }
-    .file-player video { max-width: 100%; width: 100%; max-height: 34vh; }
+@media (max-width: 700px) {
+    .player-card { flex-direction: column; align-items: stretch; padding: 12px; }
+    .player-view { height: auto; max-height: none; resize: none; width: 100%; }
+    .player-side { flex: 1 1 auto; }
+    .player-view::after { display: none; }
 }
 
 footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
@@ -292,45 +333,63 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
 
 <div class="error-msg" id="errorMsg" role="alert"></div>
 
-<div class="drop-zone" id="dropZone">
-    <div class="drop-full">
-        <div><strong>Drop a video file here</strong>, or choose an option below</div>
-        <div class="hint">Inspects MP4/H.264 files entirely in your browser &mdash; nothing is uploaded</div>
-        <div class="load-actions">
-            <button class="btn" id="pickFileBtn" type="button">Choose File</button>
-            <button class="btn sec" id="loadSampleBtn" type="button">Load Sample</button>
-            <button class="btn sec" id="showUrlBtn" type="button">Load from URL</button>
-        </div>
-        <div class="url-row" id="urlRow" style="display:none">
-            <input type="text" id="urlInput" placeholder="https://example.com/video.mp4">
-            <button class="btn sm" id="loadUrlBtn" type="button">Load</button>
-        </div>
-    </div>
-    <div class="drop-mini">
-        <span class="fname" id="miniName"></span>
-        <span class="fsize" id="miniSize"></span>
+<!-- What is loaded, plus the actions for it. -->
+<div class="file-bar" id="fileBar">
+    <span class="fname" id="miniName"></span>
+    <span class="fsize" id="miniSize"></span>
+    <span class="file-actions">
         <button class="btn sm sec" id="togglePlayerBtn" type="button" style="display:none">Hide Player</button>
         <button class="btn sm sec" id="loadAnotherBtn" type="button">Load Another</button>
+    </span>
+</div>
+
+<div class="drop-zone" id="dropZone">
+    <div><strong>Drop a video file here</strong>, or choose an option below</div>
+    <div class="hint">Inspects MP4/H.264 files entirely in your browser &mdash; nothing is uploaded</div>
+    <div class="load-actions">
+        <button class="btn" id="pickFileBtn" type="button">Choose File</button>
+        <button class="btn sec" id="loadSampleBtn" type="button" title="mice.mp4: grayscale behavior footage, 1024x768, 47 fps">Load Sample</button>
+        <button class="btn sec" id="loadSample2Btn" type="button" title="ngai-interview.mp4: color interview footage, a very different encode to test against">Load Sample 2</button>
+        <button class="btn sec" id="showUrlBtn" type="button">Load from URL</button>
     </div>
-    <!-- One player for the loaded file, living in its bar at the top of the page so it
-         is present on every tab. Beyond playing the file it reports which frame the
-         playhead is on and how far back the nearest keyframe is: the same quantity the
-         seeking test measures in bulk, one frame at a time. -->
-    <div class="file-player" id="filePlayer">
-        <video id="playerVideo" controls playsinline preload="metadata"></video>
-        <div class="fp-side">
-            <div class="player-meta" id="playerMeta"></div>
-            <div class="player-actions">
-                <button class="btn sm sec" type="button" id="playerPrevKf" title="Jump to previous keyframe">&#9666;&#9666; Keyframe</button>
-                <button class="btn sm sec" type="button" id="playerPrevFrame" title="Previous frame">&#9666;</button>
-                <button class="btn sm sec" type="button" id="playerNextFrame" title="Next frame">&#9656;</button>
-                <button class="btn sm sec" type="button" id="playerNextKf" title="Jump to next keyframe">Keyframe &#9656;&#9656;</button>
-                <button class="btn sm" type="button" id="playerUseTime" title="Use the current playhead as the Encode Test start time">Use as test start</button>
-            </div>
-        </div>
+    <div class="url-row" id="urlRow" style="display:none">
+        <input type="text" id="urlInput" placeholder="https://example.com/video.mp4">
+        <button class="btn sm" id="loadUrlBtn" type="button">Load</button>
     </div>
 </div>
 <input type="file" id="fileInput" accept="video/*,.mp4,.m4v,.mov" style="display:none">
+
+<!-- The one player for the loaded file, above the tabs so it is present on all of
+     them. The <video> decodes and plays; every control is ours, because the native
+     ones cannot address frames or keyframes, which is what this tool is about. -->
+<div class="player-card" id="playerCard">
+    <div class="player-view" id="playerView" title="Drag the bottom-right corner to resize">
+        <video id="playerVideo" playsinline preload="metadata"></video>
+    </div>
+    <div class="player-side">
+        <div class="player-meta" id="playerMeta"></div>
+        <div class="seekbar" id="seekbar" tabindex="0" role="slider" aria-label="Playhead"
+             aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            <div class="kf-ticks" id="kfTicks"></div>
+            <div class="seek-track"></div>
+            <div class="seek-fill" id="seekFill"></div>
+            <div class="seek-thumb" id="seekThumb"></div>
+        </div>
+        <div class="seek-legend"><span class="kf-swatch"></span>keyframes</div>
+        <div class="player-actions">
+            <button class="btn sm play" type="button" id="playerPlay" title="Play / pause (space)">&#9654;</button>
+            <button class="btn sm sec" type="button" id="playerPrevFrame" title="Previous frame (left arrow)">&#9664;</button>
+            <button class="btn sm sec" type="button" id="playerNextFrame" title="Next frame (right arrow)">&#9654;</button>
+            <button class="btn sm sec" type="button" id="playerPrevKf" title="Jump back to the previous keyframe">&#9664;&#9664; Keyframe</button>
+            <button class="btn sm sec" type="button" id="playerNextKf" title="Jump forward to the next keyframe">Keyframe &#9654;&#9654;</button>
+        </div>
+        <!-- Deliberately its own row: this one hands off to another tab rather than
+             moving the playhead. -->
+        <div class="player-actions">
+            <button class="btn sm" type="button" id="playerUseTime" title="Use the current playhead as the Encode Test start time">Use as test start</button>
+        </div>
+    </div>
+</div>
 
 <div id="app" style="display:none">
     <!-- Tab order follows the intended workflow: inspect what you have, understand its
@@ -964,7 +1023,7 @@ async function loadSource(kind, payload) {
     } catch (err) {
         console.error('[encoding-helper] load failed:', err);
         showError(err.message || String(err));
-        document.getElementById('dropZone').classList.remove('collapsed');
+        showDropZone();
     }
 }
 
@@ -996,18 +1055,24 @@ function resetState() {
 }
 
 function setLoadingUi(loading, text) {
-    const zone = document.getElementById('dropZone');
-    if (loading) {
-        zone.classList.add('collapsed');
-        document.getElementById('miniName').textContent = text || 'Loading…';
-    }
+    if (!loading) return;
+    document.getElementById('dropZone').style.display = 'none';
+    document.getElementById('fileBar').classList.add('on');
+    document.getElementById('miniName').textContent = text || 'Loading…';
 }
 
 function showMiniLoaded(name, size) {
-    const zone = document.getElementById('dropZone');
-    zone.classList.add('collapsed');
+    document.getElementById('dropZone').style.display = 'none';
+    document.getElementById('fileBar').classList.add('on');
     document.getElementById('miniName').textContent = name;
     document.getElementById('miniSize').textContent = size ? `(${fmtBytes(size)})` : '';
+}
+
+// Back to the empty state, after a load fails.
+function showDropZone() {
+    document.getElementById('dropZone').style.display = '';
+    document.getElementById('fileBar').classList.remove('on');
+    document.getElementById('miniSize').textContent = '';
 }
 
 // ============================================
@@ -1043,23 +1108,35 @@ function frameMidTime(i) {
 }
 
 // ============================================
-// Player: one <video> in the loaded-file bar, present on every tab. Beyond playing
-// the file, it continuously reports which frame the playhead is on and how far back
-// the nearest keyframe is — the same quantity the seeking test measures in bulk.
+// Player: one <video> above the tabs, so it is present on all of them. The element
+// decodes, buffers and plays; the UI is entirely ours, because native controls can
+// neither address frames nor show where the keyframes are, which is the whole point
+// of looking at a video in this tool. The readout reports which frame the playhead
+// is on and how far back the nearest keyframe is — the same quantity the seeking
+// test measures in bulk.
 // ============================================
 function setPlayerVisible(visible) {
-    const el = document.getElementById('filePlayer');
     const video = document.getElementById('playerVideo');
     player.hidden = !visible;
-    el.classList.toggle('on', visible);
+    document.getElementById('playerCard').classList.toggle('on', visible);
     if (!visible) video.pause();
     document.getElementById('togglePlayerBtn').textContent = visible ? 'Hide Player' : 'Show Player';
 }
 
 function setupPlayer() {
     const video = document.getElementById('playerVideo');
+    const view = document.getElementById('playerView');
     if (player.url) { URL.revokeObjectURL(player.url); player.url = null; }
     document.querySelector('.player-actions').style.display = '';
+    // The dimensions are already parsed, so pin the box's aspect ratio up front: its
+    // width then follows from the (resizable) height, with no reflow when the video's
+    // own metadata arrives and a correctly-shaped box even if this browser turns out
+    // not to be able to decode the file at all.
+    const vt = state.tracks && state.tracks.find(t => t.kind === 'video');
+    if (vt) {
+        const w = vt.displayWidth || vt.codedWidth, hgt = vt.displayHeight || vt.codedHeight;
+        if (w && hgt) view.style.aspectRatio = `${w} / ${hgt}`;
+    }
     if (state.file) {
         player.url = URL.createObjectURL(state.file);
         video.src = player.url;
@@ -1068,22 +1145,52 @@ function setupPlayer() {
     }
     video.load();
     document.getElementById('togglePlayerBtn').style.display = '';
+    renderKeyframeTicks();
     // Loading another file keeps whatever the user last chose about the player.
     setPlayerVisible(!player.hidden);
     updatePlayerMeta();
 }
 
 function teardownPlayer() {
-    const el = document.getElementById('filePlayer');
+    const card = document.getElementById('playerCard');
     const video = document.getElementById('playerVideo');
-    if (!el || !video) return;
+    if (!card || !video) return;
     video.pause();
     video.removeAttribute('src');
     video.load();
     if (player.url) { URL.revokeObjectURL(player.url); player.url = null; }
-    el.classList.remove('on');
+    card.classList.remove('on');
     document.getElementById('playerMeta').textContent = '';
+    document.getElementById('kfTicks').innerHTML = '';
     document.getElementById('togglePlayerBtn').style.display = 'none';
+}
+
+// Keyframes drawn onto the seekbar. This is the one thing a native control bar can
+// never show you, and it is exactly what determines how expensive a seek will be.
+function renderKeyframeTicks() {
+    const ticks = document.getElementById('kfTicks');
+    ticks.innerHTML = '';
+    const dur = state.duration;
+    const kfs = state.keyframeTimestampsSec;
+    if (!dur || !kfs.length) return;
+    const first = state.presentationOrder.length ? state.presentationOrder[0].ctsSec : 0;
+    // Past a few hundred ticks they merge into a solid band and cost DOM for nothing.
+    const stride = Math.ceil(kfs.length / 400);
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < kfs.length; i += stride) {
+        const pct = ((kfs[i] - first) / dur) * 100;
+        if (pct < 0 || pct > 100) continue;
+        const tick = h('div', 'kf-tick');
+        tick.style.left = pct.toFixed(3) + '%';
+        frag.append(tick);
+    }
+    ticks.append(frag);
+    const legend = document.querySelector('.seek-legend');
+    if (legend) {
+        legend.lastChild.textContent = stride > 1
+            ? ` keyframes (${kfs.length.toLocaleString()}, every ${stride}th drawn)`
+            : ` keyframes (${kfs.length.toLocaleString()})`;
+    }
 }
 
 // A track whose first frame has a non-zero composition time (an initial B-frame
@@ -1126,10 +1233,22 @@ function updatePlayerMeta() {
     }
     // Only generated numbers go in here, no file-supplied strings.
     meta.innerHTML = parts.join(' &middot; ');
+    updateSeekbar(idx, total);
+}
+
+function updateSeekbar(idx, total) {
+    const pct = total > 1 ? (idx / (total - 1)) * 100 : 0;
+    document.getElementById('seekFill').style.width = pct + '%';
+    document.getElementById('seekThumb').style.left = pct + '%';
+    const bar = document.getElementById('seekbar');
+    bar.setAttribute('aria-valuemax', String(Math.max(0, total - 1)));
+    bar.setAttribute('aria-valuenow', String(idx));
+    bar.setAttribute('aria-valuetext', `frame ${idx + 1} of ${total}`);
 }
 
 function initPlayerUi() {
     const video = document.getElementById('playerVideo');
+    const playBtn = document.getElementById('playerPlay');
 
     document.getElementById('togglePlayerBtn').addEventListener('click', e => {
         e.stopPropagation();
@@ -1144,6 +1263,62 @@ function initPlayerUi() {
         video.pause();
         video.currentTime = Math.max(0, frameMidTime(Math.min(Math.max(0, i), n - 1)) - playerTimeOffset());
     };
+
+    // ---- play / pause ----
+    const togglePlay = () => {
+        if (video.paused) video.play().catch(err => console.warn('[encoding-helper] play rejected:', err));
+        else video.pause();
+    };
+    playBtn.addEventListener('click', togglePlay);
+    const syncPlayBtn = () => {
+        playBtn.innerHTML = video.paused ? '&#9654;' : '&#10074;&#10074;';
+        playBtn.title = video.paused ? 'Play (space)' : 'Pause (space)';
+    };
+    ['play', 'pause', 'ended'].forEach(ev => video.addEventListener(ev, syncPlayBtn));
+    syncPlayBtn();
+    document.getElementById('playerView').addEventListener('click', togglePlay);
+
+    // ---- seekbar: click or drag anywhere on it, snapped to whole frames ----
+    const bar = document.getElementById('seekbar');
+    const seekToFraction = clientX => {
+        const n = state.presentationOrder.length;
+        if (!n) return;
+        const r = bar.getBoundingClientRect();
+        const frac = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+        seekToFrame(Math.round(frac * (n - 1)));
+    };
+    bar.addEventListener('pointerdown', e => {
+        bar.setPointerCapture(e.pointerId);
+        seekToFraction(e.clientX);
+        e.preventDefault();
+    });
+    bar.addEventListener('pointermove', e => {
+        if (bar.hasPointerCapture(e.pointerId)) seekToFraction(e.clientX);
+    });
+    bar.addEventListener('keydown', e => {
+        const n = state.presentationOrder.length;
+        if (!n) return;
+        const cur = frameIndexAtTime(mediaTime());
+        const jump = Math.max(1, Math.round(state.fps || 30));   // one second
+        const targets = {
+            ArrowLeft: cur - 1, ArrowRight: cur + 1,
+            ArrowDown: cur - jump, ArrowUp: cur + jump,
+            PageDown: cur - jump, PageUp: cur + jump,
+            Home: 0, End: n - 1,
+        };
+        if (!(e.key in targets)) return;
+        e.preventDefault();
+        seekToFrame(targets[e.key]);
+    });
+    // Page-level shortcuts, but only while nothing else has focus: the tab strip also
+    // uses the arrow keys, and every form field on the page wants its own keystrokes.
+    document.addEventListener('keydown', e => {
+        if (e.target !== document.body) return;
+        if (!document.getElementById('playerCard').classList.contains('on')) return;
+        if (e.key === ' ' || e.key === 'k') { e.preventDefault(); togglePlay(); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); seekToFrame(frameIndexAtTime(mediaTime()) - 1); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); seekToFrame(frameIndexAtTime(mediaTime()) + 1); }
+    });
     document.getElementById('playerPrevFrame').addEventListener('click', () => seekToFrame(frameIndexAtTime(mediaTime()) - 1));
     document.getElementById('playerNextFrame').addEventListener('click', () => seekToFrame(frameIndexAtTime(mediaTime()) + 1));
     document.getElementById('playerPrevKf').addEventListener('click', () => {
@@ -1178,6 +1353,17 @@ function initPlayerUi() {
 
     ['timeupdate', 'seeked', 'loadedmetadata', 'pause'].forEach(ev =>
         video.addEventListener(ev, updatePlayerMeta));
+    // `timeupdate` only fires about four times a second, which would leave the frame
+    // number up to a quarter second stale during playback. Where it exists, tick once
+    // per presented frame instead so the readout is actually frame-accurate;
+    // `timeupdate` still covers browsers without it.
+    if (typeof video.requestVideoFrameCallback === 'function') {
+        const onFrame = () => {
+            updatePlayerMeta();
+            if (!video.paused && !video.ended) video.requestVideoFrameCallback(onFrame);
+        };
+        video.addEventListener('play', () => video.requestVideoFrameCallback(onFrame));
+    }
     video.addEventListener('error', () => {
         if (!video.getAttribute('src')) return;   // teardown, not a real failure
         document.getElementById('playerMeta').innerHTML =
@@ -1223,18 +1409,20 @@ function initFileLoadingUi() {
         const file = await pickFile();
         if (file) loadSource('file', file);
     });
-    document.getElementById('loadSampleBtn').addEventListener('click', async () => {
+    const loadBundledSample = async name => {
         try {
             setLoadingUi(true, 'Downloading sample…');
-            const resp = await fetch('./mice.mp4');
-            if (!resp.ok) throw new Error('Could not fetch sample video');
+            const resp = await fetch('./' + name);
+            if (!resp.ok) throw new Error(`Could not fetch sample video (${name}): ${resp.status}`);
             const blob = await resp.blob();
-            const file = new File([blob], 'mice.mp4', { type: 'video/mp4' });
-            loadSource('file', file);
+            loadSource('file', new File([blob], name, { type: 'video/mp4' }));
         } catch (err) {
             showError(err.message || String(err));
+            showDropZone();
         }
-    });
+    };
+    document.getElementById('loadSampleBtn').addEventListener('click', () => loadBundledSample('mice.mp4'));
+    document.getElementById('loadSample2Btn').addEventListener('click', () => loadBundledSample('ngai-interview.mp4'));
     document.getElementById('showUrlBtn').addEventListener('click', () => {
         urlRow.style.display = urlRow.style.display === 'none' ? 'flex' : 'none';
         if (urlRow.style.display === 'flex') document.getElementById('urlInput').focus();
@@ -1247,9 +1435,16 @@ function initFileLoadingUi() {
         if (e.key === 'Enter') document.getElementById('loadUrlBtn').click();
     });
 
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', e => {
+    // Drop anywhere on the page, not just on the zone: once a file is loaded the zone
+    // is gone, and "drag another file in" should still work.
+    window.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+    });
+    window.addEventListener('dragleave', e => {
+        if (!e.relatedTarget) dropZone.classList.remove('dragover');
+    });
+    window.addEventListener('drop', e => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
         const file = e.dataTransfer.files && e.dataTransfer.files[0];
