@@ -2428,11 +2428,12 @@ function renderDistanceHistogram(hist) {
         const v = Math.pow(10, p);
         yTicks.push({ frac: Math.log10(v + 1) / logMax, label: tickLabel(v) });
     }
+    // Stop two bins short so the overflow bin's ">32" doesn't crowd a "32" label.
     const xTicks = [];
-    for (let b = 0; b < DIST_BINS; b += 2) {
+    for (let b = 0; b <= DIST_BINS - 4; b += 2) {
         xTicks.push({ frac: (b + 0.5) / DIST_BINS, label: distBinLabel(b), grid: false });
     }
-    xTicks.push({ frac: (DIST_BINS - 0.5) / DIST_BINS, label: distBinLabel(DIST_BINS - 1), grid: false });
+    xTicks.push({ frac: (DIST_BINS - 0.5) / DIST_BINS, label: '>32', grid: false });
     const { svg, ML, MT, plotW, plotH } = chartBase({
         height: 200, yTicks, xTicks,
         xTitle: 'RGB Euclidean distance (code values, upper edge of bucket)', yTitle: 'Pixels (log)',
