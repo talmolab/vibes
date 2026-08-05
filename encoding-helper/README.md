@@ -8,7 +8,10 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 
 ## Features
 
-- **Player in the file bar** - once a file is loaded, a video player sits in the loaded-file bar at the top of the page (present on every tab, dismissable via **Hide Player**), continuously reporting which **frame** the playhead is on and **how far back the nearest keyframe is** (the exact quantity the seeking test measures in bulk). Frame-by-frame and keyframe-to-keyframe stepping, plus one click to send the current playhead to the Encode Test as its start time
+- **Player** - once a file is loaded, a player sits above the tabs (present on all of them, dismissable via **Hide Player**, vertically resizable by its corner). The `<video>` element only decodes and plays; every control is custom, because the native ones can neither address frames nor show where the keyframes are:
+  - The seekbar carries a **tick per keyframe**, so seek cost is visible at a glance - the bundled samples read as a 29-tooth comb and as two lonely ticks
+  - A live readout of which **frame** the playhead is on and **how far back the nearest keyframe is** (the exact quantity the seeking test measures in bulk), updated per presented frame via `requestVideoFrameCallback` rather than four times a second
+  - Frame-by-frame and keyframe-to-keyframe stepping, keyboard control (space, arrows, Home/End), and one click to send the current playhead to the Encode Test as its start time
 - **Inspect** - rich metadata plus a visual MP4 **atom map** (`ftyp`/`moov`/`mdat`/`moof`, byte offsets & sizes, moov-before-mdat "faststart" detection) and per-frame GOP/I-frame/B-frame structure
 - **Identify the codec** - infers the codec family from the container (H.264/AVC, H.265/HEVC, VP8/VP9, AV1, AAC, Opus, FLAC, MP3, AC-3/E-AC-3, PCM) and decodes its embedded profile/level/tier straight out of the RFC 6381 codec string, with a short explainer on what that codec actually is and why you'd (not) choose it
 - **Teach** - interactive explanations tied to the loaded file: CRF vs. bitrate, x264 presets, GOP/keyframe interval, I/P/B frames, `yuv420p` chroma subsampling, even-dimension requirements, and the moov-atom/faststart tradeoff
@@ -28,7 +31,9 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 
 ## Usage
 
-1. Load a video via drag-and-drop, the file picker, or **Load Sample** (bundled `mice.mp4`)
+1. Load a video by dropping it anywhere on the page, via the file picker, from a URL, or with one of the two bundled samples:
+   - **Load Sample** - `mice.mp4`, grayscale behavior footage, 1024x768 @ 47 fps, keyframe every ~1 s (29 of them)
+   - **Load Sample 2** - `ngai-interview.mp4`, color interview footage, 1920x1080 @ 29.97 fps, only **2** keyframes in 10 s. A deliberately different encode: expensive to seek, and the only one of the two where luma and RGB PSNR diverge (on grayscale footage they are identical by construction)
 2. Explore the **Inspect** tab for metadata, the codec explainer, the atom map, and GOP/frame structure
 3. Run the **Seeking Test** to measure nearest-keyframe distance and decode latency across the timeline (and see it plotted)
 4. Try a CRF/preset on a short window in the **Encode Test** tab: pixel-peep the diff, read PSNR/SSIM, and see whether the file grows or shrinks - all in seconds, before committing to a full pass
