@@ -35,13 +35,9 @@ h1 { text-align: center; margin-bottom: 5px; }
 .drop-zone .drop-mini { display: none; }
 .drop-zone.collapsed {
     padding: 10px 16px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    text-align: left;
     cursor: default;
     border-style: solid;
-    flex-wrap: wrap;
-    gap: 8px;
 }
 .drop-zone.collapsed .drop-full { display: none; }
 .drop-zone.collapsed .drop-mini { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -231,37 +227,23 @@ table.data th { color: #888; font-weight: 600; font-size: 11px; text-transform: 
 .legend { display: flex; gap: 16px; font-size: 12px; color: #999; flex-wrap: wrap; margin: 2px 0 8px; }
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
 
-/* Floating video player, shared across every tab once a file is loaded */
-.player {
-    position: fixed; z-index: 40; right: 16px; bottom: 16px;
-    width: min(360px, calc(100vw - 32px));
-    background: #252540; border: 1px solid #3a3a5c; border-radius: 10px;
-    box-shadow: 0 14px 36px rgba(0,0,0,0.5);
-    display: none; overflow: hidden;
+/* Inline player, in the loaded-file bar at the top of the page. It sits with the
+   file it belongs to rather than floating over the content. */
+.file-player { display: none; gap: 14px; margin-top: 10px; align-items: center; }
+.file-player.on { display: flex; }
+.file-player video {
+    display: block; background: #000; border-radius: 6px;
+    max-height: 190px; max-width: 45%;
 }
-.player.on { display: block; }
-.player-bar {
-    display: flex; align-items: center; gap: 6px;
-    padding: 7px 8px 7px 11px; background: #2c2c4c; cursor: grab;
-    border-bottom: 1px solid #3a3a5c;
-}
-.player-bar:active { cursor: grabbing; }
-.player-bar .pname { font-size: 12px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.player-bar button {
-    background: none; border: none; color: #9a9ab8; font-size: 15px; line-height: 1;
-    cursor: pointer; padding: 3px 7px; border-radius: 4px;
-}
-.player-bar button:hover { background: #3f4768; color: #fff; }
-.player.min .player-body { display: none; }
-.player video { width: 100%; display: block; background: #000; max-height: 42vh; }
-.player-meta { font-family: Monaco, Consolas, monospace; font-size: 11.5px; color: #99a; padding: 7px 11px 0; line-height: 1.6; }
+.fp-side { flex: 1; min-width: 200px; }
+.player-meta { font-family: Monaco, Consolas, monospace; font-size: 12px; color: #99a; line-height: 1.7; }
 .player-meta b { color: #6c9fff; font-weight: 600; }
-.player-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 11px 11px; }
+.player-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .player-actions .btn.sm { padding: 5px 9px; font-size: 11.5px; }
-.player-error { padding: 12px; font-size: 12.5px; color: #fbbf24; }
+.player-error { font-size: 12.5px; color: #fbbf24; }
 @media (max-width: 600px) {
-    .player { left: 8px; right: 8px; bottom: 8px; width: auto; }
-    .player video { max-height: 32vh; }
+    .file-player { flex-direction: column; }
+    .file-player video { max-width: 100%; width: 100%; max-height: 34vh; }
 }
 
 footer { text-align: center; margin-top: 30px; color: #666; font-size: 13px; }
@@ -330,6 +312,23 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
         <button class="btn sm sec" id="togglePlayerBtn" type="button" style="display:none">Hide Player</button>
         <button class="btn sm sec" id="loadAnotherBtn" type="button">Load Another</button>
     </div>
+    <!-- One player for the loaded file, living in its bar at the top of the page so it
+         is present on every tab. Beyond playing the file it reports which frame the
+         playhead is on and how far back the nearest keyframe is: the same quantity the
+         seeking test measures in bulk, one frame at a time. -->
+    <div class="file-player" id="filePlayer">
+        <video id="playerVideo" controls playsinline preload="metadata"></video>
+        <div class="fp-side">
+            <div class="player-meta" id="playerMeta"></div>
+            <div class="player-actions">
+                <button class="btn sm sec" type="button" id="playerPrevKf" title="Jump to previous keyframe">&#9666;&#9666; Keyframe</button>
+                <button class="btn sm sec" type="button" id="playerPrevFrame" title="Previous frame">&#9666;</button>
+                <button class="btn sm sec" type="button" id="playerNextFrame" title="Next frame">&#9656;</button>
+                <button class="btn sm sec" type="button" id="playerNextKf" title="Jump to next keyframe">Keyframe &#9656;&#9656;</button>
+                <button class="btn sm" type="button" id="playerUseTime" title="Use the current playhead as the Encode Test start time">Use as test start</button>
+            </div>
+        </div>
+    </div>
 </div>
 <input type="file" id="fileInput" accept="video/*,.mp4,.m4v,.mov" style="display:none">
 
@@ -375,30 +374,6 @@ footer .gpl { color: #888; margin-top: 4px; font-size: 12px; }
     <!-- Tab: Report / Export -->
     <!-- ============================================ -->
     <div class="tab-panel" id="panel-report" role="tabpanel" tabindex="0"></div>
-</div>
-
-<!-- ============================================ -->
-<!-- Floating player: one video element shared by every tab, so the file stays
-     scrubbable (and its frame/keyframe position legible) no matter which
-     section you are reading. -->
-<!-- ============================================ -->
-<div class="player" id="player" role="region" aria-label="Video player">
-    <div class="player-bar" id="playerBar">
-        <span class="pname" id="playerName"></span>
-        <button type="button" id="playerMinBtn" title="Collapse player" aria-label="Collapse player">&minus;</button>
-        <button type="button" id="playerCloseBtn" title="Hide player" aria-label="Hide player">&times;</button>
-    </div>
-    <div class="player-body" id="playerBody">
-        <video id="playerVideo" controls playsinline preload="metadata"></video>
-        <div class="player-meta" id="playerMeta"></div>
-        <div class="player-actions">
-            <button class="btn sm sec" type="button" id="playerPrevKf" title="Jump to previous keyframe">&#9666;&#9666; Keyframe</button>
-            <button class="btn sm sec" type="button" id="playerPrevFrame" title="Previous frame">&#9666;</button>
-            <button class="btn sm sec" type="button" id="playerNextFrame" title="Next frame">&#9656;</button>
-            <button class="btn sm sec" type="button" id="playerNextKf" title="Jump to next keyframe">Keyframe &#9656;&#9656;</button>
-            <button class="btn sm" type="button" id="playerUseTime" title="Use the current playhead as the Encode Test start time">Use as test start</button>
-        </div>
-    </div>
 </div>
 
 <!-- Populated only when the Report tab renders; the only thing @media print shows. -->
@@ -491,10 +466,10 @@ const encodeTest = {
     diffMode: 'heat',   // heat | gray
 };
 
-// Floating player shared across all tabs.
+// The player in the loaded-file bar.
 const player = {
     url: null,          // object URL to revoke on unload
-    hidden: false,      // user dismissed it for this file
+    hidden: false,      // user hid it via the bar's toggle
 };
 
 // ============================================
@@ -1068,26 +1043,23 @@ function frameMidTime(i) {
 }
 
 // ============================================
-// Floating player: one <video> shared by every tab. Beyond just playing the file,
-// it continuously reports which frame the playhead is on and how far back the
-// nearest keyframe is — the same quantity the seeking test measures in bulk.
+// Player: one <video> in the loaded-file bar, present on every tab. Beyond playing
+// the file, it continuously reports which frame the playhead is on and how far back
+// the nearest keyframe is — the same quantity the seeking test measures in bulk.
 // ============================================
 function setPlayerVisible(visible) {
-    const el = document.getElementById('player');
+    const el = document.getElementById('filePlayer');
     const video = document.getElementById('playerVideo');
     player.hidden = !visible;
     el.classList.toggle('on', visible);
     if (!visible) video.pause();
-    const toggle = document.getElementById('togglePlayerBtn');
-    toggle.textContent = visible ? 'Hide Player' : 'Show Player';
+    document.getElementById('togglePlayerBtn').textContent = visible ? 'Hide Player' : 'Show Player';
 }
 
 function setupPlayer() {
-    const el = document.getElementById('player');
     const video = document.getElementById('playerVideo');
     if (player.url) { URL.revokeObjectURL(player.url); player.url = null; }
     document.querySelector('.player-actions').style.display = '';
-    document.getElementById('playerName').textContent = state.source.name;
     if (state.file) {
         player.url = URL.createObjectURL(state.file);
         video.src = player.url;
@@ -1096,25 +1068,13 @@ function setupPlayer() {
     }
     video.load();
     document.getElementById('togglePlayerBtn').style.display = '';
-    // A docked full-width player would cover most of a phone screen, so on narrow
-    // viewports it starts as just its title bar and expands on demand.
-    setPlayerCollapsed(window.innerWidth <= 600);
-    setPlayerVisible(true);
+    // Loading another file keeps whatever the user last chose about the player.
+    setPlayerVisible(!player.hidden);
     updatePlayerMeta();
 }
 
-function setPlayerCollapsed(collapsed) {
-    const el = document.getElementById('player');
-    const btn = document.getElementById('playerMinBtn');
-    el.classList.toggle('min', collapsed);
-    btn.innerHTML = collapsed ? '&plus;' : '&minus;';
-    btn.setAttribute('aria-label', collapsed ? 'Expand player' : 'Collapse player');
-    btn.title = collapsed ? 'Expand player' : 'Collapse player';
-    if (collapsed) document.getElementById('playerVideo').pause();
-}
-
 function teardownPlayer() {
-    const el = document.getElementById('player');
+    const el = document.getElementById('filePlayer');
     const video = document.getElementById('playerVideo');
     if (!el || !video) return;
     video.pause();
@@ -1168,49 +1128,12 @@ function updatePlayerMeta() {
     meta.innerHTML = parts.join(' &middot; ');
 }
 
-function placePlayer(x, y) {
-    const el = document.getElementById('player');
-    const r = el.getBoundingClientRect();
-    const maxX = Math.max(8, window.innerWidth - r.width - 8);
-    const maxY = Math.max(8, window.innerHeight - r.height - 8);
-    el.style.left = Math.min(Math.max(8, x), maxX) + 'px';
-    el.style.top = Math.min(Math.max(8, y), maxY) + 'px';
-    el.style.right = 'auto';
-    el.style.bottom = 'auto';
-}
-
 function initPlayerUi() {
-    const el = document.getElementById('player');
-    const bar = document.getElementById('playerBar');
     const video = document.getElementById('playerVideo');
-    const minBtn = document.getElementById('playerMinBtn');
 
-    minBtn.addEventListener('click', () => setPlayerCollapsed(!el.classList.contains('min')));
-    document.getElementById('playerCloseBtn').addEventListener('click', () => setPlayerVisible(false));
     document.getElementById('togglePlayerBtn').addEventListener('click', e => {
         e.stopPropagation();
         setPlayerVisible(player.hidden);
-    });
-
-    // Drag the title bar to reposition; pointer capture keeps the gesture alive
-    // even when the cursor outruns the bar.
-    let drag = null;
-    bar.addEventListener('pointerdown', e => {
-        if (e.target.closest('button')) return;
-        const r = el.getBoundingClientRect();
-        drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-        placePlayer(r.left, r.top);
-        bar.setPointerCapture(e.pointerId);
-        e.preventDefault();
-    });
-    bar.addEventListener('pointermove', e => {
-        if (drag) placePlayer(e.clientX - drag.dx, e.clientY - drag.dy);
-    });
-    const endDrag = () => { drag = null; };
-    bar.addEventListener('pointerup', endDrag);
-    bar.addEventListener('pointercancel', endDrag);
-    window.addEventListener('resize', () => {
-        if (el.style.left) placePlayer(parseFloat(el.style.left), parseFloat(el.style.top));
     });
 
     // Everything below reasons in sample-table time, then converts back when seeking.
@@ -1258,7 +1181,7 @@ function initPlayerUi() {
     video.addEventListener('error', () => {
         if (!video.getAttribute('src')) return;   // teardown, not a real failure
         document.getElementById('playerMeta').innerHTML =
-            '<span class="player-error" style="padding:0">This browser cannot play this file natively (unsupported codec or container). ' +
+            '<span class="player-error">This browser cannot play this file natively (unsupported codec or container). ' +
             'The rest of the page is unaffected: analysis and encoding decode through WebCodecs and ffmpeg.wasm, not this element.</span>';
         document.querySelector('.player-actions').style.display = 'none';
     });

@@ -8,7 +8,7 @@ Companion to [Video Info Tool](https://vibes.tlab.sh/video-info-tool/) and [Fram
 
 ## Features
 
-- **Floating player** - once a file is loaded, a draggable, collapsible video player rides along across every tab, continuously reporting which **frame** the playhead is on and **how far back the nearest keyframe is** (the exact quantity the seeking test measures in bulk). Frame-by-frame and keyframe-to-keyframe stepping, plus one click to send the current playhead to the Encode Test as its start time
+- **Player in the file bar** - once a file is loaded, a video player sits in the loaded-file bar at the top of the page (present on every tab, dismissable via **Hide Player**), continuously reporting which **frame** the playhead is on and **how far back the nearest keyframe is** (the exact quantity the seeking test measures in bulk). Frame-by-frame and keyframe-to-keyframe stepping, plus one click to send the current playhead to the Encode Test as its start time
 - **Inspect** - rich metadata plus a visual MP4 **atom map** (`ftyp`/`moov`/`mdat`/`moof`, byte offsets & sizes, moov-before-mdat "faststart" detection) and per-frame GOP/I-frame/B-frame structure
 - **Identify the codec** - infers the codec family from the container (H.264/AVC, H.265/HEVC, VP8/VP9, AV1, AAC, Opus, FLAC, MP3, AC-3/E-AC-3, PCM) and decodes its embedded profile/level/tier straight out of the RFC 6381 codec string, with a short explainer on what that codec actually is and why you'd (not) choose it
 - **Teach** - interactive explanations tied to the loaded file: CRF vs. bitrate, x264 presets, GOP/keyframe interval, I/P/B frames, `yuv420p` chroma subsampling, even-dimension requirements, and the moov-atom/faststart tradeoff
