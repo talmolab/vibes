@@ -115,22 +115,83 @@ const data = await response.json();
 ```
 
 Note: The proxy only works from whitelisted origins (`*.tlab.sh`, `*.sleap.ai`, `*.slp.sh`, `*.talmolab.org`).
+It returns 403 with no CORS headers to anything else, so the proxy path can't be tested
+from `localhost` — detect that case and say so rather than showing a retry button that
+can't work.
+
+**Don't trust `curl` alone when checking whether a fetch will work.** `curl -H 'Origin: …'`
+omits the `Sec-Fetch-*` headers every browser sends, and some hosts key off them, so a URL
+can look perfectly fetchable from the shell and still fail in the page. Google Drive is the
+worst case: `drive.usercontent.google.com` returns `200` with `access-control-allow-origin: *`
+to plain curl, but **403** to any request carrying `Sec-Fetch-Site: cross-site` — which
+browsers always send on a cross-origin fetch and JS cannot override. Always test with:
+
+```bash
+curl -sSI -H 'Origin: https://vibes.tlab.sh' -H 'Sec-Fetch-Site: cross-site' <url>
+```
+
+A useful consequence: `vibes.tlab.sh` → `nocors.tlab.sh` is *same-site*, so going through
+the proxy makes the browser send `Sec-Fetch-Site: same-site`, which such hosts accept. When
+a host blocks cross-site fetches, the proxy is the only option — no CORS header will help.
+
+Also remember a `fetch()` CORS failure is indistinguishable from DNS/offline/mixed-content
+in JS: it throws a `TypeError` with no status. Don't claim to know which one happened.
 
 ## Common CDN Libraries
 
 ```html
 <!-- Markdown -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@18.0.9/lib/marked.umd.js"></script>
+
+<!-- Sanitizer - REQUIRED with marked if the markdown isn't yours (see below) -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.13/dist/purify.min.js"></script>
 
 <!-- Syntax highlighting -->
-<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1/highlight.min.js"></script>
 
 <!-- Charts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
 
 <!-- Date handling -->
-<script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dayjs@1.11.21/dayjs.min.js"></script>
 ```
+
+**Pin exact versions.** Unpinned and major-only jsDelivr URLs are mutable
+(`s-maxage=43200`), so you can't use `integrity`/SRI and the version drifts under you.
+An exact version is served `immutable`.
+
+**`marked` moved its bundle.** The package-root `marked.min.js` exists up to 15.x and
+**404s from 16.0.0 onward**, so `marked@16`/`@17`/`@18` + `marked.min.js` is a dead URL.
+Worse, *unpinned* `npm/marked/marked.min.js` returns 200 but silently serves **15.0.12**
+(the newest version that still ships that path) — so it looks fine while pinning you to
+an old major. Use `marked@<version>/lib/marked.umd.js`, which is already minified.
+
+**`window.marked` is an object, not a function** — `marked(md)` throws, use
+`marked.parse(md)`. GFM (tables, task lists, strikethrough, autolinks) is on by default.
+Options removed in v5+ (`headerIds`, `mangle`, `sanitize`, `highlight`) are *silently
+ignored* — no warning, no throw — so heading `id`s are not emitted; generate them
+yourself if you need in-page anchors.
+
+**Rendering markdown you didn't write is an XSS hole.** `marked.parse()` passes raw HTML
+(`<script>`, `<img onerror>`, `javascript:` links) straight through, and rendering it
+means `innerHTML`, so the "use `.textContent`" rule above can't save you. Sanitize first:
+
+```javascript
+el.replaceChildren(DOMPurify.sanitize(marked.parse(md), {
+    ALLOWED_TAGS: ['a','b','blockquote','br','code','em','h1','h2','h3','h4','hr','i',
+        'img','input','li','ol','p','pre','s','span','strong','table','tbody','td',
+        'th','thead','tr','ul'],
+    ALLOWED_ATTR: ['href','src','alt','title','align','colspan','rowspan','type','checked'],
+    FORBID_TAGS: ['style','svg','form','iframe','object','embed','base','meta'],
+    FORBID_ATTR: ['style','srcset','target','name','onerror','onload'],
+    RETURN_DOM_FRAGMENT: true,
+}));
+```
+
+Forbid `style` as both **tag and attribute**: `<svg><style>` leaks CSS into page scope in
+DOMPurify 3.4.13's default config, and a live `style=` attribute allows a full-page
+`position:fixed` clickjack overlay. Don't use `USE_PROFILES: {html:true}` — it overwrites
+your `ALLOWED_TAGS`/`ALLOWED_ATTR`. See `md/` for a worked example.
 
 ## Local Development
 
