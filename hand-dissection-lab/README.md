@@ -10,7 +10,7 @@ hand-crafted pose subspace against the one the network learned for itself.
 
 Everything runs locally in the browser. No video leaves your machine.
 
-## The three panels
+## The four panels
 
 ### 1. The network, standalone
 
@@ -60,6 +60,13 @@ summary the landmark head reads off.
 - **Sort by energy** reorders tiles strongest-first, which makes it obvious how few channels carry
   most of the response.
 - Hover any tile for its channel index, mean, and max.
+
+The mosaic keeps its last frame when tracking drops out, so a **no hand &mdash; last frame**
+badge appears over it rather than letting a stale activation map read as live.
+
+On a wide screen the explorer spans two rows down the right-hand side, with Input above and the
+Feature Scope below it on the left, so the layer mosaic and the kinematic traces stay visible
+together. Below 1100px everything stacks into a single column.
 
 ### 3. Feature Scope
 
