@@ -12,6 +12,7 @@ Self-contained HTML tools and applets for the web.
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
 - [Pose Subspace Trip](pose-subspace-trip/) - Drive trippy 3D visualizations (pose constellation or ray-marched fractal) with your body via a pose-driven PCA subspace
+- [Hand Dissection Lab](hand-dissection-lab/) - Run MediaPipe's hand landmark network standalone in TensorFlow.js: explore its 45 internal layers, read live speed/angle features off the hand, and compare a hand-crafted pose subspace against the network's learned 768-d embedding
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 - [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
