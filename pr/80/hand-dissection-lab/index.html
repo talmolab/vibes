@@ -31,6 +31,10 @@
             min-width: 0;
         }
         .panel.wide { grid-column: 1 / -1; }
+        /* Wide screens: the layer mosaic is tall, so let it span two rows and
+           put the feature scope in the space beside it. */
+        .panel.tall { grid-column: 2; grid-row: 1 / span 2; }
+        .panel.col1 { grid-column: 1; }
         .panel h2 { margin-top: 0; font-size: 1.15rem; color: #fff; }
         .panel h3 { font-size: 0.95rem; margin: 20px 0 8px; color: #ccc; font-weight: 600; }
         .hint { color: #777; font-size: 13px; margin: 4px 0 0; }
@@ -120,8 +124,18 @@
         }
         .stage-labels span { flex: 1; }
         .mosaic-wrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
-        .scope-wrap { overflow-x: auto; border-radius: 8px; }
-        .scope-wrap canvas { min-width: 760px; }
+        .stale {
+            position: absolute;
+            top: 8px; right: 8px;
+            display: none;
+            background: rgba(10, 10, 26, 0.85);
+            border: 1px solid #4a4a6a;
+            color: #bbb;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+        .scope-wrap { border-radius: 8px; }
         .gallery {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
@@ -180,6 +194,7 @@
             .container { grid-template-columns: 1fr; }
             .two-up { grid-template-columns: 1fr; }
             .crop-col { max-width: 300px; }
+            .panel.tall, .panel.col1 { grid-column: auto; grid-row: auto; }
         }
         @media (max-width: 600px) { body { padding: 15px; } }
     </style>
@@ -245,7 +260,7 @@
         </div>
 
         <!-- ============ LAYER EXPLORER ============ -->
-        <div class="panel">
+        <div class="panel tall">
             <h2>Layer Explorer</h2>
             <div class="layer-strip" id="layerStrip"></div>
             <div class="stage-labels" id="stageLabels"></div>
@@ -260,6 +275,7 @@
 
             <div class="mosaic-wrap" style="margin-top:10px">
                 <canvas id="mosaicCanvas" width="512" height="512"></canvas>
+                <div id="staleBadge" class="stale">no hand &mdash; last frame</div>
             </div>
 
             <div class="controls">
@@ -282,7 +298,7 @@
         </div>
 
         <!-- ============ FEATURE SCOPE ============ -->
-        <div class="panel wide">
+        <div class="panel col1">
             <h2>Feature Scope</h2>
             <p class="hint" style="margin-bottom:10px">
                 Kinematics read straight off the landmarks every frame. Distances are in palm-lengths
@@ -397,7 +413,7 @@ const cropCanvas = $('cropCanvas'), cropCtx = cropCanvas.getContext('2d', { will
 const mosaicCanvas = $('mosaicCanvas'), mosaicCtx = mosaicCanvas.getContext('2d');
 const scopeCanvas = $('scopeCanvas'), scopeCtx = scopeCanvas.getContext('2d');
 const pcaCanvas = $('pcaCanvas'), pcaCtx = pcaCanvas.getContext('2d');
-const status = $('status'), tooltip = $('tooltip');
+const status = $('status'), tooltip = $('tooltip'), staleBadge = $('staleBadge');
 const startBtn = $('startBtn'), stopBtn = $('stopBtn'), captureBtn = $('captureBtn'), clearBtn = $('clearBtn');
 const handSelect = $('handSelect'), cropScale = $('cropScale'), cropScaleVal = $('cropScaleVal');
 const tapSlider = $('tapSlider'), tapInfo = $('tapInfo'), layerStrip = $('layerStrip'), stageLabels = $('stageLabels');
@@ -851,12 +867,21 @@ const LANES = [
 ];
 
 function drawScope() {
-    const W = scopeCanvas.width, H = scopeCanvas.height;
+    // Size the backing store to whatever column the panel is in, so the labels
+    // stay crisp instead of a fixed-width canvas being scaled down by CSS.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(280, Math.round(scopeCanvas.clientWidth || 900));
+    const H = 380;
+    if (scopeCanvas.width !== Math.round(W * dpr)) scopeCanvas.width = Math.round(W * dpr);
+    if (scopeCanvas.height !== Math.round(H * dpr)) scopeCanvas.height = Math.round(H * dpr);
     const ctx = scopeCtx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = '#05050f';
     ctx.fillRect(0, 0, W, H);
 
-    const padL = 150, padR = 78, padT = 6, gap = 8;
+    // Narrow column: drop the side label gutter and caption the lane in-plot.
+    const compact = W < 640;
+    const padL = compact ? 46 : 150, padR = compact ? 52 : 78, padT = 6, gap = 8;
     const laneH = (H - padT * 2 - gap * (LANES.length - 1)) / LANES.length;
     const plotW = W - padL - padR;
     const keep = parseInt(scopeWindow.value, 10);
@@ -898,16 +923,24 @@ function drawScope() {
         }
 
         // label block
-        ctx.fillStyle = '#ddd';
-        ctx.font = '600 12px system-ui, sans-serif';
-        ctx.fillText(lane.label, 8, y0 + 14);
-        ctx.fillStyle = '#666';
-        ctx.font = '10px system-ui, sans-serif';
-        wrapText(ctx, lane.units, 8, y0 + 28, padL - 16, 12);
+        if (compact) {
+            ctx.fillStyle = 'rgba(230,230,240,0.72)';
+            ctx.font = '600 11px system-ui, sans-serif';
+            ctx.fillText(lane.label, padL + 6, y0 + 13);
+        } else {
+            ctx.fillStyle = '#ddd';
+            ctx.font = '600 12px system-ui, sans-serif';
+            ctx.fillText(lane.label, 8, y0 + 14);
+            ctx.fillStyle = '#666';
+            ctx.font = '10px system-ui, sans-serif';
+            wrapText(ctx, lane.units, 8, y0 + 28, padL - 16, 12);
+        }
         ctx.fillStyle = '#555';
         ctx.font = '10px system-ui, sans-serif';
-        ctx.fillText(hi.toFixed(hi < 10 ? 1 : 0), padL - 26, y0 + 10);
-        ctx.fillText(lo.toFixed(lo < 10 && lo > -10 ? 1 : 0), padL - 26, y1 - 2);
+        ctx.textAlign = 'right';
+        ctx.fillText(hi.toFixed(hi < 10 ? 1 : 0), padL - 6, y0 + 10);
+        ctx.fillText(lo.toFixed(lo < 10 && lo > -10 ? 1 : 0), padL - 6, y1 - 2);
+        ctx.textAlign = 'left';
 
         // traces
         if (data.length > 1) {
@@ -1173,6 +1206,10 @@ function buildLayerStrip() {
 }
 
 function updateStats() {
+    // The mosaic holds its last frame when tracking drops out; say so rather
+    // than letting a stale activation map read as live.
+    staleBadge.style.display = (running && !landmarks && mosaicLayout) ? 'block' : 'none';
+
     const bars = layerStrip.children;
     const mx = Math.max(...stageEnergy, 1e-6);
     for (let i = 0; i < bars.length; i++) {
@@ -1489,6 +1526,10 @@ pcaCanvas.addEventListener('mousemove', e => {
     tooltip.style.top = (e.clientY + 14) + 'px';
 });
 pcaCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// Canvases size themselves during the render loop; redraw on resize too so a
+// window change while the camera is stopped does not leave them stretched.
+window.addEventListener('resize', () => { drawScope(); drawPCA(); });
 
 window.addEventListener('beforeunload', () => { if (stream) stream.getTracks().forEach(t => t.stop()); });
 
