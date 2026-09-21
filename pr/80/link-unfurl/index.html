@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Link Unfurl Preview</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #f5f5f5;
+        }
+        h1 { margin-bottom: 8px; }
+        .subtitle { color: #666; margin-bottom: 24px; }
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+        input[type="url"] {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        button:hover { background: #0055aa; }
+        button:disabled { background: #999; cursor: not-allowed; }
+        .previews {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+        .preview-container h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+            margin-bottom: 12px;
+        }
+        .card {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .card.light { background: #fff; color: #000; }
+        .card.dark { background: #1a1a1a; color: #fff; }
+        .card-image {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+            display: block;
+        }
+        .card-image.placeholder {
+            background: linear-gradient(135deg, #667 0%, #999 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 14px;
+        }
+        .card-content { padding: 16px; }
+        .card-site {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .dark .card-site { color: #aaa; }
+        .card-site img { width: 16px; height: 16px; border-radius: 2px; }
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-desc {
+            font-size: 14px;
+            color: #555;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .dark .card-desc { color: #bbb; }
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .meta-table {
+            margin-top: 24px;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .meta-table h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666;
+            padding: 16px;
+            margin: 0;
+            border-bottom: 1px solid #eee;
+        }
+        .meta-row {
+            display: flex;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        .meta-row:last-child { border-bottom: none; }
+        .meta-key {
+            width: 180px;
+            padding: 10px 16px;
+            background: #f9f9f9;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+        .meta-value {
+            padding: 10px 16px;
+            word-break: break-all;
+            flex: 1;
+        }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .input-group { flex-direction: column; }
+            .meta-row { flex-direction: column; }
+            .meta-key { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Link Unfurl Preview</h1>
+    <p class="subtitle">See how your link appears when shared on social media</p>
+
+    <div class="input-group">
+        <input type="url" id="urlInput" placeholder="https://example.com" />
+        <button id="fetchBtn">Preview</button>
+    </div>
+
+    <div id="error" class="error" style="display: none;"></div>
+    <div id="loading" class="loading" style="display: none;">Fetching metadata...</div>
+
+    <div id="results" style="display: none;">
+        <div class="previews">
+            <div class="preview-container">
+                <h2>Light Mode</h2>
+                <div id="lightCard" class="card light"></div>
+            </div>
+            <div class="preview-container">
+                <h2>Dark Mode</h2>
+                <div id="darkCard" class="card dark"></div>
+            </div>
+        </div>
+        <div id="metaTable" class="meta-table"></div>
+    </div>
+
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const fetchBtn = document.getElementById('fetchBtn');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+        const resultsDiv = document.getElementById('results');
+        const lightCard = document.getElementById('lightCard');
+        const darkCard = document.getElementById('darkCard');
+        const metaTable = document.getElementById('metaTable');
+
+        // Load URL from hash
+        if (location.hash) {
+            urlInput.value = decodeURIComponent(location.hash.slice(1));
+            fetchMetadata();
+        }
+
+        fetchBtn.addEventListener('click', fetchMetadata);
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') fetchMetadata();
+        });
+
+        async function fetchMetadata() {
+            const url = urlInput.value.trim();
+            if (!url) return;
+
+            // Update hash
+            location.hash = encodeURIComponent(url);
+
+            errorDiv.style.display = 'none';
+            resultsDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+            fetchBtn.disabled = true;
+
+            try {
+                // Use microlink.io API (free tier, good CORS support)
+                const cacheBuster = Date.now();
+                const apiUrl = `https://api.microlink.io/?url=${encodeURIComponent(url)}&_=${cacheBuster}`;
+
+                const response = await fetch(apiUrl, { cache: 'no-store' });
+
+                if (!response.ok) {
+                    throw new Error(`API returned ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.status !== 'success') {
+                    throw new Error(result.message || 'Failed to fetch metadata');
+                }
+
+                const data = result.data;
+                const base = new URL(url);
+
+                const meta = {
+                    title: data.title || '',
+                    description: data.description || '',
+                    image: data.image?.url || null,
+                    siteName: data.publisher || base.hostname,
+                    favicon: data.logo?.url || `${base.origin}/favicon.ico`,
+                    url: data.url || url,
+                    type: 'website',
+                    twitterCard: 'summary_large_image',
+                    themeColor: null,
+                    author: data.author || null,
+                };
+
+                renderPreviews(meta);
+
+            } catch (err) {
+                errorDiv.textContent = `Error: ${err.message}. Try a different URL or check if the site blocks requests.`;
+                errorDiv.style.display = 'block';
+            } finally {
+                loadingDiv.style.display = 'none';
+                fetchBtn.disabled = false;
+            }
+        }
+
+        function renderPreviews(meta) {
+            const cardHTML = `
+                ${meta.image
+                    ? `<img class="card-image" src="${meta.image}" onerror="this.outerHTML='<div class=\\'card-image placeholder\\'>No image</div>'" />`
+                    : '<div class="card-image placeholder">No image</div>'}
+                <div class="card-content">
+                    <div class="card-site">
+                        <img src="${meta.favicon}" onerror="this.style.display='none'" />
+                        <span>${meta.siteName}</span>
+                    </div>
+                    <div class="card-title">${escapeHtml(meta.title)}</div>
+                    <div class="card-desc">${escapeHtml(meta.description)}</div>
+                </div>
+            `;
+
+            lightCard.innerHTML = cardHTML;
+            darkCard.innerHTML = cardHTML;
+
+            // Build meta table
+            const rows = [
+                ['og:title', meta.title],
+                ['og:description', meta.description],
+                ['og:image', meta.image],
+                ['og:site_name', meta.siteName],
+                ['og:url', meta.url],
+                ['og:type', meta.type],
+                ['twitter:card', meta.twitterCard],
+                ['theme-color', meta.themeColor],
+                ['author', meta.author],
+                ['favicon', meta.favicon],
+            ].filter(([, v]) => v);
+
+            metaTable.innerHTML = `
+                <h2>Raw Metadata</h2>
+                ${rows.map(([key, value]) => `
+                    <div class="meta-row">
+                        <div class="meta-key">${escapeHtml(key)}</div>
+                        <div class="meta-value">${escapeHtml(value)}</div>
+                    </div>
+                `).join('')}
+            `;
+
+            resultsDiv.style.display = 'block';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

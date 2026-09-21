@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lab Camera Comparison</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #0f0f0f; color: #e0e0e0; line-height: 1.6;
+    transition: background 0.3s, color 0.3s;
+  }
+  a { color: #667eea; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ── Header ───────────────────────────────────────────────────── */
+  .header {
+    padding: 14px 28px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; color: #fff; }
+  .header .sub { font-size: 12px; color: #667eea; margin-left: 14px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+  .icon-btn {
+    background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px;
+    color: #aaa; padding: 6px 10px; font-size: 13px; cursor: pointer; transition: all 0.15s;
+  }
+  .icon-btn:hover { background: #333; color: #fff; }
+
+  /* ── Tabs ──────────────────────────────────────────────────────── */
+  .tabs {
+    display: flex; gap: 0; background: #1a1a1a; border-bottom: 2px solid #2a2a2a;
+    padding: 0 28px; overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 18px; font-size: 13px; font-weight: 600; color: #888;
+    cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px;
+    white-space: nowrap; transition: color 0.15s;
+    background: none; border-top: none; border-left: none; border-right: none;
+  }
+  .tab:hover { color: #ccc; }
+  .tab.active { color: #667eea; border-bottom-color: #667eea; }
+
+  /* ── Container ────────────────────────────────────────────────── */
+  .container { max-width: 1300px; margin: 0 auto; padding: 24px 28px; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Cards ─────────────────────────────────────────────────────── */
+  .card {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px;
+    padding: 20px; margin-bottom: 16px;
+  }
+  .card-title { font-size: 15px; font-weight: 600; color: #ccc; margin-bottom: 14px; }
+  .card-subtitle { font-size: 11px; color: #666; margin-top: -8px; margin-bottom: 12px; }
+
+  /* ── Camera cards ─────────────────────────────────────────────── */
+  .cam-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .cam-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; overflow: hidden; transition: border-color 0.2s; }
+  .cam-card:hover { border-color: #444; }
+  .cam-header { padding: 16px 20px; border-bottom: 1px solid #2a2a2a; text-align: center; }
+  .cam-brand { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+  .cam-model { font-size: 17px; font-weight: 700; color: #fff; }
+  .cam-type { font-size: 11px; color: #888; margin-top: 2px; }
+  .cam-body { padding: 16px 20px; }
+  .cam-highlight { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1f1f1f; font-size: 12px; }
+  .cam-highlight:last-child { border-bottom: none; }
+  .cam-highlight .label { color: #888; }
+  .cam-highlight .value { color: #ddd; font-weight: 600; }
+  .cam-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+  .badge-green { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .badge-yellow { background: rgba(250,204,21,0.15); color: #facc15; }
+  .badge-red { background: rgba(248,113,113,0.15); color: #f87171; }
+  .badge-blue { background: rgba(102,126,234,0.15); color: #667eea; }
+  .cam-footer { padding: 12px 20px; border-top: 1px solid #2a2a2a; text-align: center; font-size: 20px; font-weight: 700; }
+  .cam-card.dji .cam-brand { color: #667eea; }
+  .cam-card.gopro .cam-brand { color: #22d3ee; }
+  .cam-card.basler .cam-brand { color: #a78bfa; }
+
+  /* ── Comparison table ─────────────────────────────────────────── */
+  .comp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .comp-table th, .comp-table td { padding: 10px 14px; border-bottom: 1px solid #222; text-align: left; }
+  .comp-table thead th { background: #1a1a1a; color: #aaa; font-weight: 600; position: sticky; top: 0; border-bottom: 2px solid #2a2a2a; z-index: 2; }
+  .comp-table thead th:first-child { color: #666; }
+  .comp-table tbody tr:hover { background: #1a1a1a; }
+  .comp-table .cat-row td { background: #151515; font-weight: 600; color: #667eea; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 14px; }
+  .comp-table .spec-name { color: #888; width: 180px; }
+  .comp-table .best { color: #4ade80; font-weight: 600; }
+  .comp-table .warn { color: #facc15; }
+  .comp-table .bad { color: #f87171; }
+  .stars { color: #facc15; letter-spacing: 2px; font-size: 14px; }
+  .stars-dim { color: #333; }
+
+  /* ── App cards ────────────────────────────────────────────────── */
+  .app-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .app-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 20px; }
+  .app-name { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+  .app-sub { font-size: 11px; color: #888; margin-bottom: 14px; }
+  .app-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #1f1f1f; }
+  .app-row:last-child { border-bottom: none; }
+  .app-row .label { font-size: 12px; color: #aaa; }
+  .app-note { font-size: 12px; padding: 10px 12px; background: #151515; border-radius: 6px; margin-top: 14px; border-left: 3px solid; }
+  .note-good { border-color: #4ade80; color: #999; }
+  .note-bad { border-color: #f87171; color: #999; }
+  .note-info { border-color: #667eea; color: #999; }
+
+  /* ── Calculator layout ────────────────────────────────────────── */
+  .calc-layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-group { display: flex; flex-direction: column; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: #888; display: block; margin-bottom: 4px; }
+  input[type="number"], select {
+    background: #222; color: #e0e0e0; border: 1px solid #444; border-radius: 6px;
+    padding: 8px 10px; font-size: 14px; outline: none; width: 100%;
+  }
+  input:focus, select:focus { border-color: #667eea; }
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .result-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 14px; text-align: center; }
+  .result-value { font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .result-label { font-size: 10px; color: #888; text-transform: uppercase; margin-top: 4px; }
+  .result-sub { font-size: 10px; color: #555; }
+  .fit-yes { color: #4ade80; }
+  .fit-no { color: #f87171; }
+
+  /* ── Diagram ──────────────────────────────────────────────────── */
+  .diagram-wrap { background: #111; border: 1px solid #2a2a2a; border-radius: 10px; overflow: hidden; position: relative; }
+  .diagram-wrap canvas { width: 100%; display: block; cursor: default; }
+  .diagram-wrap canvas.dragging { cursor: ns-resize; }
+  .diagram-wrap canvas.hoverable { cursor: grab; }
+  .diagram-tooltip { position: absolute; background: rgba(0,0,0,0.9); color: #ddd; padding: 5px 10px; border-radius: 4px; font-size: 11px; pointer-events: none; display: none; font-family: "SF Mono", monospace; white-space: nowrap; z-index: 5; }
+  .dist-slider-wrap { padding: 12px 16px; background: #151515; border-top: 1px solid #2a2a2a; }
+  .dist-slider-label { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-bottom: 4px; }
+  input[type="range"] { width: 100%; -webkit-appearance: none; background: #333; height: 4px; border-radius: 2px; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #667eea; cursor: pointer; }
+  .compare-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .compare-toggle input[type="checkbox"] { accent-color: #667eea; }
+  .compare-toggle label { font-size: 12px; color: #aaa; cursor: pointer; }
+  .feasibility-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #151515; border-radius: 6px; margin-top: 10px; font-size: 12px; }
+  .feasibility-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Recording estimator ──────────────────────────────────────── */
+  .est-result { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .est-item { background: #222; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+  .est-val { font-weight: 700; font-size: 15px; }
+
+  /* ── Checklist ────────────────────────────────────────────────── */
+  .checklist { list-style: none; }
+  .checklist li { padding: 6px 0; border-bottom: 1px solid #1f1f1f; font-size: 12px; color: #bbb; display: flex; align-items: center; gap: 8px; }
+  .checklist li::before { content: "\2610"; color: #667eea; font-size: 14px; }
+
+  /* ── Wizard ───────────────────────────────────────────────────── */
+  .wizard-wrap { max-width: 680px; margin: 0 auto; }
+  .wizard-progress { text-align: center; font-size: 12px; color: #666; margin-bottom: 16px; }
+  .wizard-progress-bar { height: 4px; background: #222; border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
+  .wizard-progress-fill { height: 100%; background: #667eea; border-radius: 2px; transition: width 0.3s; }
+  .wizard-card { text-align: center; }
+  .wizard-card h3 { font-size: 18px; color: #fff; margin-bottom: 6px; }
+  .wizard-card p { font-size: 13px; color: #888; margin-bottom: 20px; }
+  .wiz-options { display: flex; flex-direction: column; gap: 10px; max-width: 400px; margin: 0 auto; }
+  .wiz-opt {
+    padding: 14px 20px; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px;
+    color: #ccc; font-size: 14px; cursor: pointer; transition: all 0.15s; text-align: left;
+  }
+  .wiz-opt:hover { border-color: #667eea; color: #fff; background: #1f1f2f; }
+  .wiz-opt.selected { border-color: #667eea; background: rgba(102,126,234,0.1); color: #fff; }
+  .wiz-result-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 20px; }
+  .wiz-rank { font-size: 32px; font-weight: 800; width: 50px; text-align: center; flex-shrink: 0; }
+  .wiz-score-bar { height: 8px; background: #222; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .wiz-score-fill { height: 100%; border-radius: 4px; }
+  .wiz-reasons { font-size: 11px; color: #888; margin-top: 6px; }
+  .wiz-restart { margin-top: 20px; padding: 10px 24px; background: #667eea; color: #fff; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+  /* ── Multi-cam planner ────────────────────────────────────────── */
+  .mc-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .mc-btn { padding: 6px 14px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 6px; color: #ccc; font-size: 12px; cursor: pointer; }
+  .mc-btn:hover { background: #333; color: #fff; }
+  .mc-cam-list { font-size: 12px; }
+  .mc-cam-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #1f1f1f; }
+  .mc-cam-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Distortion preview ───────────────────────────────────────── */
+  .distortion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+  .distortion-card { text-align: center; }
+  .distortion-card canvas { width: 100%; border-radius: 6px; border: 1px solid #2a2a2a; background: #111; }
+  .distortion-card .label { font-size: 11px; color: #888; margin-top: 4px; }
+
+  /* ── Theory ───────────────────────────────────────────────────── */
+  .theory-section { margin-bottom: 28px; }
+  .theory-section h2 { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+  .theory-section h3 { font-size: 14px; font-weight: 600; color: #ccc; margin: 16px 0 8px; }
+  .theory-section p { font-size: 13px; color: #bbb; margin-bottom: 10px; max-width: 720px; }
+  .formula { display: inline-block; background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 6px; padding: 10px 16px; font-family: "SF Mono", "Fira Code", monospace; font-size: 14px; color: #facc15; margin: 8px 0; }
+  .theory-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 16px 0; }
+  .theory-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+  .theory-card h4 { font-size: 13px; color: #667eea; margin-bottom: 8px; }
+  .theory-card p { font-size: 12px; color: #999; }
+  .theory-card .val { color: #4ade80; font-weight: 600; }
+
+  /* ── Light theme ──────────────────────────────────────────────── */
+  body.light { background: #f5f5f5; color: #333; }
+  body.light .header, body.light .tabs { background: #fff; border-color: #e0e0e0; }
+  body.light .header h1 { color: #222; }
+  body.light .tab { color: #999; }
+  body.light .tab.active { color: #667eea; }
+  body.light .card, body.light .cam-card, body.light .app-card { background: #fff; border-color: #e0e0e0; }
+  body.light .card-title { color: #555; }
+  body.light input[type="number"], body.light select { background: #f8f8f8; color: #333; border-color: #ddd; }
+  body.light .result-card { background: #fff; border-color: #e0e0e0; }
+  body.light .diagram-wrap { background: #f8f8f8; border-color: #ddd; }
+  body.light .comp-table th { background: #fff; color: #666; border-color: #e0e0e0; }
+  body.light .comp-table td { border-color: #eee; }
+  body.light .comp-table .cat-row td { background: #f8f8f8; }
+  body.light .comp-table .spec-name { color: #666; }
+  body.light .cam-highlight { border-color: #f0f0f0; }
+  body.light .cam-highlight .label { color: #999; }
+  body.light .cam-header { border-color: #eee; }
+  body.light .cam-footer { border-color: #eee; }
+  body.light .icon-btn { background: #eee; border-color: #ddd; color: #666; }
+  body.light .wiz-opt { background: #fff; border-color: #ddd; color: #555; }
+  body.light .wiz-opt:hover { background: #f0f0ff; }
+
+  /* ── Print ────────────────────────────────────────────────────── */
+  @media print {
+    .header, .tabs, .icon-btn, button, input, select, .dist-slider-wrap { display: none !important; }
+    .page { display: block !important; }
+    body { background: #fff; color: #000; }
+  }
+
+  /* ── Responsive ───────────────────────────────────────────────── */
+  @media (max-width: 960px) {
+    .cam-grid, .app-grid, .distortion-grid { grid-template-columns: 1fr; }
+    .calc-layout { grid-template-columns: 1fr; }
+    .theory-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:baseline;gap:14px">
+    <h1>Lab Camera Comparison</h1>
+    <span class="sub">DJI Action 6 &middot; GoPro HERO 13 &middot; Basler ace 2</span>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="exportBtn" title="Export diagram as PNG">Export PNG</button>
+    <button class="icon-btn" id="themeBtn" title="Toggle light/dark theme">Light</button>
+  </div>
+</div>
+
+<div class="tabs" id="tabs">
+  <button class="tab active" data-page="overview">Overview</button>
+  <button class="tab" data-page="specs">Full Specs</button>
+  <button class="tab" data-page="software">App &amp; Software</button>
+  <button class="tab" data-page="calculator">FOV Calculator</button>
+  <button class="tab" data-page="wizard">Recommend</button>
+  <button class="tab" data-page="multicam">Multi-Cam</button>
+  <button class="tab" data-page="theory">Theory</button>
+</div>
+
+<div class="container">
+
+<!-- ═══ OVERVIEW ═══ -->
+<div class="page active" id="page-overview">
+  <div class="cam-grid">
+    <div class="cam-card dji">
+      <div class="cam-header"><div class="cam-brand">DJI</div><div class="cam-model">Action 6</div><div class="cam-type">Action Camera &middot; RGB</div></div>
+      <div class="cam-body">
+        <div class="cam-highlight"><span class="label">Sensor</span><span class="value">1/1.1" square CMOS</span></div>
+        <div class="cam-highlight"><span class="label">Resolution</span><span class="value">8K@30 &middot; 4K@120</span></div>
+        <div class="cam-highlight"><span class="label">Aperture</span><span class="value">f/2.0&ndash;f/4.0 variable</span></div>
+        <div class="cam-highlight"><span class="label">FOV</span><span class="value">155&deg; (182&deg; w/ boost lens)</span></div>
+        <div class="cam-highlight"><span class="label">Color</span><span class="value">RGB &middot; 10-bit D-Log M</span></div>
+        <div class="cam-highlight"><span class="label">Battery</span><span class="value">~240 min &middot; 50GB built-in</span></div>
+        <div class="cam-highlight"><span class="label">App</span><span class="value"><span class="cam-badge badge-green">Excellent</span></span></div>
+        <div class="cam-highlight"><span class="label">Overheat</span><span class="value"><span class="cam-badge badge-green">No issues</span></span></div>
+      </div>
+      <div class="cam-footer" style="color:#4ade80">~$436</div>
+    </div>
+    <div class="cam-card gopro">
+      <div class="cam-header"><div class="cam-brand">GoPro</div><div class="cam-model">HERO 13 Black</div><div class="cam-type">Action Camera &middot; RGB</div></div>
+      <div class="cam-body">
+        <div class="cam-highlight"><span class="label">Sensor</span><span class="value">1/1.9" CMOS</span></div>
+        <div class="cam-highlight"><span class="label">Resolution</span><span class="value">5.3K (5312&times;2988)</span></div>
+        <div class="cam-highlight"><span class="label">Max FPS</span><span class="value">4K@120 &middot; 1080@240</span></div>
+        <div class="cam-highlight"><span class="label">FOV</span><span class="value">156&deg; diagonal</span></div>
+        <div class="cam-highlight"><span class="label">Color</span><span class="value">RGB &middot; 10-bit HLG</span></div>
+        <div class="cam-highlight"><span class="label">Battery</span><span class="value">~90 min (4K)</span></div>
+        <div class="cam-highlight"><span class="label">App</span><span class="value"><span class="cam-badge badge-red">Poor</span></span></div>
+        <div class="cam-highlight"><span class="label">Overheat</span><span class="value"><span class="cam-badge badge-red">Cuts at 4K</span></span></div>
+      </div>
+      <div class="cam-footer" style="color:#facc15">~$359</div>
+    </div>
+    <div class="cam-card basler">
+      <div class="cam-header"><div class="cam-brand">Basler</div><div class="cam-model">ace 2 a2A1920-165g5m</div><div class="cam-type">Machine Vision &middot; Monochrome</div></div>
+      <div class="cam-body">
+        <div class="cam-highlight"><span class="label">Sensor</span><span class="value">Sony IMX392 (3.45&micro;m)</span></div>
+        <div class="cam-highlight"><span class="label">Resolution</span><span class="value">1920&times;1200 (2.3MP)</span></div>
+        <div class="cam-highlight"><span class="label">Max FPS</span><span class="value">165 fps continuous</span></div>
+        <div class="cam-highlight"><span class="label">FOV</span><span class="value">58&deg;&times;39&deg; (6mm lens)</span></div>
+        <div class="cam-highlight"><span class="label">Color</span><span class="value">Mono &middot; 12-bit</span></div>
+        <div class="cam-highlight"><span class="label">Recording</span><span class="value">Unlimited (disk-bound)</span></div>
+        <div class="cam-highlight"><span class="label">Shutter</span><span class="value"><span class="cam-badge badge-blue">Global</span></span></div>
+        <div class="cam-highlight"><span class="label">Sync</span><span class="value"><span class="cam-badge badge-green">HW trigger</span></span></div>
+      </div>
+      <div class="cam-footer" style="color:#a78bfa">~$985 + lens</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:8px">
+    <div class="card-title">Quick Verdict for Animal Tracking</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;font-size:12px;color:#999">
+      <div><strong style="color:#667eea">DJI Action 6</strong><br>Best all-round choice. Reliable app, no overheating, long battery. Great for top-down recording where 4K is sufficient.</div>
+      <div><strong style="color:#22d3ee">GoPro HERO 13</strong><br>Highest raw resolution (5.3K) but poor app reliability (50% connection failure), overheating at 4K cuts recordings. Best as backup.</div>
+      <div><strong style="color:#a78bfa">Basler ace 2</strong><br>Gold standard for precision. Global shutter, 165fps continuous, hardware trigger sync. Mono only. Requires PC + 5GigE.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SPECS ═══ -->
+<div class="page" id="page-specs">
+  <div class="card" style="overflow-x:auto">
+    <table class="comp-table">
+      <thead><tr><th>Specification</th><th style="color:#667eea">DJI Action 6</th><th style="color:#22d3ee">GoPro HERO 13</th><th style="color:#a78bfa">Basler a2A1920-165g5m</th></tr></thead>
+      <tbody>
+        <tr class="cat-row"><td colspan="4">Sensor &amp; Optics</td></tr>
+        <tr><td class="spec-name">Sensor size</td><td class="best">1/1.1" square (~10.2&times;10.2mm)</td><td>1/1.9" (~6.2&times;4.6mm)</td><td>1/2.3" (6.7&times;4.2mm, IMX392)</td></tr>
+        <tr><td class="spec-name">Pixel size</td><td>~2.4&micro;m</td><td>~1.55&micro;m</td><td class="best">3.45&micro;m</td></tr>
+        <tr><td class="spec-name">Focal length</td><td>~1.6mm (155&deg; FOV)</td><td>~2.9mm (156&deg; FOV)</td><td>6mm C-mount (swappable)</td></tr>
+        <tr><td class="spec-name">Aperture</td><td class="best">f/2.0&ndash;f/4.0 variable</td><td>f/2.5</td><td>Lens-dependent</td></tr>
+        <tr><td class="spec-name">FOV (diagonal)</td><td>155&deg; (182&deg; w/ boost)</td><td class="best">156&deg;</td><td>~72&deg; (with 6mm)</td></tr>
+        <tr><td class="spec-name">Shutter</td><td class="warn">Rolling</td><td class="warn">Rolling</td><td class="best">Global (no motion artifacts)</td></tr>
+        <tr class="cat-row"><td colspan="4">Resolution &amp; Frame Rate</td></tr>
+        <tr><td class="spec-name">Max resolution</td><td class="best">8K (7680&times;4320)</td><td>5.3K (5312&times;2988)</td><td>1920&times;1200</td></tr>
+        <tr><td class="spec-name">Full-res max fps</td><td>30 fps (8K)</td><td>30 fps (5.3K)</td><td class="best">168 fps</td></tr>
+        <tr><td class="spec-name">4K max fps</td><td class="best">120 fps</td><td class="best">120 fps</td><td>N/A</td></tr>
+        <tr><td class="spec-name">Sustained high fps</td><td>120 fps (stable)</td><td class="bad">Overheats</td><td class="best">165 fps unlimited</td></tr>
+        <tr class="cat-row"><td colspan="4">Color &amp; Sensitivity</td></tr>
+        <tr><td class="spec-name">Color mode</td><td class="best">RGB</td><td class="best">RGB</td><td>Monochrome</td></tr>
+        <tr><td class="spec-name">Bit depth</td><td>8/10-bit</td><td>8/10-bit</td><td class="best">8/10/12-bit</td></tr>
+        <tr><td class="spec-name">Low light</td><td>Good</td><td>Fair</td><td class="best">Excellent (large pixels, no Bayer)</td></tr>
+        <tr><td class="spec-name">IR sensitivity</td><td class="bad">Blocked</td><td class="bad">Blocked</td><td class="best">Full spectrum</td></tr>
+        <tr class="cat-row"><td colspan="4">Recording</td></tr>
+        <tr><td class="spec-name">Max record time</td><td class="best">~4 hrs</td><td class="bad">~90 min (4K)</td><td class="best">Unlimited</td></tr>
+        <tr><td class="spec-name">Overheating</td><td class="best">No issues</td><td class="bad">Cuts at 4K</td><td class="best">50&deg;C rated</td></tr>
+        <tr class="cat-row"><td colspan="4">Synchronization</td></tr>
+        <tr><td class="spec-name">Multi-cam sync</td><td>App (Wi-Fi)</td><td class="bad">Unreliable</td><td class="best">HW trigger (sub-&micro;s)</td></tr>
+        <tr><td class="spec-name">External trigger</td><td class="bad">No</td><td class="bad">No</td><td class="best">Opto-isolated GPIO</td></tr>
+        <tr class="cat-row"><td colspan="4">Physical</td></tr>
+        <tr><td class="spec-name">Weight</td><td class="best">146g</td><td>154g</td><td>&lt;105g (body)</td></tr>
+        <tr><td class="spec-name">Waterproof</td><td class="best">20m</td><td>10m</td><td class="bad">No</td></tr>
+        <tr><td class="spec-name">Price</td><td>~$436</td><td class="best">~$359</td><td>~$985 + lens</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ SOFTWARE ═══ -->
+<div class="page" id="page-software">
+  <div class="app-grid">
+    <div class="app-card">
+      <div class="app-name" style="color:#667eea">DJI Mimo</div>
+      <div class="app-sub">iOS / Android &middot; Free</div>
+      <div class="app-row"><span class="label">Connection</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-row"><span class="label">Responsiveness</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-row"><span class="label">Preview</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-row"><span class="label">Ease of use</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-note note-good"><strong>Strengths:</strong> Synchronized live preview + recording. Quick response. Zero connection failures. Intuitive.</div>
+    </div>
+    <div class="app-card">
+      <div class="app-name" style="color:#22d3ee">GoPro Quik</div>
+      <div class="app-sub">iOS / Android &middot; Free</div>
+      <div class="app-row"><span class="label">Connection</span><span class="stars">&#9733;&#9733;<span class="stars-dim">&#9733;&#9733;&#9733;</span></span></div>
+      <div class="app-row"><span class="label">Responsiveness</span><span class="stars">&#9733;&#9733;<span class="stars-dim">&#9733;&#9733;&#9733;</span></span></div>
+      <div class="app-row"><span class="label">Preview</span><span class="stars">&#9733;&#9733;<span class="stars-dim">&#9733;&#9733;&#9733;</span></span></div>
+      <div class="app-row"><span class="label">Ease of use</span><span class="stars">&#9733;&#9733;&#9733;<span class="stars-dim">&#9733;&#9733;</span></span></div>
+      <div class="app-note note-bad"><strong>Issues:</strong> ~50% connection failure. Phone preview OR camera view only. Recording button lags seconds. Overheats at 4K without warning.</div>
+    </div>
+    <div class="app-card">
+      <div class="app-name" style="color:#a78bfa">Pylon + Multi-Cam Sync</div>
+      <div class="app-sub">Desktop &middot; <a href="https://github.com/LeoMeow123/multi-cam-sync" target="_blank">GitHub &rarr;</a></div>
+      <div class="app-row"><span class="label">Connection</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-row"><span class="label">Responsiveness</span><span class="stars">&#9733;&#9733;&#9733;&#9733;<span class="stars-dim">&#9733;</span></span></div>
+      <div class="app-row"><span class="label">Multi-camera</span><span class="stars">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
+      <div class="app-row"><span class="label">Ease of use</span><span class="stars">&#9733;&#9733;&#9733;<span class="stars-dim">&#9733;&#9733;</span></span></div>
+      <div class="app-note note-info"><strong>Setup:</strong> Lab-built Electron + Python + Arduino app for 2&ndash;4 camera synchronized recording with sub-&micro;s hardware trigger. Requires PC with 5GigE NIC. <a href="https://github.com/LeoMeow123/multi-cam-sync" target="_blank">Source code on GitHub</a>.</div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <div class="card-title">When to Use Each Camera</div>
+    <table class="comp-table">
+      <thead><tr><th>Experiment</th><th style="color:#667eea">DJI</th><th style="color:#22d3ee">GoPro</th><th style="color:#a78bfa">Basler</th></tr></thead>
+      <tbody>
+        <tr><td class="spec-name">Single-cam behavioral</td><td class="best">Recommended</td><td>OK (watch heat)</td><td>Overkill unless fps needed</td></tr>
+        <tr><td class="spec-name">Multi-cam sync (&lt;5ms)</td><td>Possible</td><td class="bad">Unreliable</td><td class="best">Recommended</td></tr>
+        <tr><td class="spec-name">Multi-cam sync (&lt;100&micro;s)</td><td class="bad">No</td><td class="bad">No</td><td class="best">Only option</td></tr>
+        <tr><td class="spec-name">Dark-cycle / IR</td><td class="bad">No</td><td class="bad">No</td><td class="best">Yes</td></tr>
+        <tr><td class="spec-name">Long recording (&gt;2hr)</td><td class="best">Yes</td><td class="bad">No (overheats)</td><td class="best">Yes</td></tr>
+        <tr><td class="spec-name">Portable / field</td><td class="best">Self-contained</td><td class="best">Self-contained</td><td class="bad">Needs PC</td></tr>
+        <tr><td class="spec-name">SLEAP pose estimation</td><td class="best">Good</td><td>Good</td><td class="best">Best (global shutter)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══ CALCULATOR ═══ -->
+<div class="page" id="page-calculator">
+  <div class="calc-layout">
+    <div>
+      <div class="card">
+        <div class="card-title">Camera &amp; Lens</div>
+        <div class="form-grid">
+          <div class="form-group full">
+            <label for="calcCamera">Camera preset</label>
+            <select id="calcCamera">
+              <option value="dji">DJI Action 6 (4K)</option>
+              <option value="dji1080">DJI Action 6 (1080p)</option>
+              <option value="gopro">GoPro HERO 13 (4K)</option>
+              <option value="gopro53">GoPro HERO 13 (5.3K)</option>
+              <option value="basler">Basler ace 2 + 6mm</option>
+              <option value="basler8">Basler ace 2 + 8mm</option>
+              <option value="basler12">Basler ace 2 + 12mm</option>
+              <option value="basler16">Basler ace 2 + 16mm</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div class="form-group"><label>Sensor W (mm)</label><input type="number" id="calcSensorW" step="0.1" value="9.6"></div>
+          <div class="form-group"><label>Sensor H (mm)</label><input type="number" id="calcSensorH" step="0.1" value="7.2"></div>
+          <div class="form-group"><label>Focal length (mm)</label><input type="number" id="calcFL" step="0.1" value="2.8"></div>
+          <div class="form-group"><label>Crop factor</label><input type="number" id="calcCropFactor" step="0.01" value="1.0"></div>
+          <div class="form-group"><label>Res W (px)</label><input type="number" id="calcResW" value="3840"></div>
+          <div class="form-group"><label>Res H (px)</label><input type="number" id="calcResH" value="2160"></div>
+        </div>
+        <div class="compare-toggle" style="margin-top:12px">
+          <input type="checkbox" id="compareOn"><label for="compareOn">Compare with second camera</label>
+        </div>
+        <div id="compareSelect" style="display:none">
+          <select id="calcCamera2" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;padding:8px 10px;font-size:14px">
+            <option value="gopro">GoPro HERO 13 (4K)</option><option value="dji">DJI Action 6 (4K)</option>
+            <option value="basler">Basler + 6mm</option><option value="basler8">Basler + 8mm</option><option value="basler12">Basler + 12mm</option>
+          </select>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Arena</div>
+        <div class="form-grid">
+          <div class="form-group full"><label>Preset</label>
+            <select id="arenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option></select>
+          </div>
+          <div class="form-group"><label>Width (cm)</label><input type="number" id="calcObjW" value="120"></div>
+          <div class="form-group"><label>Depth (cm)</label><input type="number" id="calcObjH" value="80"></div>
+          <div class="form-group"><label>Mounting</label><select id="calcMount"><option value="topdown">Top-down</option><option value="bottomup">Bottom-up</option></select></div>
+          <div class="form-group"><label>Animal width (cm)</label><input type="number" id="animalSize" step="0.1" value="3"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Recording Estimator</div>
+        <div class="form-grid">
+          <div class="form-group"><label>FPS</label><input type="number" id="estFps" value="120"></div>
+          <div class="form-group"><label>Duration (min)</label><input type="number" id="estDur" value="60"></div>
+        </div>
+        <div class="est-result" id="estResult"></div>
+      </div>
+    </div>
+    <div>
+      <div class="result-grid" id="calcResults"></div>
+      <div id="feasibility"></div>
+      <div class="diagram-wrap">
+        <canvas id="fovDiagram" width="900" height="680"></canvas>
+        <div class="diagram-tooltip" id="diagramTooltip"></div>
+        <div class="dist-slider-wrap">
+          <div class="dist-slider-label"><span>Distance</span><span id="sliderValue">115 cm</span></div>
+          <input type="range" id="distSlider" min="5" max="200" value="115" step="1">
+        </div>
+      </div>
+      <div style="font-size:10px;color:#555;margin-top:6px;text-align:center">Drag camera icon or use slider &middot; Hover top view for pixel info</div>
+      <div class="card" style="margin-top:12px">
+        <div class="card-title">Setup Checklist</div>
+        <ul class="checklist" id="checklist"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WIZARD ═══ -->
+<div class="page" id="page-wizard">
+  <div class="wizard-wrap">
+    <div class="wizard-progress" id="wizProgress">Step 1 of 7</div>
+    <div class="wizard-progress-bar"><div class="wizard-progress-fill" id="wizProgressFill" style="width:14%"></div></div>
+    <div id="wizSteps"></div>
+    <div id="wizResult" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ═══ MULTI-CAM ═══ -->
+<div class="page" id="page-multicam">
+  <div class="calc-layout">
+    <div>
+      <div class="card">
+        <div class="card-title">Arena</div>
+        <div class="form-grid">
+          <div class="form-group full"><label>Preset</label>
+            <select id="mcArenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option></select>
+          </div>
+          <div class="form-group"><label>Width (cm)</label><input type="number" id="mcArenaW" value="120"></div>
+          <div class="form-group"><label>Depth (cm)</label><input type="number" id="mcArenaH" value="80"></div>
+          <div class="form-group full"><label>Camera height (cm)</label><input type="number" id="mcHeight" value="100"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Cameras</div>
+        <div class="mc-toolbar">
+          <button class="mc-btn" id="mcAddDji">+ DJI</button>
+          <button class="mc-btn" id="mcAddGopro">+ GoPro</button>
+          <button class="mc-btn" id="mcAddBasler">+ Basler 6mm</button>
+          <button class="mc-btn" id="mcClear">Clear all</button>
+        </div>
+        <div class="mc-cam-list" id="mcCamList"></div>
+      </div>
+    </div>
+    <div>
+      <div class="diagram-wrap"><canvas id="mcCanvas" width="800" height="600"></canvas></div>
+      <div style="font-size:10px;color:#555;margin-top:6px;text-align:center">Click and drag cameras to reposition &middot; Colored zones show coverage</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ THEORY ═══ -->
+<div class="page" id="page-theory">
+  <div class="theory-section">
+    <h2>1. Field of View (FOV)</h2>
+    <p>FOV is the angular extent a camera captures. It depends on <strong>sensor size</strong> and <strong>focal length</strong>.</p>
+    <div class="formula">FOV = 2 &times; arctan( sensor_size / (2 &times; focal_length) )</div>
+    <p>Larger sensor or shorter focal length &rarr; wider FOV. Action cameras use ~2&ndash;3mm lenses for ultra-wide views.</p>
+    <div class="theory-grid">
+      <div class="theory-card"><h4>Horizontal FOV</h4><p>Uses <span class="val">sensor width</span>. DJI: <span class="val">~145&deg;</span> &middot; Basler+6mm: <span class="val">~58&deg;</span></p></div>
+      <div class="theory-card"><h4>Vertical FOV</h4><p>Uses <span class="val">sensor height</span>. DJI: <span class="val">~122&deg;</span> &middot; Basler+6mm: <span class="val">~39&deg;</span></p></div>
+    </div>
+  </div>
+  <div class="theory-section">
+    <h2>2. Distance &amp; Coverage</h2>
+    <div class="formula">coverage = 2 &times; distance &times; tan( FOV / 2 )</div>
+    <div class="formula">distance = object_size / ( 2 &times; tan( FOV / 2 ) )</div>
+    <p>Add 10&ndash;20% margin to the minimum distance for practical mounting.</p>
+  </div>
+  <div class="theory-section">
+    <h2>3. Pixel Density (GSD)</h2>
+    <div class="formula">pixel_density = resolution / coverage &nbsp; (px/cm)</div>
+    <p>For SLEAP, aim for <span style="color:#facc15">&ge;15 pixels</span> across the animal body (&ge;5 px/cm for a 3cm-wide mouse).</p>
+  </div>
+  <div class="theory-section">
+    <h2>4. Global vs Rolling Shutter</h2>
+    <p><strong>Global</strong> (Basler): all pixels exposed simultaneously &mdash; no motion artifacts. <strong>Rolling</strong> (DJI, GoPro): row-by-row readout causes skew with fast motion.</p>
+  </div>
+  <div class="theory-section">
+    <h2>5. Lens Distortion</h2>
+    <p>
+      Distortion depends on your <strong>specific lens, FOV mode, and working distance</strong> &mdash; not just the camera brand.
+      Action cameras in <strong>Wide/SuperView mode</strong> have heavy barrel distortion, but <strong>Linear mode</strong>
+      applies in-camera correction and produces near-zero distortion. Basler distortion depends entirely on the C-mount lens
+      and can range from minimal (quality 12mm+) to significant (cheap wide-angle at close range).
+    </p>
+    <p style="color:#facc15;font-size:12px">
+      The values below are estimates. For real distortion data, run <code>vibing.calibration.check_video()</code> with a charuco board
+      and enter your actual k1/k2 coefficients.
+    </p>
+
+    <!-- Interactive distortion cards -->
+    <div class="distortion-grid">
+      <div class="distortion-card">
+        <canvas id="distDji" width="260" height="200"></canvas>
+        <div style="padding:8px">
+          <label style="margin-bottom:2px">Mode</label>
+          <select id="distDjiMode" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:4px 6px;font-size:12px;margin-bottom:6px">
+            <option value="wide">Wide (155&deg;) &mdash; strong barrel</option>
+            <option value="standard">Standard &mdash; moderate</option>
+            <option value="linear">Linear &mdash; corrected</option>
+          </select>
+          <div class="label" id="distDjiLabel" style="color:#667eea">DJI Action 6 &middot; Wide</div>
+        </div>
+      </div>
+      <div class="distortion-card">
+        <canvas id="distGopro" width="260" height="200"></canvas>
+        <div style="padding:8px">
+          <label style="margin-bottom:2px">Mode</label>
+          <select id="distGoproMode" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:4px 6px;font-size:12px;margin-bottom:6px">
+            <option value="wide">Wide/SuperView &mdash; strong barrel</option>
+            <option value="linear" selected>Linear &mdash; corrected</option>
+            <option value="narrow">Narrow &mdash; minimal</option>
+          </select>
+          <div class="label" id="distGoproLabel" style="color:#22d3ee">GoPro HERO 13 &middot; Linear</div>
+        </div>
+      </div>
+      <div class="distortion-card">
+        <canvas id="distBasler" width="260" height="200"></canvas>
+        <div style="padding:8px">
+          <label style="margin-bottom:2px">Lens</label>
+          <select id="distBaslerMode" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:4px;padding:4px 6px;font-size:12px;margin-bottom:6px">
+            <option value="6mm">6mm &mdash; varies by lens quality</option>
+            <option value="8mm">8mm &mdash; less distortion</option>
+            <option value="12mm">12mm+ &mdash; minimal</option>
+            <option value="cheap">Cheap wide-angle &mdash; heavy</option>
+          </select>
+          <div class="label" id="distBaslerLabel" style="color:#a78bfa">Basler &middot; 6mm lens</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Custom k1/k2 input -->
+    <div class="card" style="margin-top:12px">
+      <div class="card-title">Custom Distortion Coefficients</div>
+      <div class="card-subtitle">From <code>vibing.calibration.check_video()</code> or OpenCV calibration</div>
+      <div class="form-grid" style="max-width:500px">
+        <div class="form-group">
+          <label>k1 (radial)</label>
+          <input type="number" id="customK1" step="0.01" value="0" style="font-size:12px">
+        </div>
+        <div class="form-group">
+          <label>k2 (radial)</label>
+          <input type="number" id="customK2" step="0.01" value="0" style="font-size:12px">
+        </div>
+      </div>
+      <div style="margin-top:10px">
+        <canvas id="distCustom" width="300" height="230" style="border-radius:6px;border:1px solid #2a2a2a;background:#111"></canvas>
+        <div class="label" id="distCustomLabel" style="margin-top:4px">Your calibration &middot; k1=0, k2=0 (no distortion)</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px">
+      <p><strong>How to get real distortion data:</strong></p>
+      <div class="formula" style="font-size:12px;color:#ccc">
+from vibing.calibration import check_video<br>
+result = check_video("your_video.mp4")<br>
+print(result.reprojection_error) &nbsp;# lower = better calibration
+      </div>
+      <p style="margin-top:10px"><strong>Undistortion pipelines:</strong></p>
+      <p>
+        <a href="https://github.com/LeoMeow123/tmaze-undistort" target="_blank">tmaze-undistort</a> &mdash; T-maze lens distortion removal + perspective transformation to top-down views<br>
+        <a href="https://github.com/talmolab/spacecage-undistort" target="_blank">spacecage-undistort</a> &mdash; Fisheye correction for NASA SpaceCage with ROI calibration &amp; SLEAP coordinate transform
+      </p>
+    </div>
+  </div>
+  <div class="theory-section">
+    <h2>6. Top-Down vs Bottom-Up Mounting</h2>
+    <div class="theory-grid">
+      <div class="theory-card"><h4>Top-Down</h4><p>Most common. Camera on ceiling/rig above arena. <span class="val">60&ndash;200cm</span> typical.</p></div>
+      <div class="theory-card"><h4>Bottom-Up</h4><p>Under transparent floor. For paw/gait tracking. <span class="val">20&ndash;60cm</span> typical.</p></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+(function() {
+"use strict";
+
+// ══════════════════════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════════════════════
+var tabs = document.querySelectorAll(".tab");
+var pages = document.querySelectorAll(".page");
+tabs.forEach(function(tab) {
+  tab.addEventListener("click", function() {
+    tabs.forEach(function(t) { t.classList.remove("active"); });
+    pages.forEach(function(p) { p.classList.remove("active"); });
+    tab.classList.add("active");
+    document.getElementById("page-" + tab.dataset.page).classList.add("active");
+    if (tab.dataset.page === "calculator") updateCalculator();
+    if (tab.dataset.page === "multicam") drawMultiCam();
+    if (tab.dataset.page === "theory") drawDistortion();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// THEME TOGGLE
+// ══════════════════════════════════════════════════════════════════
+var themeBtn = document.getElementById("themeBtn");
+var isLight = localStorage.getItem("cam_theme") === "light";
+if (isLight) { document.body.classList.add("light"); themeBtn.textContent = "Dark"; }
+themeBtn.addEventListener("click", function() {
+  isLight = !isLight;
+  document.body.classList.toggle("light", isLight);
+  themeBtn.textContent = isLight ? "Dark" : "Light";
+  localStorage.setItem("cam_theme", isLight ? "light" : "dark");
+});
+
+// ══════════════════════════════════════════════════════════════════
+// EXPORT PNG
+// ══════════════════════════════════════════════════════════════════
+document.getElementById("exportBtn").addEventListener("click", function() {
+  var c = document.getElementById("fovDiagram");
+  if (!c) return;
+  var a = document.createElement("a");
+  a.download = "camera_fov_setup.png";
+  a.href = c.toDataURL("image/png");
+  a.click();
+});
+
+// ══════════════════════════════════════════════════════════════════
+// CAMERA PRESETS
+// ══════════════════════════════════════════════════════════════════
+var PRESETS = {
+  dji:      { sw:10.2, sh:5.7, fl:1.6, crop:1, rw:3840, rh:2160, name:"DJI Action 6 (4K)", color:"#667eea", bitrate:100, battery:150, thermal:999 },
+  dji1080:  { sw:10.2, sh:5.7, fl:1.6, crop:1, rw:1920, rh:1080, name:"DJI Action 6 (1080p)", color:"#667eea", bitrate:45, battery:240, thermal:999 },
+  gopro:    { sw:6.2, sh:4.6, fl:2.92, crop:1, rw:3840, rh:2160, name:"GoPro HERO 13 (4K)", color:"#22d3ee", bitrate:120, battery:90, thermal:90 },
+  gopro53:  { sw:6.2, sh:4.6, fl:2.92, crop:1, rw:5312, rh:2988, name:"GoPro HERO 13 (5.3K)", color:"#22d3ee", bitrate:120, battery:60, thermal:60 },
+  basler:   { sw:6.68, sh:4.20, fl:6, crop:1, rw:1920, rh:1200, name:"Basler + 6mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler8:  { sw:6.68, sh:4.20, fl:8, crop:1, rw:1920, rh:1200, name:"Basler + 8mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler12: { sw:6.68, sh:4.20, fl:12, crop:1, rw:1920, rh:1200, name:"Basler + 12mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler16: { sw:6.68, sh:4.20, fl:16, crop:1, rw:1920, rh:1200, name:"Basler + 16mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+};
+var ARENA_PRESETS = { custom:null, tmaze:{w:120,h:80}, openfield40:{w:40,h:40}, openfield60:{w:60,h:60}, linear150:{w:150,h:15}, homecage:{w:30,h:20}, epm:{w:70,h:70}, barnes:{w:90,h:90}, mwm:{w:120,h:120}, spacecage:{w:300,h:30} };
+
+// ══════════════════════════════════════════════════════════════════
+// CALCULATOR
+// ══════════════════════════════════════════════════════════════════
+var $cam=document.getElementById("calcCamera"), $cam2=document.getElementById("calcCamera2");
+var $sw=document.getElementById("calcSensorW"), $sh=document.getElementById("calcSensorH");
+var $fl=document.getElementById("calcFL"), $crop=document.getElementById("calcCropFactor");
+var $rw=document.getElementById("calcResW"), $rh=document.getElementById("calcResH");
+var $ow=document.getElementById("calcObjW"), $oh=document.getElementById("calcObjH");
+var $mount=document.getElementById("calcMount"), $animal=document.getElementById("animalSize");
+var $arenaP=document.getElementById("arenaPreset"), $cmpOn=document.getElementById("compareOn");
+var $cmpSel=document.getElementById("compareSelect");
+var $results=document.getElementById("calcResults"), $feas=document.getElementById("feasibility");
+var $slider=document.getElementById("distSlider"), $sliderVal=document.getElementById("sliderValue");
+var $tooltip=document.getElementById("diagramTooltip");
+var canvas=document.getElementById("fovDiagram"), ctx=canvas.getContext("2d");
+var $estFps=document.getElementById("estFps"), $estDur=document.getElementById("estDur");
+var $estResult=document.getElementById("estResult"), $checklist=document.getElementById("checklist");
+
+var currentDist=115, isDragging=false, lastCalc={}, sliderLocked=false;
+var camIconPos={x:0,y:0,r:12};
+
+function applyPreset(k) { var p=PRESETS[k]; if(p){$sw.value=p.sw;$sh.value=p.sh;$fl.value=p.fl;$crop.value=p.crop;$rw.value=p.rw;$rh.value=p.rh;} }
+$cam.addEventListener("change", function(){ applyPreset($cam.value); sliderLocked=false; updateCalculator(); });
+$cam2.addEventListener("change", function(){ updateCalculator(); });
+$arenaP.addEventListener("change", function(){ var a=ARENA_PRESETS[$arenaP.value]; if(a){$ow.value=a.w;$oh.value=a.h;sliderLocked=false;updateCalculator();} });
+$cmpOn.addEventListener("change", function(){ $cmpSel.style.display=$cmpOn.checked?"block":"none"; updateCalculator(); });
+[$sw,$sh,$fl,$crop,$rw,$rh,$ow,$oh,$mount,$animal].forEach(function(e){e.addEventListener("input",function(){sliderLocked=false;updateCalculator();});});
+[$estFps,$estDur].forEach(function(e){e.addEventListener("input",updateCalculator);});
+$slider.addEventListener("input", function(){ currentDist=parseFloat($slider.value); $sliderVal.textContent=Math.round(currentDist)+" cm"; sliderLocked=true; updateCalculator(); });
+
+function calcFOV(s,f){return 2*Math.atan(s/(2*f))*(180/Math.PI);}
+function calcCov(fov,d){return 2*d*Math.tan(fov*Math.PI/360);}
+function calcDst(fov,c){return c/(2*Math.tan(fov*Math.PI/360));}
+function computeCam(k){var p=PRESETS[k];if(!p)return null;return{hfov:calcFOV(p.sw*p.crop,p.fl),vfov:calcFOV(p.sh*p.crop,p.fl),rw:p.rw,rh:p.rh,name:p.name,color:p.color};}
+
+function updateCalculator() {
+  var sw=+$sw.value||9.6,sh=+$sh.value||7.2,fl=+$fl.value||2.8,crop=+$crop.value||1;
+  var rw=+$rw.value||3840,rh=+$rh.value||2160,objW=+$ow.value||120,objH=+$oh.value||80;
+  var anW=+$animal.value||3, isTop=$mount.value==="topdown";
+  var hfov=calcFOV(sw*crop,fl),vfov=calcFOV(sh*crop,fl);
+  var minD=Math.max(calcDst(hfov,objW),calcDst(vfov,objH)),recD=minD*1.15;
+  if(!sliderLocked){currentDist=recD;$slider.value=Math.round(currentDist);$sliderVal.textContent=Math.round(currentDist)+" cm";}
+  var d=currentDist; $slider.max=200;
+  var covW=calcCov(hfov,d),covH=calcCov(vfov,d);
+  var pxH=rw/covW,pxV=rh/covH,pxA=Math.min(pxH,pxV)*anW;
+  var fits=covW>=objW&&covH>=objH;
+  var tC=pxA>=30?"#4ade80":pxA>=15?"#22d3ee":pxA>=8?"#facc15":"#f87171";
+  var tL=pxA>=30?"Excellent":pxA>=15?"Sufficient":pxA>=8?"Marginal":"Insufficient";
+  lastCalc={hfov:hfov,vfov:vfov,dist:d,covW:covW,covH:covH,objW:objW,objH:objH,isTopDown:isTop,rw:rw,rh:rh,pxH:pxH,pxV:pxV};
+  $results.innerHTML=
+    rc(Math.round(d),"","Distance",isTop?"mounting height":"clearance","#667eea")+
+    rc(Math.round(hfov)+"&deg;&times;"+Math.round(vfov)+"&deg;","","FOV","H &times; V","#facc15")+
+    rc(Math.round(covW)+"&times;"+Math.round(covH),"cm","Coverage","","#22d3ee")+
+    rc(pxH.toFixed(1),"px/cm","Px density",(covW/rw*10).toFixed(1)+" mm/px",pxH>7?"#4ade80":pxH>3?"#facc15":"#f87171")+
+    rc(Math.round(pxA),"px","On animal",anW+"cm body",tC)+
+    rc(fits?"YES":"NO","","Fits?",fits?Math.round((covW-objW)/2)+"cm margin":"Too close",fits?"#4ade80":"#f87171");
+  $feas.innerHTML='<div class="feasibility-bar"><div class="feasibility-dot" style="background:'+tC+'"></div><span style="color:'+tC+';font-weight:600">'+tL+' for SLEAP</span><span style="color:#666;margin-left:auto">'+Math.round(pxA)+'px / '+anW+'cm (need &ge;15)</span></div>';
+
+  // Recording estimator
+  var fps=+$estFps.value||120, dur=+$estDur.value||60;
+  var p=PRESETS[$cam.value]||PRESETS.dji;
+  var isBasler=$cam.value.indexOf("basler")===0;
+  var bitrate=isBasler?(rw*rh*(p.sw>10?8:8)*fps/1e6):(p.bitrate*(fps/120)); // Mbps
+  var fileSizeGB=bitrate*dur*60/8/1000;
+  var battWarn=dur>p.battery?"<span style='color:#f87171'> (exceeds battery)</span>":"";
+  var heatWarn=dur>p.thermal?"<span style='color:#f87171'> (may overheat)</span>":"";
+  $estResult.innerHTML=
+    '<div class="est-item">Bitrate<br><span class="est-val">'+Math.round(bitrate)+' Mbps</span></div>'+
+    '<div class="est-item">File size<br><span class="est-val">'+fileSizeGB.toFixed(1)+' GB</span></div>'+
+    '<div class="est-item">Battery<br><span class="est-val">'+(isBasler?'N/A (wired)':p.battery+' min'+battWarn)+'</span></div>'+
+    '<div class="est-item">Thermal<br><span class="est-val">'+(p.thermal>500?'No limit':p.thermal+' min'+heatWarn)+'</span></div>';
+
+  // Checklist
+  var cl=[];
+  cl.push("Mount camera at <strong>"+Math.round(d)+" cm</strong> "+($mount.value==="topdown"?"above":"below")+" the arena");
+  cl.push("Arena coverage: "+Math.round(covW)+" &times; "+Math.round(covH)+" cm ("+Math.round((covW-objW)/2)+"cm margin)");
+  cl.push("Pixel density: "+pxH.toFixed(1)+" px/cm &mdash; "+tL+" for "+anW+"cm animal");
+  cl.push("Storage needed for "+dur+"min: <strong>"+fileSizeGB.toFixed(1)+" GB</strong>");
+  if(!isBasler) cl.push("Charge battery fully &mdash; "+p.battery+" min runtime at this resolution");
+  if(isBasler) cl.push("Connect 5GigE Ethernet cable (Cat6 or better, max 100m)");
+  if(isBasler) cl.push("Attach "+fl+"mm C-mount lens &mdash; verify focus and aperture");
+  if(!isBasler) cl.push("Set camera to "+rw+"&times;"+rh+" @ "+fps+"fps");
+  cl.push("Run distortion check with charuco board if arena fills >70% of frame");
+  cl.push("Verify animal is visible at all arena positions before recording");
+  $checklist.innerHTML=cl.map(function(c){return'<li>'+c+'</li>';}).join("");
+
+  var cmp=$cmpOn.checked?computeCam($cam2.value):null;
+  drawDiagram(hfov,vfov,d,covW,covH,objW,objH,isTop,rw,rh,cmp);
+}
+function rc(v,u,l,s,c){return'<div class="result-card"><div class="result-value" style="color:'+c+'">'+v+'</div><div class="result-label">'+l+'</div>'+(s?'<div class="result-sub">'+s+'</div>':'')+'</div>';}
+
+// ── Drag camera ──
+canvas.addEventListener("mousedown",function(e){var r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(canvas.width/r.width),my=(e.clientY-r.top)*(canvas.height/r.height),dx=mx-camIconPos.x,dy=my-camIconPos.y;if(Math.sqrt(dx*dx+dy*dy)<camIconPos.r+10){isDragging=true;canvas.classList.add("dragging");e.preventDefault();}});
+window.addEventListener("mousemove",function(e){if(!isDragging)return;var r=canvas.getBoundingClientRect(),my=(e.clientY-r.top)*(canvas.height/r.height);var H=canvas.height,pad=40,sideH=H-pad*2-60,maxD=200,scale2=sideH/maxD,centerY=H/2;
+  // Distance = how far camera is from center, doubled (since center is midpoint of camera-to-ground)
+  var nd=Math.abs(centerY-my)*2/scale2;
+  nd=Math.max(5,Math.min(maxD,nd));currentDist=nd;$slider.value=Math.round(nd);$sliderVal.textContent=Math.round(nd)+" cm";sliderLocked=true;updateCalculator();});
+window.addEventListener("mouseup",function(){if(isDragging){isDragging=false;canvas.classList.remove("dragging");}});
+
+// ── Hover tooltip ──
+canvas.addEventListener("mousemove",function(e){if(isDragging){$tooltip.style.display="none";return;}var r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(canvas.width/r.width),my=(e.clientY-r.top)*(canvas.height/r.height),W=canvas.width,midX=W/2,pad=40,c=lastCalc;
+  if(mx>midX&&c.covW){var tvX0=midX+pad,tvY0=pad+30,tvW2=midX-pad*2,tvH2=canvas.height-pad*2-30,maxDim=Math.max(c.covW,c.covH,c.objW,c.objH),tvS=Math.min(tvW2,tvH2)/(maxDim*1.25),tvCx=tvX0+tvW2/2,tvCy=tvY0+tvH2/2,cW2=c.covW/2*tvS,cH2=c.covH/2*tvS;
+    if(mx>=tvCx-cW2&&mx<=tvCx+cW2&&my>=tvCy-cH2&&my<=tvCy+cH2){var fx=(mx-(tvCx-cW2))/(cW2*2),fy=(my-(tvCy-cH2))/(cH2*2);$tooltip.style.display="block";$tooltip.style.left=(e.clientX-r.left+14)+"px";$tooltip.style.top=(e.clientY-r.top-10)+"px";$tooltip.innerHTML="Pos: "+Math.round(fx*c.covW)+"&times;"+Math.round(fy*c.covH)+" cm<br>Pixel: "+Math.round(fx*c.rw)+"&times;"+Math.round(fy*c.rh)+"<br>"+c.pxH.toFixed(1)+" px/cm";return;}}
+  var dx=mx-camIconPos.x,dy=my-camIconPos.y;if(Math.sqrt(dx*dx+dy*dy)<camIconPos.r+8){canvas.classList.add("hoverable");$tooltip.style.display="block";$tooltip.style.left=(e.clientX-r.left+14)+"px";$tooltip.style.top=(e.clientY-r.top-10)+"px";$tooltip.textContent="Drag to adjust distance";return;}
+  canvas.classList.remove("hoverable");$tooltip.style.display="none";});
+canvas.addEventListener("mouseleave",function(){$tooltip.style.display="none";canvas.classList.remove("hoverable");});
+
+// ── Draw diagram ──
+function drawDiagram(hfov,vfov,dist,covW,covH,objW,objH,isTop,rw,rh,cmp) {
+  var W=canvas.width,H=canvas.height,bg=isLight?"#f8f8f8":"#111",gridC=isLight?"#eee":"#1a1a1a",txtC=isLight?"#888":"#666";
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(var x=0;x<W;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(var y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  var midX=W/2,pad=40,camX=pad+(midX-pad*2)/2;
+  // Center the side view vertically: camera and ground spaced around the vertical midpoint
+  var sideH=H-pad*2-60, maxSD=200;
+  var scale=sideH/maxSD;
+  var spanPx=dist*scale;
+  var centerY=H/2;
+  var camY,objY;
+  if(isTop){camY=centerY-spanPx/2;objY=centerY+spanPx/2;}else{camY=centerY+spanPx/2;objY=centerY-spanPx/2;}
+  // Clamp to canvas bounds
+  camY=Math.max(pad+12,Math.min(H-pad-12,camY));
+  objY=Math.max(pad+12,Math.min(H-pad-12,objY));
+  camIconPos.x=camX;camIconPos.y=camY;camIconPos.r=12;
+  // Use a separate horizontal scale so wide FOV cones fit in the left half
+  var sideW=midX-pad*2;
+  var maxHorizCm=Math.max(covW,objW,50)*1.3;
+  var hScale=sideW/maxHorizCm; // px per cm, horizontal
+  var halfCovPx=covW/2*hScale,halfObjPx=objW/2*hScale;
+
+  // Comparison cone behind
+  if(cmp){var cmpCovW2=calcCov(cmp.hfov,dist)/2*hScale;
+    ctx.fillStyle=cmp.color+"0A";ctx.beginPath();ctx.moveTo(camX,camY);ctx.lineTo(camX-cmpCovW2,objY);ctx.lineTo(camX+cmpCovW2,objY);ctx.closePath();ctx.fill();
+    ctx.strokeStyle=cmp.color+"44";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(camX,camY);ctx.lineTo(camX-cmpCovW2,objY);ctx.moveTo(camX,camY);ctx.lineTo(camX+cmpCovW2,objY);ctx.stroke();}
+
+  // Primary cone
+  ctx.fillStyle="rgba(102,126,234,0.07)";ctx.beginPath();ctx.moveTo(camX,camY);ctx.lineTo(camX-halfCovPx,objY);ctx.lineTo(camX+halfCovPx,objY);ctx.closePath();ctx.fill();
+  ctx.strokeStyle="rgba(102,126,234,0.35)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(camX,camY);ctx.lineTo(camX-halfCovPx,objY);ctx.moveTo(camX,camY);ctx.lineTo(camX+halfCovPx,objY);ctx.stroke();
+
+  // Object & coverage
+  ctx.fillStyle="rgba(74,222,128,0.15)";ctx.fillRect(camX-halfObjPx,objY-4,halfObjPx*2,8);ctx.strokeStyle="#4ade80";ctx.lineWidth=2;ctx.strokeRect(camX-halfObjPx,objY-4,halfObjPx*2,8);
+  ctx.strokeStyle="#667eea";ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(camX-halfCovPx,objY);ctx.lineTo(camX+halfCovPx,objY);ctx.stroke();ctx.setLineDash([]);
+
+  // Distance line
+  var dlX=Math.min(camX+halfCovPx+24,midX-20);ctx.strokeStyle="#555";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(dlX,camY);ctx.lineTo(dlX,objY);ctx.stroke();
+  ctx.fillStyle="#555";ctx.beginPath();ctx.moveTo(dlX-4,camY+(isTop?6:-6));ctx.lineTo(dlX+4,camY+(isTop?6:-6));ctx.lineTo(dlX,camY);ctx.fill();
+  ctx.beginPath();ctx.moveTo(dlX-4,objY+(isTop?-6:6));ctx.lineTo(dlX+4,objY+(isTop?-6:6));ctx.lineTo(dlX,objY);ctx.fill();
+  ctx.fillStyle=txtC;ctx.font="11px -apple-system,sans-serif";ctx.textAlign="center";ctx.fillText(Math.round(dist)+" cm",dlX+24,(camY+objY)/2+4);
+
+  // Camera icon
+  ctx.save();ctx.shadowColor="#667eea";ctx.shadowBlur=isDragging?16:8;ctx.fillStyle=isDragging?"#8899ff":"#667eea";ctx.beginPath();ctx.arc(camX,camY,12,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.fillStyle="#fff";ctx.font="bold 10px sans-serif";ctx.textAlign="center";ctx.fillText("\u25A3",camX,camY+4);
+
+  // Labels
+  ctx.fillStyle=txtC;ctx.font="11px -apple-system,sans-serif";ctx.fillText("Side View \u2014 drag camera",camX,pad-4);
+  ctx.fillStyle="#4ade80";ctx.fillText(objW+" cm",camX,objY+(isTop?22:-14));
+  ctx.fillStyle="#667eea";ctx.font="10px sans-serif";ctx.fillText(Math.round(covW)+" cm coverage",camX,objY+(isTop?36:-28));
+  if(cmp){ctx.fillStyle=cmp.color;ctx.fillText(cmp.name+": "+Math.round(calcCov(cmp.hfov,dist))+" cm",camX,objY+(isTop?50:-42));}
+
+  // ── Top-down view with heatmap ──
+  var tvX0=midX+pad,tvY0=pad+30,tvW2=midX-pad*2,tvH2=H-pad*2-30;
+  var maxDim=Math.max(covW,covH,objW,objH);
+  if(cmp){maxDim=Math.max(maxDim,calcCov(cmp.hfov,dist),calcCov(cmp.vfov,dist));}
+  var tvS=Math.min(tvW2,tvH2)/(maxDim*1.25),tvCx=tvX0+tvW2/2,tvCy=tvY0+tvH2/2;
+
+  if(cmp){var c2w=calcCov(cmp.hfov,dist)/2*tvS,c2h=calcCov(cmp.vfov,dist)/2*tvS;ctx.fillStyle=cmp.color+"0D";ctx.fillRect(tvCx-c2w,tvCy-c2h,c2w*2,c2h*2);ctx.strokeStyle=cmp.color+"55";ctx.lineWidth=1;ctx.setLineDash([4,3]);ctx.strokeRect(tvCx-c2w,tvCy-c2h,c2w*2,c2h*2);ctx.setLineDash([]);}
+
+  // Heatmap: pixel density gradient (green center → yellow edges)
+  var cW2=covW/2*tvS,cH2=covH/2*tvS;
+  var grad=ctx.createRadialGradient(tvCx,tvCy,0,tvCx,tvCy,Math.max(cW2,cH2));
+  grad.addColorStop(0,"rgba(74,222,128,0.12)");grad.addColorStop(0.6,"rgba(74,222,128,0.06)");grad.addColorStop(1,"rgba(248,113,113,0.08)");
+  ctx.fillStyle=grad;ctx.fillRect(tvCx-cW2,tvCy-cH2,cW2*2,cH2*2);
+  ctx.strokeStyle="rgba(102,126,234,0.5)";ctx.lineWidth=1;ctx.strokeRect(tvCx-cW2,tvCy-cH2,cW2*2,cH2*2);
+
+  // Object rect
+  var ow2=objW/2*tvS,oh2=objH/2*tvS;
+  ctx.fillStyle="rgba(74,222,128,0.08)";ctx.fillRect(tvCx-ow2,tvCy-oh2,ow2*2,oh2*2);
+  ctx.strokeStyle="#4ade80";ctx.lineWidth=2;ctx.strokeRect(tvCx-ow2,tvCy-oh2,ow2*2,oh2*2);
+
+  ctx.fillStyle=txtC;ctx.font="11px -apple-system,sans-serif";ctx.textAlign="center";ctx.fillText("Top View \u2014 hover for px info (green=best density)",tvCx,tvY0-8);
+  ctx.fillStyle="#4ade80";ctx.font="10px monospace";ctx.fillText(objW+" \u00D7 "+objH+" cm",tvCx,tvCy+oh2+16);
+  ctx.fillStyle="#667eea";ctx.fillText(Math.round(covW)+" \u00D7 "+Math.round(covH)+" cm",tvCx,tvCy-cH2-6);
+  ctx.fillStyle="#555";ctx.font="10px sans-serif";ctx.fillText(rw+" \u00D7 "+rh+" px",tvCx,tvCy+Math.max(cH2,oh2)+32);
+  if(cmp){ctx.fillStyle=cmp.color;ctx.fillText(cmp.name+": "+Math.round(calcCov(cmp.hfov,dist))+" \u00D7 "+Math.round(calcCov(cmp.vfov,dist))+" cm",tvCx,tvCy+Math.max(cH2,oh2)+46);}
+}
+
+setTimeout(updateCalculator,100);
+
+// ══════════════════════════════════════════════════════════════════
+// WIZARD
+// ══════════════════════════════════════════════════════════════════
+var WIZARD_QS = [
+  { id:"arena", title:"Arena Size", sub:"How large is your experimental arena?", opts:[
+    {label:"Small (<50cm)",v:"s",dji:8,gopro:7,basler:9},{label:"Medium (50\u2013150cm)",v:"m",dji:9,gopro:7,basler:7},{label:"Large (>150cm)",v:"l",dji:7,gopro:8,basler:5}]},
+  { id:"light", title:"Lighting", sub:"What lighting conditions?", opts:[
+    {label:"Normal room light",v:"n",dji:9,gopro:8,basler:8},{label:"Dim light",v:"d",dji:7,gopro:5,basler:9},{label:"Dark / IR only",v:"ir",dji:0,gopro:0,basler:10}]},
+  { id:"fps", title:"Frame Rate", sub:"How fast does the animal move?", opts:[
+    {label:"Standard (30 fps)",v:"lo",dji:9,gopro:8,basler:9},{label:"High (60\u2013120 fps)",v:"hi",dji:9,gopro:7,basler:9},{label:"Very high (>120 fps)",v:"vh",dji:6,gopro:6,basler:10}]},
+  { id:"sync", title:"Multi-Camera Sync", sub:"Need synchronized cameras?", opts:[
+    {label:"Single camera",v:"no",dji:9,gopro:7,basler:7},{label:"Soft sync (Wi-Fi, ~50ms)",v:"soft",dji:8,gopro:3,basler:6},{label:"Hard sync (<1ms)",v:"hard",dji:0,gopro:0,basler:10}]},
+  { id:"dur", title:"Recording Duration", sub:"How long per session?", opts:[
+    {label:"Short (<1 hour)",v:"s",dji:9,gopro:8,basler:9},{label:"Medium (1\u20133 hours)",v:"m",dji:9,gopro:4,basler:9},{label:"Long (>3 hours)",v:"l",dji:7,gopro:2,basler:10}]},
+  { id:"color", title:"Color", sub:"Do you need color video?", opts:[
+    {label:"Yes, need RGB",v:"y",dji:10,gopro:10,basler:2},{label:"No, grayscale OK",v:"n",dji:8,gopro:7,basler:10}]},
+  { id:"budget", title:"Budget", sub:"Per-camera budget?", opts:[
+    {label:"Budget (~$400)",v:"lo",dji:10,gopro:9,basler:3},{label:"Moderate (~$800)",v:"mid",dji:9,gopro:8,basler:5},{label:"No limit",v:"hi",dji:8,gopro:7,basler:10}]},
+];
+var wizStep=0, wizAnswers=[];
+var $wizSteps=document.getElementById("wizSteps"), $wizResult=document.getElementById("wizResult");
+var $wizProg=document.getElementById("wizProgress"), $wizFill=document.getElementById("wizProgressFill");
+
+function renderWizStep() {
+  if(wizStep>=WIZARD_QS.length){showWizResult();return;}
+  var q=WIZARD_QS[wizStep];
+  $wizProg.textContent="Step "+(wizStep+1)+" of "+WIZARD_QS.length;
+  $wizFill.style.width=((wizStep+1)/WIZARD_QS.length*100)+"%";
+  $wizSteps.innerHTML='<div class="wizard-card"><h3>'+q.title+'</h3><p>'+q.sub+'</p><div class="wiz-options">'+
+    q.opts.map(function(o){return'<button class="wiz-opt" data-v="'+o.v+'">'+o.label+'</button>';}).join("")+'</div></div>';
+  $wizResult.style.display="none";
+  $wizSteps.querySelectorAll(".wiz-opt").forEach(function(btn){
+    btn.addEventListener("click",function(){
+      wizAnswers[wizStep]=btn.dataset.v;wizStep++;renderWizStep();
+    });
+  });
+}
+
+function showWizResult() {
+  $wizSteps.innerHTML="";$wizProg.textContent="Result";$wizFill.style.width="100%";
+  var scores={dji:0,gopro:0,basler:0}, reasons={dji:[],gopro:[],basler:[]};
+  wizAnswers.forEach(function(ans,i){
+    var q=WIZARD_QS[i],opt=q.opts.find(function(o){return o.v===ans;});
+    if(!opt)return;
+    scores.dji+=opt.dji;scores.gopro+=opt.gopro;scores.basler+=opt.basler;
+    if(opt.dji===0)reasons.dji.push(q.title+": not suitable");
+    if(opt.gopro===0)reasons.gopro.push(q.title+": not suitable");
+    if(opt.basler<=2&&opt.dji>5)reasons.basler.push(q.title+": limited");
+    if(opt.dji>=9)reasons.dji.push(q.title+": excellent fit");
+    if(opt.basler>=10)reasons.basler.push(q.title+": best choice");
+    if(opt.gopro<=3)reasons.gopro.push(q.title+": weak");
+  });
+  var maxS=Math.max(scores.dji,scores.gopro,scores.basler);
+  var cams=[
+    {key:"dji",name:"DJI Action 6",score:scores.dji,color:"#667eea",reasons:reasons.dji},
+    {key:"gopro",name:"GoPro HERO 13 Black",score:scores.gopro,color:"#22d3ee",reasons:reasons.gopro},
+    {key:"basler",name:"Basler ace 2 + 6mm",score:scores.basler,color:"#a78bfa",reasons:reasons.basler},
+  ].sort(function(a,b){return b.score-a.score;});
+  $wizResult.style.display="block";
+  $wizResult.innerHTML=cams.map(function(c,i){
+    var pct=Math.round(c.score/maxS*100);
+    return'<div class="wiz-result-card"><div class="wiz-rank" style="color:'+c.color+'">#'+(i+1)+'</div><div style="flex:1"><div style="font-size:15px;font-weight:700;color:#fff">'+c.name+'</div><div class="wiz-score-bar"><div class="wiz-score-fill" style="width:'+pct+'%;background:'+c.color+'"></div></div><div style="font-size:12px;color:#aaa;margin-top:4px">Score: '+c.score+'/'+maxS+'</div><div class="wiz-reasons">'+c.reasons.slice(0,3).join(" &middot; ")+'</div></div></div>';
+  }).join("")+'<div style="text-align:center"><button class="wiz-restart" id="wizRestart">Start Over</button></div>';
+  document.getElementById("wizRestart").addEventListener("click",function(){wizStep=0;wizAnswers=[];renderWizStep();});
+}
+renderWizStep();
+
+// ══════════════════════════════════════════════════════════════════
+// MULTI-CAM PLANNER
+// ══════════════════════════════════════════════════════════════════
+var mcCanvas=document.getElementById("mcCanvas"),mcCtx=mcCanvas.getContext("2d");
+var mcCams=[], mcDrag=null;
+var MC_COLORS=["#667eea","#22d3ee","#a78bfa","#4ade80","#facc15","#f87171"];
+var MC_PRESETS={dji:{hfov:145,vfov:122,name:"DJI"},gopro:{hfov:140,vfov:105,name:"GoPro"},basler:{hfov:58,vfov:39,name:"Basler 6mm"}};
+
+function addMcCam(type){
+  var aw=+document.getElementById("mcArenaW").value||120,ah=+document.getElementById("mcArenaH").value||80;
+  mcCams.push({type:type,x:aw/2,y:-10,angle:180}); drawMultiCam();
+}
+document.getElementById("mcArenaPreset").addEventListener("change",function(){
+  var a=ARENA_PRESETS[this.value];if(a){document.getElementById("mcArenaW").value=a.w;document.getElementById("mcArenaH").value=a.h;drawMultiCam();}
+});
+document.getElementById("mcAddDji").addEventListener("click",function(){addMcCam("dji");});
+document.getElementById("mcAddGopro").addEventListener("click",function(){addMcCam("gopro");});
+document.getElementById("mcAddBasler").addEventListener("click",function(){addMcCam("basler");});
+document.getElementById("mcClear").addEventListener("click",function(){mcCams=[];drawMultiCam();});
+[document.getElementById("mcArenaW"),document.getElementById("mcArenaH"),document.getElementById("mcHeight")].forEach(function(e){e.addEventListener("input",drawMultiCam);});
+
+function drawMultiCam(){
+  var W=mcCanvas.width,H=mcCanvas.height,aw=+document.getElementById("mcArenaW").value||120,ah=+document.getElementById("mcArenaH").value||80,ch=+document.getElementById("mcHeight").value||100;
+  var bg=isLight?"#f8f8f8":"#111",gridC=isLight?"#eee":"#1a1a1a";
+  mcCtx.clearRect(0,0,W,H);mcCtx.fillStyle=bg;mcCtx.fillRect(0,0,W,H);
+  mcCtx.strokeStyle=gridC;mcCtx.lineWidth=1;
+  for(var gx=0;gx<W;gx+=40){mcCtx.beginPath();mcCtx.moveTo(gx,0);mcCtx.lineTo(gx,H);mcCtx.stroke();}
+  for(var gy=0;gy<H;gy+=40){mcCtx.beginPath();mcCtx.moveTo(0,gy);mcCtx.lineTo(W,gy);mcCtx.stroke();}
+  var maxDim=Math.max(aw,ah)*1.6,scale=Math.min(W,H)/maxDim;
+  var cx=W/2,cy=H/2;
+  // Arena
+  var arW=aw*scale,arH=ah*scale;
+  mcCtx.fillStyle="rgba(74,222,128,0.08)";mcCtx.fillRect(cx-arW/2,cy-arH/2,arW,arH);
+  mcCtx.strokeStyle="#4ade80";mcCtx.lineWidth=2;mcCtx.strokeRect(cx-arW/2,cy-arH/2,arW,arH);
+  mcCtx.fillStyle=isLight?"#999":"#555";mcCtx.font="10px sans-serif";mcCtx.textAlign="center";
+  mcCtx.fillText(aw+" \u00D7 "+ah+" cm",cx,cy+arH/2+16);
+
+  // Camera FOV cones (coverage at height ch)
+  mcCams.forEach(function(cam,i){
+    var p=MC_PRESETS[cam.type],color=MC_COLORS[i%MC_COLORS.length];
+    var covW=calcCov(p.hfov,ch),covH=calcCov(p.vfov,ch);
+    var cW=covW*scale/2,cH=covH*scale/2;
+    var camPx=cx+(cam.x-aw/2)*scale,camPy=cy+(cam.y-ah/2)*scale;
+    // Draw coverage ellipse centered at camera projection
+    mcCtx.fillStyle=color+"15";mcCtx.beginPath();mcCtx.ellipse(camPx,camPy,cW,cH,0,0,Math.PI*2);mcCtx.fill();
+    mcCtx.strokeStyle=color+"55";mcCtx.lineWidth=1;mcCtx.beginPath();mcCtx.ellipse(camPx,camPy,cW,cH,0,0,Math.PI*2);mcCtx.stroke();
+    // Camera dot
+    mcCtx.fillStyle=color;mcCtx.beginPath();mcCtx.arc(camPx,camPy,8,0,Math.PI*2);mcCtx.fill();
+    mcCtx.fillStyle="#fff";mcCtx.font="bold 8px sans-serif";mcCtx.textAlign="center";mcCtx.fillText(i+1,camPx,camPy+3);
+  });
+  // Camera list
+  var $list=document.getElementById("mcCamList");
+  $list.innerHTML=mcCams.map(function(c,i){
+    return'<div class="mc-cam-item"><div class="mc-cam-dot" style="background:'+MC_COLORS[i%MC_COLORS.length]+'"></div><span>'+(i+1)+'. '+MC_PRESETS[c.type].name+'</span><span style="color:#666;margin-left:auto">'+Math.round(calcCov(MC_PRESETS[c.type].hfov,ch))+'\u00D7'+Math.round(calcCov(MC_PRESETS[c.type].vfov,ch))+'cm</span></div>';
+  }).join("");
+}
+
+// Drag multi-cam cameras
+mcCanvas.addEventListener("mousedown",function(e){
+  var r=mcCanvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(mcCanvas.width/r.width),my=(e.clientY-r.top)*(mcCanvas.height/r.height);
+  var aw=+document.getElementById("mcArenaW").value||120,ah=+document.getElementById("mcArenaH").value||80;
+  var maxDim=Math.max(aw,ah)*1.6,scale=Math.min(mcCanvas.width,mcCanvas.height)/maxDim,cx=mcCanvas.width/2,cy=mcCanvas.height/2;
+  for(var i=mcCams.length-1;i>=0;i--){var c=mcCams[i],px=cx+(c.x-aw/2)*scale,py=cy+(c.y-ah/2)*scale;
+    if(Math.sqrt((mx-px)*(mx-px)+(my-py)*(my-py))<14){mcDrag={idx:i,scale:scale,cx:cx,cy:cy,aw:aw,ah:ah};e.preventDefault();return;}}
+});
+mcCanvas.addEventListener("mousemove",function(e){
+  if(!mcDrag)return;var r=mcCanvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(mcCanvas.width/r.width),my=(e.clientY-r.top)*(mcCanvas.height/r.height);
+  var d=mcDrag;mcCams[d.idx].x=(mx-d.cx)/d.scale+d.aw/2;mcCams[d.idx].y=(my-d.cy)/d.scale+d.ah/2;drawMultiCam();
+});
+mcCanvas.addEventListener("mouseup",function(){mcDrag=null;});
+mcCanvas.addEventListener("mouseleave",function(){mcDrag=null;});
+drawMultiCam();
+
+// ══════════════════════════════════════════════════════════════════
+// DISTORTION PREVIEW
+// ══════════════════════════════════════════════════════════════════
+// Distortion mode presets: { k1, k2, label }
+var DIST_MODES = {
+  dji: {
+    wide:     { k1: -0.30, k2: 0.10, label: "DJI Action 6 \u00B7 Wide (estimate)" },
+    standard: { k1: -0.12, k2: 0.02, label: "DJI Action 6 \u00B7 Standard (estimate)" },
+    linear:   { k1: -0.01, k2: 0.00, label: "DJI Action 6 \u00B7 Linear (corrected)" },
+  },
+  gopro: {
+    wide:   { k1: -0.33, k2: 0.12, label: "GoPro HERO 13 \u00B7 Wide/SuperView (estimate)" },
+    linear: { k1: -0.02, k2: 0.00, label: "GoPro HERO 13 \u00B7 Linear (corrected)" },
+    narrow: { k1: -0.01, k2: 0.00, label: "GoPro HERO 13 \u00B7 Narrow (minimal)" },
+  },
+  basler: {
+    "6mm":  { k1: -0.08, k2: 0.01, label: "Basler \u00B7 6mm (varies by lens quality)" },
+    "8mm":  { k1: -0.04, k2: 0.00, label: "Basler \u00B7 8mm (moderate)" },
+    "12mm": { k1: -0.01, k2: 0.00, label: "Basler \u00B7 12mm+ (minimal)" },
+    cheap:  { k1: -0.35, k2: 0.15, label: "Basler \u00B7 Cheap wide-angle (heavy!)" },
+  }
+};
+
+function drawDistGrid(canvasId, k1, k2, color) {
+  var c = document.getElementById(canvasId); if (!c) return;
+  var ct = c.getContext("2d"), w = c.width, h = c.height;
+  ct.clearRect(0, 0, w, h);
+  ct.fillStyle = isLight ? "#f8f8f8" : "#111"; ct.fillRect(0, 0, w, h);
+
+  // Draw undistorted grid faintly for reference
+  ct.strokeStyle = isLight ? "#ddd" : "#222"; ct.lineWidth = 0.5;
+  var nx = 12, ny = 9, cx = w / 2, cy = h / 2;
+  for (var gy = 0; gy <= ny; gy++) {
+    var yp = (gy / ny) * h; ct.beginPath(); ct.moveTo(0, yp); ct.lineTo(w, yp); ct.stroke();
+  }
+  for (var gx = 0; gx <= nx; gx++) {
+    var xp = (gx / nx) * w; ct.beginPath(); ct.moveTo(xp, 0); ct.lineTo(xp, h); ct.stroke();
+  }
+
+  // Draw distorted grid
+  ct.strokeStyle = color; ct.lineWidth = 1.2;
+  // Horizontal lines
+  for (var iy = 0; iy <= ny; iy++) { ct.beginPath();
+    for (var ix = 0; ix <= nx * 3; ix++) {
+      var ux = (ix / (nx * 3) - 0.5) * 2, uy = (iy / ny - 0.5) * 2;
+      var r2 = ux * ux + uy * uy, f = 1 + k1 * r2 + k2 * r2 * r2;
+      var dx = ux * f * w / 2 + cx, dy = uy * f * h / 2 + cy;
+      if (ix === 0) ct.moveTo(dx, dy); else ct.lineTo(dx, dy);
+    } ct.stroke(); }
+  // Vertical lines
+  for (var ix2 = 0; ix2 <= nx; ix2++) { ct.beginPath();
+    for (var iy2 = 0; iy2 <= ny * 3; iy2++) {
+      var ux2 = (ix2 / nx - 0.5) * 2, uy2 = (iy2 / (ny * 3) - 0.5) * 2;
+      var r2b = ux2 * ux2 + uy2 * uy2, fb = 1 + k1 * r2b + k2 * r2b * r2b;
+      var dx2 = ux2 * fb * w / 2 + cx, dy2 = uy2 * fb * h / 2 + cy;
+      if (iy2 === 0) ct.moveTo(dx2, dy2); else ct.lineTo(dx2, dy2);
+    } ct.stroke(); }
+
+  // Label k values
+  ct.fillStyle = isLight ? "#999" : "#555"; ct.font = "10px monospace"; ct.textAlign = "left";
+  ct.fillText("k1=" + k1.toFixed(2) + "  k2=" + k2.toFixed(2), 6, h - 6);
+
+  // Severity indicator
+  var severity = Math.abs(k1);
+  var sevLabel = severity < 0.03 ? "Minimal" : severity < 0.1 ? "Low" : severity < 0.2 ? "Moderate" : "Heavy";
+  var sevColor = severity < 0.03 ? "#4ade80" : severity < 0.1 ? "#22d3ee" : severity < 0.2 ? "#facc15" : "#f87171";
+  ct.fillStyle = sevColor; ct.font = "bold 11px sans-serif"; ct.textAlign = "right";
+  ct.fillText(sevLabel, w - 6, h - 6);
+}
+
+function drawDistortion() {
+  var djiMode = document.getElementById("distDjiMode").value;
+  var goproMode = document.getElementById("distGoproMode").value;
+  var baslerMode = document.getElementById("distBaslerMode").value;
+
+  var dji = DIST_MODES.dji[djiMode];
+  var gopro = DIST_MODES.gopro[goproMode];
+  var basler = DIST_MODES.basler[baslerMode];
+
+  drawDistGrid("distDji", dji.k1, dji.k2, "#667eea88");
+  document.getElementById("distDjiLabel").textContent = dji.label;
+
+  drawDistGrid("distGopro", gopro.k1, gopro.k2, "#22d3ee88");
+  document.getElementById("distGoproLabel").textContent = gopro.label;
+
+  drawDistGrid("distBasler", basler.k1, basler.k2, "#a78bfa88");
+  document.getElementById("distBaslerLabel").textContent = basler.label;
+
+  drawCustomDistortion();
+}
+
+function drawCustomDistortion() {
+  var k1 = parseFloat(document.getElementById("customK1").value) || 0;
+  var k2 = parseFloat(document.getElementById("customK2").value) || 0;
+  drawDistGrid("distCustom", k1, k2, "#facc1588");
+  document.getElementById("distCustomLabel").textContent = "Your calibration \u00B7 k1=" + k1 + ", k2=" + k2;
+}
+
+// Wire up distortion mode selectors
+["distDjiMode", "distGoproMode", "distBaslerMode"].forEach(function(id) {
+  document.getElementById(id).addEventListener("change", drawDistortion);
+});
+["customK1", "customK2"].forEach(function(id) {
+  document.getElementById(id).addEventListener("input", drawCustomDistortion);
+});
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pose Quality Review</title>
+<style>
+  /* ── Reset & base ────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    line-height: 1.5;
+  }
+  button { cursor: pointer; }
+  input[type="text"] {
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 14px;
+    outline: none;
+  }
+  input[type="text"]:focus { border-color: #667eea; }
+
+  /* ── Header ──────────────────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: #2a2a2a;
+    border-bottom: 1px solid #3a3a3a;
+  }
+  .header h1 { font-size: 20px; font-weight: 600; color: #fff; }
+  .header-actions { display: flex; gap: 10px; align-items: center; }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s;
+  }
+  .btn-primary { background: #667eea; color: #fff; }
+  .btn-primary:hover { background: #5a6fd6; }
+  .btn-secondary { background: #3a3a3a; color: #ccc; }
+  .btn-secondary:hover { background: #444; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+
+  /* ── Container ───────────────────────────────────────────────── */
+  .container { max-width: 1400px; margin: 0 auto; padding: 16px 24px; }
+
+  /* ── Welcome screen ──────────────────────────────────────────── */
+  .welcome { text-align: center; padding: 80px 20px; color: #888; }
+  .welcome h2 { font-size: 24px; color: #aaa; margin-bottom: 12px; }
+  .welcome p { font-size: 14px; margin-bottom: 24px; }
+
+  /* ── Summary cards ───────────────────────────────────────────── */
+  .summary-cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .card {
+    flex: 1; min-width: 100px; padding: 12px;
+    background: #2a2a2a; border-radius: 8px; text-align: center;
+    border: 1px solid #3a3a3a;
+  }
+  .card-count { font-size: 24px; font-weight: 700; line-height: 1.2; }
+  .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #888; margin-top: 2px; }
+  .card-total .card-count { color: #e0e0e0; }
+  .card-good .card-count { color: #4ade80; }
+  .card-review .card-count { color: #facc15; }
+  .card-poor .card-count { color: #f87171; }
+  .card-error .card-count { color: #a78bfa; }
+
+  /* ── Toolbar ─────────────────────────────────────────────────── */
+  .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .toolbar-label { font-size: 13px; color: #888; white-space: nowrap; }
+  .filter-toggles { display: flex; gap: 6px; }
+  .toggle-btn {
+    padding: 5px 12px; border: 1px solid #555; border-radius: 4px;
+    background: transparent; color: #999; font-size: 12px; font-weight: 500; transition: all 0.15s;
+  }
+  .toggle-btn.active { border-color: #667eea; color: #667eea; background: rgba(102,126,234,0.1); }
+  .toggle-btn:hover { border-color: #888; color: #ccc; }
+  .toggle-btn.active:hover { border-color: #667eea; color: #667eea; }
+  .search-box { flex: 1; min-width: 180px; }
+
+  /* ── Table ───────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; max-height: 40vh; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th {
+    position: sticky; top: 0; background: #2a2a2a; padding: 8px 10px;
+    text-align: left; font-weight: 600; color: #aaa; border-bottom: 2px solid #3a3a3a;
+    white-space: nowrap; cursor: pointer; user-select: none; z-index: 2;
+  }
+  thead th:hover { color: #e0e0e0; }
+  thead th .sort-arrow { font-size: 10px; margin-left: 4px; color: #667eea; }
+  tbody tr { border-bottom: 1px solid #2a2a2a; transition: background 0.1s; }
+  tbody tr:hover { background: #252525; }
+  tbody tr.expanded { background: #222; }
+  tbody tr.active-proofread { background: rgba(102,126,234,0.08); border-left: 3px solid #667eea; }
+  td { padding: 6px 10px; vertical-align: top; }
+  .filename-cell { cursor: pointer; display: flex; align-items: center; gap: 6px; color: #ddd; }
+  .filename-cell:hover { color: #fff; }
+  .expand-icon { display: inline-block; width: 16px; font-size: 10px; color: #888; transition: transform 0.15s; flex-shrink: 0; }
+  .expand-icon.open { transform: rotate(90deg); }
+
+  /* Recommendation badges */
+  .rec-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .rec-GOOD { background: rgba(74,222,128,0.15); color: #4ade80; }
+  .rec-REVIEW { background: rgba(250,204,21,0.15); color: #facc15; }
+  .rec-POOR { background: rgba(248,113,113,0.15); color: #f87171; }
+  .rec-ERROR { background: rgba(167,139,250,0.15); color: #a78bfa; }
+
+  /* ── Detail panel (expanded row) ─────────────────────────────── */
+  .detail-row td { padding: 0; }
+  .detail-panel { padding: 10px 16px 12px 34px; background: #232323; border-left: 3px solid #667eea; }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin-bottom: 10px; }
+  .flag-item { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+  .flag-name { color: #aaa; min-width: 150px; white-space: nowrap; }
+  .flag-count { font-weight: 600; color: #e0e0e0; min-width: 36px; }
+  .flag-frames { color: #777; font-family: "SF Mono", "Fira Code", monospace; font-size: 11px; word-break: break-all; }
+  .detail-actions { display: flex; gap: 8px; margin-top: 6px; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; border-radius: 4px; border: 1px solid #555; background: transparent; color: #aaa; }
+  .btn-sm:hover { border-color: #888; color: #e0e0e0; }
+  .error-msg { color: #f87171; font-style: italic; font-size: 12px; }
+
+  /* ── Proofread button ────────────────────────────────────────── */
+  .btn-proofread {
+    padding: 3px 10px; font-size: 11px; border-radius: 4px;
+    border: 1px solid #667eea; background: rgba(102,126,234,0.1); color: #667eea; white-space: nowrap;
+  }
+  .btn-proofread:hover { background: rgba(102,126,234,0.25); }
+
+  /* ── Data folder bar ───────────────────────────────────────────── */
+  .data-folder-bar {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 16px; background: #2a2a2a; border: 1px solid #3a3a3a;
+    border-radius: 8px; margin-bottom: 16px;
+  }
+  .data-folder-bar .folder-status {
+    font-size: 12px; color: #888; flex: 1;
+  }
+  .data-folder-bar .folder-status.ready { color: #4ade80; }
+  .data-folder-bar .folder-status.warning { color: #facc15; }
+  .data-folder-bar label { font-size: 12px; color: #aaa; white-space: nowrap; }
+  .data-folder-bar input[type="text"] { width: 260px; font-size: 12px; padding: 4px 8px; }
+
+  /* ── Viewer panel ────────────────────────────────────────────── */
+  .viewer-panel { display: none; margin-top: 12px; }
+  .viewer-panel.open { display: block; }
+  .viewer-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; background: #2a2a2a; border: 1px solid #3a3a3a;
+    border-radius: 8px 8px 0 0; border-bottom: none;
+  }
+  .viewer-header .viewer-title { font-size: 13px; font-weight: 600; color: #ddd; }
+  .viewer-header .viewer-info { font-size: 11px; color: #888; margin-left: 12px; }
+  .viewer-close {
+    background: none; border: 1px solid #555; color: #aaa; border-radius: 4px;
+    padding: 2px 10px; font-size: 12px;
+  }
+  .viewer-close:hover { border-color: #f87171; color: #f87171; }
+  .viewer-iframe-wrap {
+    border: 1px solid #3a3a3a; border-top: none; border-radius: 0 0 8px 8px;
+    overflow: hidden; position: relative;
+  }
+  .viewer-iframe-wrap iframe {
+    width: 100%; height: 80vh; border: none; display: block; background: #111;
+  }
+  .viewer-resize {
+    height: 8px; background: #2a2a2a; cursor: ns-resize;
+    display: flex; justify-content: center; align-items: center;
+    border: 1px solid #3a3a3a; border-top: none; border-radius: 0 0 8px 8px;
+  }
+  .viewer-resize:hover { background: #3a3a3a; }
+  .viewer-resize::after { content: ''; width: 40px; height: 3px; background: #555; border-radius: 2px; }
+
+  /* ── Toast ───────────────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; background: #333; color: #e0e0e0;
+    padding: 10px 20px; border-radius: 6px; font-size: 13px;
+    opacity: 0; transform: translateY(10px); transition: all 0.3s; pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  .empty-state { text-align: center; padding: 40px; color: #666; font-size: 14px; }
+
+  @media (max-width: 768px) {
+    .header { flex-direction: column; gap: 10px; }
+    .summary-cards { flex-direction: column; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .data-folder-bar { flex-direction: column; align-items: stretch; }
+    .data-folder-bar input[type="text"] { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1>Pose Quality Review</h1>
+  <div class="header-actions">
+    <label class="btn btn-primary" id="loadBtn">
+      Load Manifest
+      <input type="file" accept=".json" id="fileInput" style="display:none">
+    </label>
+    <button class="btn btn-secondary" id="exportBtn" disabled>Export CSV</button>
+  </div>
+</div>
+
+<!-- Welcome -->
+<div class="container" id="welcomeContainer">
+  <div class="welcome">
+    <h2>No manifest loaded</h2>
+    <p>Click <strong>Load Manifest</strong> to open a <code>quality_manifest.json</code> file generated by <code>scan_slp_quality()</code>.</p>
+  </div>
+</div>
+
+<!-- Main content -->
+<div class="container" id="mainContainer" style="display:none">
+
+  <!-- Data folder bar -->
+  <div class="data-folder-bar">
+    <button class="btn btn-primary" id="openFolderBtn">Open Data Folder</button>
+    <input type="file" id="folderInput" webkitdirectory style="display:none">
+    <span class="folder-status" id="folderStatus">No folder selected &mdash; click to pick the folder containing your .slp and video files</span>
+    <label for="slpViewerPath">Viewer path</label>
+    <input type="text" id="slpViewerPath" placeholder="../slp-viewer">
+  </div>
+
+  <!-- Summary cards -->
+  <div class="summary-cards" id="summaryCards"></div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <span class="toolbar-label">Filter:</span>
+    <div class="filter-toggles" id="filterToggles"></div>
+    <span class="toolbar-label" style="margin-left:auto">Search:</span>
+    <input type="text" class="search-box" id="searchInput" placeholder="filename...">
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap" id="tableWrap">
+    <table>
+      <thead id="tableHead"></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+
+  <!-- Embedded viewer -->
+  <div class="viewer-panel" id="viewerPanel">
+    <div class="viewer-header">
+      <div>
+        <span class="viewer-title" id="viewerTitle">-</span>
+        <span class="viewer-info" id="viewerInfo"></span>
+      </div>
+      <button class="viewer-close" id="viewerClose">Close viewer</button>
+    </div>
+    <div class="viewer-iframe-wrap" id="viewerIframeWrap">
+      <iframe id="viewerIframe" allow="clipboard-read; clipboard-write"></iframe>
+    </div>
+    <div class="viewer-resize" id="viewerResize"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ── State ──────────────────────────────────────────────────────
+  var manifest = null;
+  var activeFilters = new Set(["REVIEW", "POOR", "ERROR"]);
+  var searchTerm = "";
+  var sortCol = "flagged_fraction";
+  var sortAsc = false;
+  var expandedFiles = new Set();
+  var activeProofreadFile = null;
+
+  // Data folder state
+  var discoveredFiles = { slp: new Map(), video: new Map() }; // basename -> File
+  var folderReady = false;
+
+  // Viewer iframe state
+  var viewerReady = false;
+  var pendingLoad = null; // { slpFile, videoFile, frame } to send once viewer is ready
+
+  // ── Columns ────────────────────────────────────────────────────
+  var COLUMNS = [
+    { key: "filename",        label: "File",       sortable: true  },
+    { key: "day",             label: "Day",        sortable: true  },
+    { key: "mouse_id",        label: "Mouse",      sortable: true  },
+    { key: "trial",           label: "Trial",      sortable: true  },
+    { key: "total_frames",    label: "Frames",     sortable: true  },
+    { key: "flagged_fraction", label: "Flagged %",  sortable: true  },
+    { key: "recommendation",  label: "Rec",        sortable: true  },
+    { key: "_actions",        label: "",           sortable: false },
+  ];
+
+  var FILTER_CATEGORIES = ["GOOD", "REVIEW", "POOR", "ERROR"];
+
+  var FLAG_CATEGORIES = [
+    { key: "spatial_outlier",        label: "Spatial outlier",        countSource: "keypoint" },
+    { key: "temporal_jump",          label: "Temporal jump",          countSource: "keypoint" },
+    { key: "missing",                label: "Missing keypoints",      countSource: "keypoint" },
+    { key: "body_too_long",          label: "Body too long",          countSource: "frame" },
+    { key: "body_too_short",         label: "Body too short",         countSource: "frame" },
+    { key: "hull_area_anomaly",      label: "Hull area anomaly",      countSource: "frame" },
+    { key: "aspect_ratio_anomaly",   label: "Aspect ratio anomaly",   countSource: "frame" },
+    { key: "insufficient_keypoints", label: "Insufficient keypoints", countSource: "frame" },
+  ];
+
+  // ── DOM refs ───────────────────────────────────────────────────
+  var $fileInput = document.getElementById("fileInput");
+  var $exportBtn = document.getElementById("exportBtn");
+  var $welcomeContainer = document.getElementById("welcomeContainer");
+  var $mainContainer = document.getElementById("mainContainer");
+  var $summaryCards = document.getElementById("summaryCards");
+  var $filterToggles = document.getElementById("filterToggles");
+  var $searchInput = document.getElementById("searchInput");
+  var $tableHead = document.getElementById("tableHead");
+  var $tableBody = document.getElementById("tableBody");
+  var $toast = document.getElementById("toast");
+  var $openFolderBtn = document.getElementById("openFolderBtn");
+  var $folderInput = document.getElementById("folderInput");
+  var $folderStatus = document.getElementById("folderStatus");
+  var $slpViewerPath = document.getElementById("slpViewerPath");
+  var $viewerPanel = document.getElementById("viewerPanel");
+  var $viewerTitle = document.getElementById("viewerTitle");
+  var $viewerInfo = document.getElementById("viewerInfo");
+  var $viewerIframe = document.getElementById("viewerIframe");
+  var $viewerClose = document.getElementById("viewerClose");
+  var $viewerResize = document.getElementById("viewerResize");
+  var $viewerIframeWrap = document.getElementById("viewerIframeWrap");
+
+  // ── Settings ───────────────────────────────────────────────────
+  function initSettings() {
+    $slpViewerPath.value = localStorage.getItem("qrt_slpViewerPath") || "../slp-viewer";
+    $slpViewerPath.addEventListener("input", function () {
+      localStorage.setItem("qrt_slpViewerPath", $slpViewerPath.value.trim());
+    });
+  }
+
+  // ── Data folder handling ───────────────────────────────────────
+
+  // Recursively scan a FileSystemDirectoryHandle for .slp and video files
+  async function scanDirectoryHandle(dirHandle, basePath) {
+    for await (var entry of dirHandle.values()) {
+      if (entry.kind === "file") {
+        var name = entry.name;
+        var lower = name.toLowerCase();
+        if (lower.endsWith(".slp")) {
+          var file = await entry.getFile();
+          discoveredFiles.slp.set(name, file);
+        } else if (lower.match(/\.(mp4|mov|m4v|webm|avi)$/)) {
+          var file = await entry.getFile();
+          var videoBase = name.replace(/\.[^.]+$/, "");
+          discoveredFiles.video.set(videoBase, file);
+        }
+      } else if (entry.kind === "directory") {
+        await scanDirectoryHandle(entry, basePath + entry.name + "/");
+      }
+    }
+  }
+
+  // Process a FileList from <input webkitdirectory>
+  function scanFileList(fileList) {
+    for (var i = 0; i < fileList.length; i++) {
+      var file = fileList[i];
+      var name = file.name;
+      var lower = name.toLowerCase();
+      if (lower.endsWith(".slp")) {
+        discoveredFiles.slp.set(name, file);
+      } else if (lower.match(/\.(mp4|mov|m4v|webm|avi)$/)) {
+        var videoBase = name.replace(/\.[^.]+$/, "");
+        discoveredFiles.video.set(videoBase, file);
+      }
+    }
+  }
+
+  function updateFolderStatus() {
+    var slpCount = discoveredFiles.slp.size;
+    var vidCount = discoveredFiles.video.size;
+    if (slpCount === 0 && vidCount === 0) {
+      $folderStatus.textContent = "No .slp or video files found in the selected folder";
+      $folderStatus.className = "folder-status warning";
+      folderReady = false;
+    } else {
+      $folderStatus.textContent = slpCount + " .slp file" + (slpCount !== 1 ? "s" : "") +
+        ", " + vidCount + " video" + (vidCount !== 1 ? "s" : "") + " found";
+      $folderStatus.className = "folder-status ready";
+      folderReady = true;
+    }
+    renderTable(); // update Proofread button availability
+  }
+
+  async function openDataFolder() {
+    discoveredFiles = { slp: new Map(), video: new Map() };
+    folderReady = false;
+
+    if ("showDirectoryPicker" in window) {
+      try {
+        var dirHandle = await window.showDirectoryPicker();
+        $folderStatus.textContent = "Scanning folder...";
+        $folderStatus.className = "folder-status";
+        await scanDirectoryHandle(dirHandle, "");
+        updateFolderStatus();
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          showToast("Folder access error: " + err.message);
+        }
+      }
+    } else {
+      // Fallback: trigger webkitdirectory input
+      $folderInput.click();
+    }
+  }
+
+  $openFolderBtn.addEventListener("click", openDataFolder);
+
+  $folderInput.addEventListener("change", function (e) {
+    var fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    discoveredFiles = { slp: new Map(), video: new Map() };
+    scanFileList(fileList);
+    updateFolderStatus();
+    e.target.value = "";
+  });
+
+  // ── File matching ──────────────────────────────────────────────
+  // Given a manifest file entry, find matching File objects in the discovered folder
+  function findSlpFile(manifestFile) {
+    // Direct match by filename
+    if (discoveredFiles.slp.has(manifestFile.filename)) {
+      return discoveredFiles.slp.get(manifestFile.filename);
+    }
+    return null;
+  }
+
+  function findVideoFile(manifestFile) {
+    // Derive video basename: strip .preds.* suffix and .slp extension
+    var basename = manifestFile.filename
+      .replace(/\.preds\..*$/, "")  // strip everything from .preds onwards
+      .replace(/\.slp$/, "");
+    if (discoveredFiles.video.has(basename)) {
+      return discoveredFiles.video.get(basename);
+    }
+    return null;
+  }
+
+  // ── Flagged frames for localStorage transfer ───────────────────
+  function getFirstFlaggedFrame(file) {
+    if (!file.flagged_frames || !file.flagged_frames.any) return null;
+    var frames = file.flagged_frames.any;
+    for (var i = 0; i < frames.length; i++) {
+      if (typeof frames[i] === "number") return frames[i];
+    }
+    return null;
+  }
+
+  function storeFlaggedFrames(file) {
+    if (!file.flagged_frames) return;
+    var data = {
+      filename: file.filename,
+      path: file.path,
+      flagged_frames: {},
+      frame_counts: file.frame_counts || {},
+      keypoint_counts: file.keypoint_counts || {},
+    };
+    var cats = Object.keys(file.flagged_frames);
+    for (var i = 0; i < cats.length; i++) {
+      var cat = cats[i];
+      var arr = file.flagged_frames[cat];
+      data.flagged_frames[cat] = arr.filter(function (v) { return typeof v === "number"; });
+    }
+    try {
+      localStorage.setItem("slp_quality_flagged", JSON.stringify(data));
+    } catch (e) { /* quota exceeded */ }
+  }
+
+  // ── Open file in embedded viewer via postMessage ───────────────
+  function sendFilesToViewer(slpFile, videoFile, frame) {
+    $viewerIframe.contentWindow.postMessage({
+      type: "loadFiles",
+      slpFile: slpFile,
+      videoFile: videoFile || null,
+      frame: frame || 0
+    }, "*");
+  }
+
+  function openInViewer(manifestFile, frame) {
+    if (!folderReady) {
+      showToast("Open a data folder first (click 'Open Data Folder')");
+      return;
+    }
+
+    var slpFile = findSlpFile(manifestFile);
+    if (!slpFile) {
+      showToast("File not found in data folder: " + manifestFile.filename);
+      return;
+    }
+
+    var videoFile = findVideoFile(manifestFile);
+
+    // Store flagged frames in localStorage for the SLP viewer to read
+    storeFlaggedFrames(manifestFile);
+
+    activeProofreadFile = manifestFile.filename;
+    $viewerTitle.textContent = manifestFile.filename;
+    var flaggedCount = 0;
+    if (manifestFile.flagged_frames && manifestFile.flagged_frames.any) {
+      flaggedCount = manifestFile.flagged_frames.any.filter(function(v) { return typeof v === "number"; }).length;
+    }
+    $viewerInfo.textContent = flaggedCount > 0 ? flaggedCount + " flagged frames" : "";
+
+    // Get viewer path
+    var viewerPath = ($slpViewerPath.value.trim() || "../slp-viewer").replace(/\/+$/, "");
+    var viewerUrl = viewerPath + "/index.html";
+
+    // Check if iframe already has the viewer loaded
+    var currentSrc = $viewerIframe.src;
+    var isViewerLoaded = currentSrc && currentSrc.indexOf("about:blank") === -1 && viewerReady;
+
+    if (isViewerLoaded) {
+      // Viewer already loaded, send files directly
+      sendFilesToViewer(slpFile, videoFile, frame);
+    } else {
+      // Load viewer iframe, then send files when ready
+      viewerReady = false;
+      pendingLoad = { slpFile: slpFile, videoFile: videoFile, frame: frame || 0 };
+      $viewerIframe.src = viewerUrl;
+    }
+
+    $viewerPanel.classList.add("open");
+    renderTable(); // re-render to highlight active row
+    setTimeout(function () { $viewerPanel.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
+  }
+
+  // Listen for 'slp-viewer-ready' from iframe
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    if (event.data.type === "slp-viewer-ready") {
+      viewerReady = true;
+      // Send pending files if any
+      if (pendingLoad) {
+        // Small delay to ensure viewer is fully initialized
+        setTimeout(function () {
+          sendFilesToViewer(pendingLoad.slpFile, pendingLoad.videoFile, pendingLoad.frame);
+          pendingLoad = null;
+        }, 200);
+      }
+    }
+  });
+
+  function closeViewer() {
+    $viewerPanel.classList.remove("open");
+    $viewerIframe.src = "about:blank";
+    activeProofreadFile = null;
+    viewerReady = false;
+    pendingLoad = null;
+    renderTable();
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────
+  function showToast(msg) {
+    $toast.textContent = msg;
+    $toast.classList.add("show");
+    setTimeout(function () { $toast.classList.remove("show"); }, 2500);
+  }
+
+  function escapeHtml(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function getRecommendation(file) {
+    if (file.status === "error") return "ERROR";
+    return file.recommendation || "GOOD";
+  }
+
+  function getMetaField(file, key) {
+    if (file.metadata && file.metadata[key] !== undefined) return file.metadata[key];
+    return "";
+  }
+
+  function getSortValue(file, col) {
+    if (col === "day" || col === "mouse_id" || col === "trial") return getMetaField(file, col);
+    if (col === "recommendation") return getRecommendation(file);
+    return file[col] !== undefined ? file[col] : "";
+  }
+
+  // ── Filter + sort + search ─────────────────────────────────────
+  function getFilteredFiles() {
+    if (!manifest) return [];
+    var files = manifest.files.slice();
+    files = files.filter(function (f) { return activeFilters.has(getRecommendation(f)); });
+    if (searchTerm) {
+      var lower = searchTerm.toLowerCase();
+      files = files.filter(function (f) { return f.filename.toLowerCase().indexOf(lower) !== -1; });
+    }
+    files.sort(function (a, b) {
+      var va = getSortValue(a, sortCol), vb = getSortValue(b, sortCol);
+      if (va === "" && vb !== "") return 1;
+      if (va !== "" && vb === "") return -1;
+      if (va < vb) return sortAsc ? -1 : 1;
+      if (va > vb) return sortAsc ? 1 : -1;
+      return 0;
+    });
+    return files;
+  }
+
+  // ── Render summary cards ───────────────────────────────────────
+  function renderSummaryCards() {
+    var s = manifest.summary;
+    var cards = [
+      { cls: "card-total",  count: s.total_files, label: "Total" },
+      { cls: "card-good",   count: s.good,        label: "Good" },
+      { cls: "card-review", count: s.review,      label: "Review" },
+      { cls: "card-poor",   count: s.poor,        label: "Poor" },
+      { cls: "card-error",  count: s.error,       label: "Error" },
+    ];
+    $summaryCards.innerHTML = cards.map(function (c) {
+      return '<div class="card ' + c.cls + '"><div class="card-count">' + c.count + '</div><div class="card-label">' + c.label + '</div></div>';
+    }).join("");
+  }
+
+  // ── Render filter toggles ──────────────────────────────────────
+  function renderFilterToggles() {
+    $filterToggles.innerHTML = "";
+    FILTER_CATEGORIES.forEach(function (cat) {
+      var btn = document.createElement("button");
+      btn.className = "toggle-btn" + (activeFilters.has(cat) ? " active" : "");
+      btn.textContent = cat;
+      btn.addEventListener("click", function () {
+        if (activeFilters.has(cat)) activeFilters.delete(cat); else activeFilters.add(cat);
+        btn.classList.toggle("active");
+        renderTable();
+      });
+      $filterToggles.appendChild(btn);
+    });
+  }
+
+  // ── Render table header ────────────────────────────────────────
+  function renderTableHead() {
+    var tr = document.createElement("tr");
+    COLUMNS.forEach(function (col) {
+      var th = document.createElement("th");
+      th.textContent = col.label;
+      if (col.sortable) {
+        if (sortCol === col.key) {
+          var arrow = document.createElement("span");
+          arrow.className = "sort-arrow";
+          arrow.textContent = sortAsc ? "\u25B2" : "\u25BC";
+          th.appendChild(arrow);
+        }
+        th.addEventListener("click", function () {
+          if (sortCol === col.key) sortAsc = !sortAsc;
+          else { sortCol = col.key; sortAsc = true; }
+          renderTableHead();
+          renderTable();
+        });
+      }
+      tr.appendChild(th);
+    });
+    $tableHead.innerHTML = "";
+    $tableHead.appendChild(tr);
+  }
+
+  // ── Render table body ──────────────────────────────────────────
+  function renderTable() {
+    var files = getFilteredFiles();
+    $tableBody.innerHTML = "";
+
+    if (files.length === 0) {
+      var tr0 = document.createElement("tr");
+      var td0 = document.createElement("td");
+      td0.colSpan = COLUMNS.length;
+      td0.className = "empty-state";
+      td0.textContent = manifest ? "No files match the current filters." : "";
+      tr0.appendChild(td0);
+      $tableBody.appendChild(tr0);
+      return;
+    }
+
+    files.forEach(function (file) {
+      var isExpanded = expandedFiles.has(file.filename);
+      var rec = getRecommendation(file);
+      var isActive = (activeProofreadFile === file.filename);
+
+      // Check if file is available in the data folder
+      var slpAvailable = discoveredFiles.slp.has(file.filename);
+
+      // Main row
+      var tr = document.createElement("tr");
+      if (isExpanded) tr.classList.add("expanded");
+      if (isActive) tr.classList.add("active-proofread");
+
+      COLUMNS.forEach(function (col) {
+        var td = document.createElement("td");
+        if (col.key === "filename") {
+          td.innerHTML = '<div class="filename-cell">'
+            + '<span class="expand-icon ' + (isExpanded ? 'open' : '') + '">\u25B6</span>'
+            + escapeHtml(file.filename) + '</div>';
+          td.addEventListener("click", function () {
+            if (expandedFiles.has(file.filename)) expandedFiles.delete(file.filename);
+            else expandedFiles.add(file.filename);
+            renderTable();
+          });
+        } else if (col.key === "recommendation") {
+          td.innerHTML = '<span class="rec-badge rec-' + rec + '">' + rec + '</span>';
+        } else if (col.key === "flagged_fraction") {
+          td.textContent = file.status === "error" ? "-" : (file.flagged_fraction * 100).toFixed(1) + "%";
+        } else if (col.key === "day" || col.key === "mouse_id" || col.key === "trial") {
+          var val = getMetaField(file, col.key);
+          td.textContent = val !== "" ? val : "-";
+        } else if (col.key === "total_frames") {
+          td.textContent = file.status === "error" ? "-" : (file.total_frames !== undefined ? file.total_frames.toLocaleString() : "-");
+        } else if (col.key === "_actions") {
+          if (rec !== "ERROR") {
+            var pbtn = document.createElement("button");
+            pbtn.className = "btn-proofread";
+            if (isActive) {
+              pbtn.textContent = "Viewing";
+              pbtn.style.opacity = "0.5";
+              pbtn.style.cursor = "default";
+            } else if (!folderReady) {
+              pbtn.textContent = "Proofread";
+              pbtn.title = "Open a data folder first";
+              pbtn.style.opacity = "0.4";
+              pbtn.style.cursor = "default";
+            } else if (!slpAvailable) {
+              pbtn.textContent = "Not found";
+              pbtn.title = "File not found in data folder";
+              pbtn.style.opacity = "0.3";
+              pbtn.style.cursor = "default";
+            } else {
+              pbtn.textContent = "Proofread";
+              (function(f) {
+                pbtn.addEventListener("click", function (e) {
+                  e.stopPropagation();
+                  openInViewer(f);
+                });
+              })(file);
+            }
+            td.appendChild(pbtn);
+          }
+        } else {
+          td.textContent = file[col.key] !== undefined ? file[col.key] : "-";
+        }
+        tr.appendChild(td);
+      });
+
+      $tableBody.appendChild(tr);
+
+      // Expanded detail row
+      if (isExpanded) {
+        var detailTr = document.createElement("tr");
+        detailTr.className = "detail-row";
+        var detailTd = document.createElement("td");
+        detailTd.colSpan = COLUMNS.length;
+
+        if (file.status === "error") {
+          detailTd.innerHTML = '<div class="detail-panel"><p class="error-msg">Error: ' + escapeHtml(file.error_message || "Unknown") + '</p></div>';
+        } else {
+          var html = '<div class="detail-panel"><div class="detail-grid">';
+          FLAG_CATEGORIES.forEach(function (flag) {
+            var count = 0;
+            if (flag.countSource === "keypoint" && file.keypoint_counts) count = file.keypoint_counts[flag.key] || 0;
+            else if (flag.countSource === "frame" && file.frame_counts) count = file.frame_counts[flag.key] || 0;
+            var frames = (file.flagged_frames && file.flagged_frames[flag.key]) || [];
+            var frameStr = frames.length > 0 ? frames.map(String).join(", ") : "-";
+            html += '<div class="flag-item"><span class="flag-name">' + escapeHtml(flag.label)
+              + ':</span><span class="flag-count">' + count
+              + '</span><span class="flag-frames">[' + escapeHtml(frameStr) + ']</span></div>';
+          });
+          html += '</div><div class="detail-actions">';
+          html += '<button class="btn-sm" data-copy="1">Copy flagged frames</button>';
+          var firstFrame = getFirstFlaggedFrame(file);
+          if (firstFrame !== null && folderReady && slpAvailable) {
+            html += '<button class="btn-sm btn-proofread" data-open-frame="1">Proofread from frame ' + firstFrame + '</button>';
+          }
+          html += '</div></div>';
+          detailTd.innerHTML = html;
+
+          // Copy handler
+          var copyBtn = detailTd.querySelector("[data-copy]");
+          if (copyBtn) {
+            (function(f) {
+              copyBtn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                var any = (f.flagged_frames && f.flagged_frames.any) || [];
+                var nums = any.filter(function (v) { return typeof v === "number"; });
+                navigator.clipboard.writeText(nums.join(", ")).then(function () {
+                  showToast("Copied " + nums.length + " frame indices");
+                }).catch(function () { showToast("Copy failed"); });
+              });
+            })(file);
+          }
+
+          // Open-at-frame handler
+          var openBtn = detailTd.querySelector("[data-open-frame]");
+          if (openBtn && firstFrame !== null) {
+            (function(f, ff) {
+              openBtn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                openInViewer(f, ff);
+              });
+            })(file, firstFrame);
+          }
+        }
+
+        detailTr.appendChild(detailTd);
+        $tableBody.appendChild(detailTr);
+      }
+    });
+  }
+
+  // ── CSV export ─────────────────────────────────────────────────
+  function exportCSV() {
+    var files = getFilteredFiles();
+    var header = ["filename","path","day","mouse_id","trial","status","recommendation",
+      "total_frames","total_flagged_frames","flagged_fraction","median_body_length_px","median_hull_area_px2"];
+    var rows = [header.join(",")];
+    files.forEach(function (f) {
+      rows.push([
+        '"' + (f.filename||"").replace(/"/g,'""') + '"',
+        '"' + (f.path||"").replace(/"/g,'""') + '"',
+        getMetaField(f,"day"), '"'+getMetaField(f,"mouse_id")+'"', getMetaField(f,"trial"),
+        f.status||"", getRecommendation(f),
+        f.total_frames!==undefined?f.total_frames:"", f.total_flagged_frames!==undefined?f.total_flagged_frames:"",
+        f.flagged_fraction!==undefined?f.flagged_fraction:"",
+        f.median_body_length_px!==undefined?f.median_body_length_px:"",
+        f.median_hull_area_px2!==undefined?f.median_hull_area_px2:"",
+      ].join(","));
+    });
+    var blob = new Blob([rows.join("\n")], { type: "text/csv" });
+    var a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "quality_review.csv"; a.click(); URL.revokeObjectURL(a.href);
+    showToast("Exported " + files.length + " rows");
+  }
+
+  // ── Load manifest ──────────────────────────────────────────────
+  function loadManifest(data) {
+    manifest = data;
+    expandedFiles.clear();
+    closeViewer();
+    $welcomeContainer.style.display = "none";
+    $mainContainer.style.display = "block";
+    $exportBtn.disabled = false;
+    renderSummaryCards();
+    renderFilterToggles();
+    renderTableHead();
+    renderTable();
+    showToast("Loaded " + manifest.summary.total_files + " files");
+  }
+
+  // ── Viewer resize ──────────────────────────────────────────────
+  (function () {
+    var resizing = false, startY = 0, startH = 0;
+    $viewerResize.addEventListener("mousedown", function (e) {
+      e.preventDefault();
+      resizing = true;
+      startY = e.clientY;
+      startH = $viewerIframeWrap.offsetHeight;
+      document.body.style.cursor = "ns-resize";
+      document.body.style.userSelect = "none";
+    });
+    document.addEventListener("mousemove", function (e) {
+      if (!resizing) return;
+      var h = Math.max(200, startH + (e.clientY - startY));
+      $viewerIframeWrap.querySelector("iframe").style.height = h + "px";
+    });
+    document.addEventListener("mouseup", function () {
+      if (resizing) { resizing = false; document.body.style.cursor = ""; document.body.style.userSelect = ""; }
+    });
+  })();
+
+  // ── Event listeners ────────────────────────────────────────────
+  $fileInput.addEventListener("change", function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (evt) {
+      try {
+        var data = JSON.parse(evt.target.result);
+        if (!data.files || !data.summary) throw new Error("Invalid manifest format");
+        loadManifest(data);
+      } catch (err) { showToast("Error: " + err.message); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  });
+
+  $exportBtn.addEventListener("click", exportCSV);
+  $searchInput.addEventListener("input", function () { searchTerm = $searchInput.value.trim(); renderTable(); });
+  $viewerClose.addEventListener("click", closeViewer);
+
+  initSettings();
+})();
+</script>
+</body>
+</html>
