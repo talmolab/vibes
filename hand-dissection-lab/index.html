@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Dissection Lab</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { margin-bottom: 0.25rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; max-width: 70ch; }
+        .container {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            align-items: start;
+            gap: 20px;
+            width: 100%;
+        }
+        .panel {
+            background: #0f0f23;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 0;
+        }
+        .panel.wide { grid-column: 1 / -1; }
+        /* Wide screens: the layer mosaic is tall, so let it span two rows and
+           put the feature scope in the space beside it. */
+        .panel.tall { grid-column: 2; grid-row: 1 / span 2; }
+        .panel.col1 { grid-column: 1; }
+        .panel h2 { margin-top: 0; font-size: 1.15rem; color: #fff; }
+        .panel h3 { font-size: 0.95rem; margin: 20px 0 8px; color: #ccc; font-weight: 600; }
+        .hint { color: #777; font-size: 13px; margin: 4px 0 0; }
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        video { display: none; }
+        canvas { display: block; width: 100%; height: auto; }
+        /* Landmark overlays live on their own layer: #cropCanvas must stay a
+           pristine copy of the frame, because that is the model's input. */
+        canvas.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin: 14px 0;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover:not(:disabled) { transform: translateY(-2px); }
+        button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .capture-btn { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        .ghost-btn { background: #2a2a3e; border: 1px solid #444; }
+        select {
+            background: #2a2a3e;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            max-width: 100%;
+            min-width: 0;
+        }
+        label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #bbb;
+                flex-wrap: wrap; max-width: 100%; min-width: 0; }
+        input[type="checkbox"] { width: 16px; height: 16px; accent-color: #667eea; }
+        input[type="range"] { accent-color: #667eea; width: 130px; }
+        .status { text-align: center; padding: 14px; color: #888; font-size: 13px; }
+        .status.error { color: #f5576c; }
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 18px;
+            font-size: 12px;
+            color: #888;
+            font-variant-numeric: tabular-nums;
+        }
+        .stats b { color: #9ad; font-weight: 600; }
+        .two-up {
+            display: grid;
+            grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+            gap: 12px;
+            align-items: start;
+        }
+        .layer-strip {
+            display: flex;
+            gap: 3px;
+            align-items: flex-end;
+            height: 54px;
+            margin: 10px 0 4px;
+        }
+        .layer-strip div {
+            flex: 1;
+            background: linear-gradient(180deg, #667eea, #2b2b5e);
+            border-radius: 3px 3px 0 0;
+            min-height: 2px;
+            position: relative;
+            transition: height 0.12s linear;
+        }
+        .stage-labels {
+            display: flex;
+            gap: 3px;
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+        }
+        .stage-labels span { flex: 1; }
+        .mosaic-wrap { position: relative; background: #000; border-radius: 8px; overflow: hidden; }
+        .stale {
+            position: absolute;
+            top: 8px; right: 8px;
+            display: none;
+            background: rgba(10, 10, 26, 0.85);
+            border: 1px solid #4a4a6a;
+            color: #bbb;
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+        .scope-wrap { border-radius: 8px; }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+            max-height: 210px;
+            overflow-y: auto;
+        }
+        .gallery-item {
+            position: relative;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 2px solid transparent;
+        }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .gallery-item .remove {
+            position: absolute;
+            top: 3px; right: 3px;
+            background: rgba(220, 40, 70, 0.85);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 19px; height: 19px;
+            font-size: 12px;
+            line-height: 19px;
+            padding: 0;
+            cursor: pointer;
+        }
+        .tooltip {
+            position: fixed;
+            background: rgba(6, 6, 20, 0.95);
+            border: 1px solid #444;
+            color: #eee;
+            padding: 8px 10px;
+            border-radius: 6px;
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+        }
+        .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #999; margin-top: 8px; }
+        .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+        footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 1100px) {
+            .container { grid-template-columns: 1fr; }
+            .two-up { grid-template-columns: 1fr; }
+            .crop-col { max-width: 300px; }
+            .panel.tall, .panel.col1 { grid-column: auto; grid-row: auto; }
+        }
+        @media (max-width: 600px) { body { padding: 15px; } }
+    </style>
+</head>
+<body>
+    <h1>Hand Dissection Lab</h1>
+    <p class="description">
+        Runs MediaPipe's <b>hand landmark network on its own</b> &mdash; raw TensorFlow.js, no detector wrapper &mdash;
+        so you can watch its 45 internal layers light up, read live kinematic features off the hand,
+        and compare a hand-crafted pose subspace against the network's own learned one.
+    </p>
+
+    <div class="container">
+        <!-- ============ INPUT ============ -->
+        <div class="panel">
+            <h2>Input</h2>
+            <div class="two-up">
+                <div class="video-container">
+                    <video id="video" playsinline></video>
+                    <canvas id="viewCanvas" width="640" height="480"></canvas>
+                </div>
+                <div class="crop-col">
+                    <div class="video-container">
+                        <canvas id="cropCanvas" width="256" height="256"></canvas>
+                        <canvas id="cropOverlay" class="overlay" width="256" height="256"></canvas>
+                    </div>
+                    <p class="hint">The 256&times;256 wrist-aligned crop the network actually sees.</p>
+                </div>
+            </div>
+            <div id="status" class="status">Loading models&hellip;</div>
+
+            <div class="controls">
+                <button id="startBtn" disabled>Start Camera</button>
+                <button id="stopBtn" disabled>Stop</button>
+                <button id="captureBtn" class="capture-btn" disabled>Capture Pose</button>
+            </div>
+
+            <div class="controls">
+                <label>Hand:
+                    <select id="handSelect">
+                        <option value="auto">Auto (first found)</option>
+                        <option value="Left">Left</option>
+                        <option value="Right">Right</option>
+                    </select>
+                </label>
+                <label>Crop scale: <input type="range" id="cropScale" min="1" max="2.6" step="0.05" value="1.45">
+                    <span id="cropScaleVal" style="width:2.6em">1.45</span>
+                </label>
+            </div>
+
+            <div class="controls">
+                <label><input type="checkbox" id="showSkeleton" checked> Skeleton</label>
+                <label><input type="checkbox" id="showSpeed" checked> Speed</label>
+                <label><input type="checkbox" id="showAngles" checked> Angles</label>
+                <label><input type="checkbox" id="showTrails" checked> Trails</label>
+                <label><input type="checkbox" id="showCropBox" checked> Crop box</label>
+            </div>
+
+            <div class="stats" id="inputStats"></div>
+            <div class="legend">
+                <span><i style="background:#ff6b9d"></i>MediaPipe landmarks</span>
+                <span><i style="background:#4de2ff"></i>Standalone net landmarks</span>
+            </div>
+        </div>
+
+        <!-- ============ LAYER EXPLORER ============ -->
+        <div class="panel tall">
+            <h2>Layer Explorer</h2>
+            <div class="layer-strip" id="layerStrip"></div>
+            <div class="stage-labels" id="stageLabels"></div>
+            <p class="hint">Mean activation per stage &mdash; energy flowing through the pyramid.</p>
+
+            <div class="controls">
+                <label style="flex:1 1 100%">Layer
+                    <input type="range" id="tapSlider" min="0" max="44" step="1" value="4" style="flex:1">
+                </label>
+            </div>
+            <div class="stats" id="tapInfo"></div>
+
+            <div class="mosaic-wrap" style="margin-top:10px">
+                <canvas id="mosaicCanvas" width="512" height="512"></canvas>
+                <div id="staleBadge" class="stale">no hand &mdash; last frame</div>
+            </div>
+
+            <div class="controls">
+                <label>Colormap:
+                    <select id="cmapSelect">
+                        <option value="viridis">Viridis</option>
+                        <option value="inferno">Inferno</option>
+                        <option value="gray">Gray</option>
+                    </select>
+                </label>
+                <label>Scale:
+                    <select id="normSelect">
+                        <option value="channel">Per channel</option>
+                        <option value="global">Shared</option>
+                    </select>
+                </label>
+                <label><input type="checkbox" id="sortChannels"> Sort by energy</label>
+            </div>
+            <p class="hint">Each tile is one channel. Hover a tile for its statistics.</p>
+        </div>
+
+        <!-- ============ FEATURE SCOPE ============ -->
+        <div class="panel col1">
+            <h2>Feature Scope</h2>
+            <p class="hint" style="margin-bottom:10px">
+                Kinematics read straight off the landmarks every frame. Distances are in palm-lengths
+                (wrist&rarr;middle knuckle), so they hold steady as you move toward or away from the camera.
+            </p>
+            <div class="scope-wrap"><canvas id="scopeCanvas" width="1200" height="380"></canvas></div>
+            <div class="controls">
+                <label>Window:
+                    <select id="scopeWindow">
+                        <option value="150">5 s</option>
+                        <option value="300" selected>10 s</option>
+                        <option value="600">20 s</option>
+                    </select>
+                </label>
+                <label>Speed smoothing: <input type="range" id="smoothSlider" min="0" max="0.9" step="0.05" value="0.55">
+                    <span id="smoothVal" style="width:2.6em">0.55</span>
+                </label>
+                <label><input type="checkbox" id="freezeScope"> Freeze</label>
+            </div>
+            <div class="stats" id="scopeStats"></div>
+        </div>
+
+        <!-- ============ SUBSPACE ============ -->
+        <div class="panel wide">
+            <h2>Pose Subspace</h2>
+            <p class="hint" style="margin-bottom:10px">
+                Capture a handful of distinct hand shapes, then compare the subspace you get from
+                hand-crafted geometry against the one from the network's own 768-d penultimate layer.
+            </p>
+            <div class="two-up" style="grid-template-columns: minmax(0,2fr) minmax(0,3fr)">
+                <div>
+                    <div class="controls" style="margin-top:0">
+                        <label>Representation:
+                            <select id="reprSelect">
+                                <option value="geometric">Geometric (15 angles + 10 distances)</option>
+                                <option value="distances">Pairwise distances (210)</option>
+                                <option value="embedding">Learned embedding (768)</option>
+                            </select>
+                        </label>
+                        <button id="clearBtn" class="ghost-btn">Clear</button>
+                    </div>
+                    <div class="stats" id="pcaStats"></div>
+                    <h3>Captured poses (<span id="captureCount">0</span>)</h3>
+                    <div id="gallery" class="gallery"></div>
+                </div>
+                <div>
+                    <div class="mosaic-wrap">
+                        <canvas id="pcaCanvas" width="700" height="440"></canvas>
+                    </div>
+                    <div class="legend">
+                        <span><i style="background:#ff6b9d"></i>Live pose</span>
+                        <span>Captured poses are colored to match the gallery.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="tooltip" class="tooltip"></div>
+
+    <footer>
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/talmolab/vibes">Source</a> &middot;
+        <a href="../pose-subspace-analysis/">Pose Subspace Analysis</a>
+    </footer>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+/* ------------------------------------------------------------------ *
+ * Model: MediaPipe's BlazeHand *landmark* network, standalone.
+ * 256x256x3 in -> [1,63] keypoints (crop pixels) + [1,1] presence score.
+ * Its 45 ReLUs form a 7-stage pyramid we can tap by node name.
+ * ------------------------------------------------------------------ */
+const MESH_URL = 'https://tfhub.dev/mediapipe/tfjs-model/handskeleton/1/default/1';
+const INPUT_SIZE = 256;
+const OUT_LANDMARKS = 'Identity';
+const OUT_SCORE = 'Identity_1';
+const tapNode = i => `StatefulPartitionedCall/model/activation${i === 0 ? '' : '_' + i}/Relu`;
+
+// [count, spatial resolution, channels] per stage; 4+6+7*5 = 45 taps total.
+const STAGE_SPEC = [[4, 128, 32], [6, 64, 64], [7, 32, 128], [7, 16, 192],
+                    [7, 8, 192], [7, 4, 192], [7, 2, 192]];
+const TAPS = [];
+STAGE_SPEC.forEach(([count, res, ch], stage) => {
+    for (let k = 0; k < count; k++) TAPS.push({ i: TAPS.length, res, ch, stage });
+});
+TAPS.forEach(t => { t.name = tapNode(t.i); });
+const STAGE_REPS = STAGE_SPEC.map((_, s) => TAPS.filter(t => t.stage === s).at(-1).i);
+
+const HAND_EDGES = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[0,17],[17,18],[18,19],[19,20]
+];
+const FINGERS = [
+    { name: 'Thumb',  color: '#ff6b6b', chain: [1, 2, 3, 4] },
+    { name: 'Index',  color: '#ffd166', chain: [5, 6, 7, 8] },
+    { name: 'Middle', color: '#7ee787', chain: [9, 10, 11, 12] },
+    { name: 'Ring',   color: '#4de2ff', chain: [13, 14, 15, 16] },
+    { name: 'Pinky',  color: '#c792ea', chain: [17, 18, 19, 20] }
+];
+const TIPS = FINGERS.map(f => f.chain.at(-1));
+
+/* ------------------------------ DOM ------------------------------ */
+const $ = id => document.getElementById(id);
+const video = $('video');
+const viewCanvas = $('viewCanvas'), viewCtx = viewCanvas.getContext('2d');
+const cropCanvas = $('cropCanvas'), cropCtx = cropCanvas.getContext('2d', { willReadFrequently: false });
+const cropOverlay = $('cropOverlay'), cropOverlayCtx = cropOverlay.getContext('2d');
+const mosaicCanvas = $('mosaicCanvas'), mosaicCtx = mosaicCanvas.getContext('2d');
+const scopeCanvas = $('scopeCanvas'), scopeCtx = scopeCanvas.getContext('2d');
+const pcaCanvas = $('pcaCanvas'), pcaCtx = pcaCanvas.getContext('2d');
+const status = $('status'), tooltip = $('tooltip'), staleBadge = $('staleBadge');
+const startBtn = $('startBtn'), stopBtn = $('stopBtn'), captureBtn = $('captureBtn'), clearBtn = $('clearBtn');
+const handSelect = $('handSelect'), cropScale = $('cropScale'), cropScaleVal = $('cropScaleVal');
+const tapSlider = $('tapSlider'), tapInfo = $('tapInfo'), layerStrip = $('layerStrip'), stageLabels = $('stageLabels');
+const cmapSelect = $('cmapSelect'), normSelect = $('normSelect'), sortChannels = $('sortChannels');
+const scopeWindow = $('scopeWindow'), smoothSlider = $('smoothSlider'), smoothVal = $('smoothVal'), freezeScope = $('freezeScope');
+const reprSelect = $('reprSelect'), gallery = $('gallery'), captureCount = $('captureCount');
+const inputStats = $('inputStats'), scopeStats = $('scopeStats'), pcaStats = $('pcaStats');
+const toggles = {
+    skeleton: $('showSkeleton'), speed: $('showSpeed'), angles: $('showAngles'),
+    trails: $('showTrails'), cropBox: $('showCropBox')
+};
+
+/* --------------------------- Colormaps --------------------------- */
+const CMAP_ANCHORS = {
+    viridis: [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],[31,158,137],[53,183,121],[109,205,89],[253,231,37]],
+    inferno: [[0,0,4],[22,11,57],[66,10,104],[106,23,110],[147,38,103],[188,55,84],[221,81,58],[243,120,25],[252,255,164]],
+    gray:    [[0,0,0],[255,255,255]]
+};
+function buildLut(anchors) {
+    const lut = new Float32Array(256 * 3);
+    const segs = anchors.length - 1;
+    for (let i = 0; i < 256; i++) {
+        const t = (i / 255) * segs;
+        const lo = Math.min(Math.floor(t), segs - 1);
+        const f = t - lo;
+        for (let c = 0; c < 3; c++) {
+            lut[i * 3 + c] = (anchors[lo][c] * (1 - f) + anchors[lo + 1][c] * f) / 255;
+        }
+    }
+    return lut;
+}
+const lutTensors = {};
+function getLut(name) {
+    if (!lutTensors[name]) lutTensors[name] = tf.tensor2d(buildLut(CMAP_ANCHORS[name]), [256, 3]);
+    return lutTensors[name];
+}
+
+/* ---------------------------- State ---------------------------- */
+let handLandmarker = null, meshModel = null;
+let stream = null, rafId = null, running = false;
+let landmarks = null;          // MediaPipe landmarks, normalized [0,1]
+let cropInfo = null;           // {cx, cy, side, rot} in video pixels
+let cropMatrix = null;         // DOMMatrix: video px -> crop px
+let netLandmarks = null;       // standalone net output, crop px
+let netScore = 0, netError = null;
+let lastEmbedding = null;      // Float32Array(768) from the final 2x2x192 stage
+let dissectBusy = false, dissectMs = 0, dissectHz = 0, lastDissect = 0, mpMs = 0, fps = 0;
+let stageEnergy = new Float32Array(STAGE_SPEC.length);
+let channelStats = null;       // {mean: Float32Array, max: Float32Array} for the current tap
+let mosaicLayout = null;       // {cols, rows, ch}
+let captures = [], pcaModel = null, cachedProjections = null, liveTrail = [];
+let backendWarned = false;
+
+const offscreen = document.createElement('canvas');
+
+/* -------------------------- Model loading -------------------------- */
+async function loadModels() {
+    try {
+        status.textContent = 'Loading TensorFlow.js backend...';
+        try {
+            await tf.setBackend('webgl');
+            await tf.ready();
+        } catch (e) {
+            await tf.setBackend('cpu');
+            await tf.ready();
+        }
+        if (tf.getBackend() !== 'webgl') {
+            backendWarned = true;
+        }
+
+        status.textContent = 'Loading hand landmark network (~8 MB)...';
+        meshModel = await tf.loadGraphModel(MESH_URL, { fromTFHub: true });
+        // Warm up so the first real frame is not a stall.
+        tf.tidy(() => {
+            const z = tf.zeros([1, INPUT_SIZE, INPUT_SIZE, 3]);
+            const out = meshModel.execute(z, [OUT_LANDMARKS, OUT_SCORE]);
+            out.forEach(t => t.dispose());
+        });
+
+        status.textContent = 'Loading MediaPipe tracker...';
+        const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+        handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: {
+                modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                delegate: 'GPU'
+            },
+            runningMode: 'VIDEO',
+            numHands: 2
+        });
+
+        status.textContent = (backendWarned ? 'WebGL unavailable - running on CPU, dissection will be slow. ' : '')
+            + 'Models ready. Click "Start Camera" to begin.';
+        startBtn.disabled = false;
+    } catch (err) {
+        status.className = 'status error';
+        status.textContent = 'Failed to load models: ' + err.message;
+    }
+}
+
+/* ------------------------- Camera + geometry ------------------------- */
+async function startCamera() {
+    try {
+        status.textContent = 'Requesting camera access...';
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        video.srcObject = stream;
+        await video.play();
+        viewCanvas.width = video.videoWidth;
+        viewCanvas.height = video.videoHeight;
+        status.textContent = 'Tracking. Hold one hand up to the camera.';
+        running = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        captureBtn.disabled = false;
+        loop();
+    } catch (err) {
+        status.className = 'status error';
+        status.textContent = 'Camera error: ' + err.message;
+    }
+}
+
+function stopCamera() {
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    landmarks = null;
+    netLandmarks = null;
+    viewCtx.clearRect(0, 0, viewCanvas.width, viewCanvas.height);
+    cropCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cropCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+    cropOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cropOverlayCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+    status.textContent = 'Camera stopped.';
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    captureBtn.disabled = true;
+}
+
+function pickHand(result) {
+    if (!result.landmarks || !result.landmarks.length) return null;
+    const want = handSelect.value;
+    if (want === 'auto') return result.landmarks[0];
+    for (let i = 0; i < result.landmarks.length; i++) {
+        if (result.handedness?.[i]?.[0]?.categoryName === want) return result.landmarks[i];
+    }
+    return null;
+}
+
+// Square crop centered on the hand, rotated so wrist -> middle knuckle points up.
+function computeCropRect(px, scale) {
+    const [wx, wy] = px[0];
+    const phi = Math.atan2(px[9][1] - wy, px[9][0] - wx);
+    const rot = -Math.PI / 2 - phi;
+    const c = Math.cos(rot), s = Math.sin(rot);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [x, y] of px) {
+        const dx = x - wx, dy = y - wy;
+        const rx = dx * c - dy * s, ry = dx * s + dy * c;
+        if (rx < minX) minX = rx; if (rx > maxX) maxX = rx;
+        if (ry < minY) minY = ry; if (ry > maxY) maxY = ry;
+    }
+    const ax = (minX + maxX) / 2, ay = (minY + maxY) / 2;
+    const side = Math.max(maxX - minX, maxY - minY, 1) * scale;
+    // rotate the aligned-frame center back into video pixels
+    return { cx: wx + ax * c + ay * s, cy: wy - ax * s + ay * c, side, rot };
+}
+
+function drawCrop(rect) {
+    const k = INPUT_SIZE / rect.side;
+    cropCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cropCtx.fillStyle = '#000';
+    cropCtx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+    cropCtx.save();
+    cropCtx.translate(INPUT_SIZE / 2, INPUT_SIZE / 2);
+    cropCtx.rotate(rect.rot);
+    cropCtx.scale(k, k);
+    cropCtx.translate(-rect.cx, -rect.cy);
+    cropCtx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+    cropMatrix = cropCtx.getTransform();
+    cropCtx.restore();
+}
+
+/* ---------------------------- Main loop ---------------------------- */
+let prevPx = null, prevTime = 0, prevRoll = null;
+let smoothed = { tipSpeed: [0,0,0,0,0], energy: 0, rollSpeed: 0 };
+let scopeHistory = [];
+const trails = TIPS.map(() => []);
+let scope = null;
+let frameTimes = [];
+let lastStatsAt = 0;
+
+function loop() {
+    if (!running) return;
+    const now = performance.now();
+
+    const t0 = performance.now();
+    const result = handLandmarker.detectForVideo(video, now);
+    mpMs = mpMs * 0.9 + (performance.now() - t0) * 0.1;
+    landmarks = pickHand(result);
+
+    frameTimes.push(now);
+    while (frameTimes.length && now - frameTimes[0] > 1000) frameTimes.shift();
+    fps = frameTimes.length;
+
+    viewCtx.drawImage(video, 0, 0, viewCanvas.width, viewCanvas.height);
+
+    if (landmarks) {
+        const W = video.videoWidth, H = video.videoHeight;
+        const px = landmarks.map(p => [p.x * W, p.y * H]);
+        const dt = prevTime ? Math.min((now - prevTime) / 1000, 0.25) : 0;
+        scope = computeScope(px, dt);
+        prevPx = px;
+        prevTime = now;
+
+        cropInfo = computeCropRect(px, parseFloat(cropScale.value));
+        drawCrop(cropInfo);   // #cropCanvas is now the clean model input, always
+        if (wantCapture) { wantCapture = false; takeCapture(); }
+        drawCropOverlay(px);  // skeletons go to #cropOverlay, never to the input
+        drawOverlay(px);
+        if (!freezeScope.checked) pushScope(now);
+
+        if (!dissectBusy) dissect();
+    } else {
+        prevPx = null;
+        prevTime = 0;
+        prevRoll = null;
+        scope = null;
+        netLandmarks = null;
+        cropCtx.setTransform(1, 0, 0, 1, 0, 0);
+        cropCtx.fillStyle = '#000';
+        cropCtx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+        cropOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+        cropOverlayCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+        trails.forEach(t => t.length = 0);
+    }
+
+    drawScope();
+    drawPCA();
+    if (now - lastStatsAt > 160) { lastStatsAt = now; updateStats(); }
+    rafId = requestAnimationFrame(loop);
+}
+
+/* --------------------------- Overlay drawing --------------------------- */
+function drawOverlay(px) {
+    const ctx = viewCtx;
+
+    if (toggles.cropBox.checked && cropInfo && cropMatrix) {
+        const inv = cropMatrix.inverse();
+        const corners = [[0,0],[INPUT_SIZE,0],[INPUT_SIZE,INPUT_SIZE],[0,INPUT_SIZE]]
+            .map(([x, y]) => inv.transformPoint(new DOMPoint(x, y)));
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+        ctx.setLineDash([6, 5]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        corners.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+        ctx.closePath();
+        ctx.stroke();
+        // mark the "up" edge of the crop
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        ctx.lineTo(corners[1].x, corners[1].y);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    if (toggles.trails.checked) {
+        TIPS.forEach((tip, f) => {
+            trails[f].push([px[tip][0], px[tip][1]]);
+            if (trails[f].length > 20) trails[f].shift();
+            const pts = trails[f];
+            ctx.strokeStyle = FINGERS[f].color;
+            ctx.lineCap = 'round';
+            for (let i = 1; i < pts.length; i++) {
+                ctx.globalAlpha = (i / pts.length) * 0.65;
+                ctx.lineWidth = 1 + 4 * (i / pts.length);
+                ctx.beginPath();
+                ctx.moveTo(pts[i - 1][0], pts[i - 1][1]);
+                ctx.lineTo(pts[i][0], pts[i][1]);
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        });
+    } else {
+        trails.forEach(t => t.length = 0);
+    }
+
+    if (toggles.skeleton.checked) {
+        ctx.lineWidth = 2.5;
+        for (const [i, j] of HAND_EDGES) {
+            const finger = FINGERS.find(f => f.chain.includes(j));
+            ctx.strokeStyle = finger ? finger.color : '#8899bb';
+            ctx.beginPath();
+            ctx.moveTo(px[i][0], px[i][1]);
+            ctx.lineTo(px[j][0], px[j][1]);
+            ctx.stroke();
+        }
+        ctx.fillStyle = '#ff6b9d';
+        for (const [x, y] of px) {
+            ctx.beginPath();
+            ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
+    if (toggles.angles.checked && scope) {
+        ctx.font = '600 11px system-ui, sans-serif';
+        scope.joints.forEach(j => {
+            const [cx, cy] = px[j.at];
+            const flex = j.flexion;                 // degrees, 0 = straight
+            const t = Math.min(flex / 140, 1);
+            ctx.strokeStyle = `hsl(${(1 - t) * 190}, 85%, 60%)`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 11, j.a0, j.a1, j.ccw);
+            ctx.stroke();
+            if (flex > 25) {
+                ctx.fillStyle = 'rgba(255,255,255,0.85)';
+                ctx.fillText(Math.round(flex) + '°', cx + 13, cy - 8);
+            }
+        });
+    }
+
+    if (toggles.speed.checked && scope && prevPx) {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        scope.velocity.forEach(([vx, vy], i) => {
+            const mag = Math.hypot(vx, vy);
+            if (mag < 8) return;                     // ignore jitter
+            const [x, y] = px[i];
+            const sc = Math.min(0.22, 40 / Math.max(mag, 1));
+            const ex = x + vx * sc, ey = y + vy * sc;
+            ctx.globalAlpha = Math.min(1, mag / 250);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(ex, ey);
+            ctx.stroke();
+            const ang = Math.atan2(ey - y, ex - x);
+            ctx.beginPath();
+            ctx.moveTo(ex, ey);
+            ctx.lineTo(ex - 6 * Math.cos(ang - 0.4), ey - 6 * Math.sin(ang - 0.4));
+            ctx.lineTo(ex - 6 * Math.cos(ang + 0.4), ey - 6 * Math.sin(ang + 0.4));
+            ctx.closePath();
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+        });
+        ctx.globalAlpha = 1;
+    }
+}
+
+/* -------------------- Realtime feature extraction -------------------- */
+const R2D = 180 / Math.PI;
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+function computeScope(px, dt) {
+    const palm = Math.max(dist(px[0], px[9]), 1e-3);
+    const alpha = parseFloat(smoothSlider.value);
+
+    // --- velocities (video px/s) and normalized speeds (palm-lengths/s) ---
+    const velocity = px.map((p, i) => {
+        if (!prevPx || !dt) return [0, 0];
+        return [(p[0] - prevPx[i][0]) / dt, (p[1] - prevPx[i][1]) / dt];
+    });
+    const rawTip = TIPS.map(i => Math.hypot(velocity[i][0], velocity[i][1]) / palm);
+    const rawEnergy = velocity.reduce((s, v) => s + Math.hypot(v[0], v[1]), 0) / velocity.length / palm;
+    const tipSpeed = rawTip.map((v, i) => smoothed.tipSpeed[i] = alpha * smoothed.tipSpeed[i] + (1 - alpha) * v);
+    const energy = smoothed.energy = alpha * smoothed.energy + (1 - alpha) * rawEnergy;
+
+    // --- joint flexion: 3 per finger (MCP, PIP, DIP) ---
+    const joints = [];
+    const curls = FINGERS.map(f => {
+        const chain = [0, ...f.chain];               // wrist, MCP, PIP, DIP, TIP
+        let sum = 0;
+        for (let k = 1; k <= 3; k++) {
+            const prev = px[chain[k - 1]], at = px[chain[k]], next = px[chain[k + 1]];
+            const a0 = Math.atan2(prev[1] - at[1], prev[0] - at[0]);
+            const a1 = Math.atan2(next[1] - at[1], next[0] - at[0]);
+            let d = a1 - a0;
+            while (d > Math.PI) d -= 2 * Math.PI;
+            while (d < -Math.PI) d += 2 * Math.PI;
+            const flexion = 180 - Math.abs(d) * R2D;
+            sum += flexion;
+            joints.push({ at: chain[k], flexion, a0, a1, ccw: d < 0 });
+        }
+        return sum / 3 / 180;
+    });
+
+    // --- static shape descriptors ---
+    const pinch = dist(px[4], px[8]) / palm;
+    const dirs = FINGERS.map(f => {
+        const a = px[f.chain[0]], b = px[f.chain.at(-1)];
+        const n = Math.max(dist(a, b), 1e-6);
+        return [(b[0] - a[0]) / n, (b[1] - a[1]) / n];
+    });
+    let spread = 0;
+    for (let i = 0; i < 4; i++) {
+        spread += Math.acos(Math.max(-1, Math.min(1, dirs[i][0] * dirs[i + 1][0] + dirs[i][1] * dirs[i + 1][1]))) * R2D;
+    }
+    spread /= 4;
+
+    const roll = Math.atan2(px[17][1] - px[5][1], px[17][0] - px[5][0]) * R2D;
+    let rollDelta = prevRoll === null ? 0 : roll - prevRoll;
+    while (rollDelta > 180) rollDelta -= 360;
+    while (rollDelta < -180) rollDelta += 360;
+    prevRoll = roll;
+    const rawRollSpeed = dt ? rollDelta / dt : 0;
+    const rollSpeed = smoothed.rollSpeed = alpha * smoothed.rollSpeed + (1 - alpha) * rawRollSpeed;
+
+    // --- feature vectors for the subspace panel ---
+    const tipDists = [];
+    for (let i = 0; i < 5; i++) {
+        for (let j = i + 1; j < 5; j++) tipDists.push(dist(px[TIPS[i]], px[TIPS[j]]) / palm);
+    }
+    const geometric = [...joints.map(j => j.flexion / 180), ...tipDists];
+    const pairwise = [];
+    for (let i = 0; i < px.length; i++) {
+        for (let j = i + 1; j < px.length; j++) pairwise.push(dist(px[i], px[j]) / palm);
+    }
+
+    return { palm, velocity, tipSpeed, energy, joints, curls, pinch, spread, roll, rollSpeed, geometric, pairwise };
+}
+
+function pushScope(now) {
+    if (!scope) return;
+    scopeHistory.push({
+        t: now,
+        tipSpeed: scope.tipSpeed.slice(),
+        curls: scope.curls.slice(),
+        energy: scope.energy,
+        pinch: scope.pinch,
+        spread: scope.spread,
+        roll: scope.roll
+    });
+    if (scopeHistory.length > 600) scopeHistory.shift();
+}
+
+/* ------------------------- Strip chart rendering ------------------------- */
+const LANES = [
+    { label: 'Fingertip speed', units: 'palm-lengths / s', auto: true, min: 0,
+      series: FINGERS.map((f, i) => ({ color: f.color, get: s => s.tipSpeed[i] }))
+              .concat([{ color: '#ffffff', width: 2, get: s => s.energy, label: 'mean' }]) },
+    { label: 'Finger curl', units: '0 = straight, 1 = fully folded', min: 0, max: 1,
+      series: FINGERS.map((f, i) => ({ color: f.color, get: s => s.curls[i] })) },
+    { label: 'Pinch aperture', units: 'thumb tip to index tip, palm-lengths', min: 0, max: 2,
+      series: [{ color: '#f093fb', width: 2, get: s => s.pinch }] },
+    { label: 'Finger spread', units: 'mean angle between neighbours, degrees', min: 0, max: 60,
+      series: [{ color: '#7ee787', width: 2, get: s => s.spread }] },
+    { label: 'Palm roll', units: 'knuckle line orientation, degrees', min: -180, max: 180, wrap: true,
+      series: [{ color: '#4de2ff', width: 2, get: s => s.roll }] }
+];
+
+function drawScope() {
+    // Size the backing store to whatever column the panel is in, so the labels
+    // stay crisp instead of a fixed-width canvas being scaled down by CSS.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(280, Math.round(scopeCanvas.clientWidth || 900));
+    const H = 380;
+    if (scopeCanvas.width !== Math.round(W * dpr)) scopeCanvas.width = Math.round(W * dpr);
+    if (scopeCanvas.height !== Math.round(H * dpr)) scopeCanvas.height = Math.round(H * dpr);
+    const ctx = scopeCtx;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#05050f';
+    ctx.fillRect(0, 0, W, H);
+
+    // Narrow column: drop the side label gutter and caption the lane in-plot.
+    const compact = W < 640;
+    const padL = compact ? 46 : 150, padR = compact ? 52 : 78, padT = 6, gap = 8;
+    const laneH = (H - padT * 2 - gap * (LANES.length - 1)) / LANES.length;
+    const plotW = W - padL - padR;
+    const keep = parseInt(scopeWindow.value, 10);
+    const data = scopeHistory.slice(-keep);
+
+    ctx.font = '600 12px system-ui, sans-serif';
+    LANES.forEach((lane, li) => {
+        const y0 = padT + li * (laneH + gap);
+        const y1 = y0 + laneH;
+
+        ctx.fillStyle = '#0c0c1c';
+        ctx.fillRect(padL, y0, plotW, laneH);
+
+        let lo = lane.min, hi = lane.max;
+        if (lane.auto) {
+            let mx = 0;
+            for (const s of data) for (const se of lane.series) mx = Math.max(mx, se.get(s));
+            hi = Math.max(1, Math.ceil(mx * 1.15 * 10) / 10);
+        }
+        const yOf = v => y1 - ((v - lo) / (hi - lo || 1)) * laneH;
+
+        // gridlines
+        ctx.strokeStyle = '#1b1b33';
+        ctx.lineWidth = 1;
+        for (let g = 0; g <= 2; g++) {
+            const gy = Math.round(y0 + (laneH * g) / 2) + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(padL, gy);
+            ctx.lineTo(padL + plotW, gy);
+            ctx.stroke();
+        }
+        if (lo < 0 && hi > 0) {
+            ctx.strokeStyle = '#2e2e52';
+            const zy = Math.round(yOf(0)) + 0.5;
+            ctx.beginPath();
+            ctx.moveTo(padL, zy);
+            ctx.lineTo(padL + plotW, zy);
+            ctx.stroke();
+        }
+
+        // label block
+        if (compact) {
+            ctx.fillStyle = 'rgba(230,230,240,0.72)';
+            ctx.font = '600 11px system-ui, sans-serif';
+            ctx.fillText(lane.label, padL + 6, y0 + 13);
+        } else {
+            ctx.fillStyle = '#ddd';
+            ctx.font = '600 12px system-ui, sans-serif';
+            ctx.fillText(lane.label, 8, y0 + 14);
+            ctx.fillStyle = '#666';
+            ctx.font = '10px system-ui, sans-serif';
+            wrapText(ctx, lane.units, 8, y0 + 28, padL - 16, 12);
+        }
+        ctx.fillStyle = '#555';
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(hi.toFixed(hi < 10 ? 1 : 0), padL - 6, y0 + 10);
+        ctx.fillText(lo.toFixed(lo < 10 && lo > -10 ? 1 : 0), padL - 6, y1 - 2);
+        ctx.textAlign = 'left';
+
+        // traces
+        if (data.length > 1) {
+            lane.series.forEach(se => {
+                ctx.strokeStyle = se.color;
+                ctx.lineWidth = se.width || 1.5;
+                ctx.beginPath();
+                let started = false, prevV = null;
+                data.forEach((s, i) => {
+                    const v = se.get(s);
+                    const x = padL + (i / (keep - 1)) * plotW;
+                    const y = Math.max(y0, Math.min(y1, yOf(v)));
+                    if (!started || (lane.wrap && prevV !== null && Math.abs(v - prevV) > 120)) {
+                        ctx.moveTo(x, y);
+                        started = true;
+                    } else ctx.lineTo(x, y);
+                    prevV = v;
+                });
+                ctx.stroke();
+            });
+
+            // current values on the right
+            const last = data.at(-1);
+            ctx.font = '600 11px system-ui, sans-serif';
+            const vals = lane.series.map(se => se.get(last));
+            if (lane.series.length > 2) {
+                vals.forEach((v, i) => {
+                    ctx.fillStyle = lane.series[i].color;
+                    const ty = y0 + 11 + i * 11;
+                    if (ty < y1) ctx.fillText(fmt(v), padL + plotW + 8, ty);
+                });
+            } else {
+                ctx.fillStyle = lane.series[0].color;
+                ctx.font = '600 15px system-ui, sans-serif';
+                ctx.fillText(fmt(vals[0]), padL + plotW + 8, (y0 + y1) / 2 + 5);
+            }
+        }
+
+        ctx.strokeStyle = '#25254a';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(padL + 0.5, y0 + 0.5, plotW - 1, laneH - 1);
+    });
+}
+
+function fmt(v) {
+    if (!isFinite(v)) return '--';
+    return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2);
+}
+
+function wrapText(ctx, text, x, y, maxW, lineH) {
+    const words = text.split(' ');
+    let line = '', ly = y;
+    for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > maxW && line) {
+            ctx.fillText(line, x, ly);
+            line = w;
+            ly += lineH;
+        } else line = test;
+    }
+    if (line) ctx.fillText(line, x, ly);
+}
+
+/* ------------------------- Network dissection ------------------------- */
+async function dissect() {
+    if (!meshModel || !running || !landmarks) return;
+    dissectBusy = true;
+    const t0 = performance.now();
+    let outs = null, held = [];
+    try {
+        const tap = TAPS[parseInt(tapSlider.value, 10)];
+        const names = [OUT_LANDMARKS, OUT_SCORE, tap.name];
+        const repIdx = STAGE_REPS.map(i => {
+            let k = names.indexOf(TAPS[i].name);
+            if (k === -1) { names.push(TAPS[i].name); k = names.length - 1; }
+            return k;
+        });
+
+        const input = tf.tidy(() =>
+            tf.browser.fromPixels(cropCanvas).toFloat().div(255).expandDims(0));
+        outs = meshModel.execute(input, names);
+        input.dispose();
+
+        // Build the colour LUT outside the tidy below - a cached tensor created
+        // inside a tidy scope gets disposed with it and is dead on the next call.
+        const lut = getLut(cmapSelect.value);
+
+        const actT = outs[2];
+        const cols = Math.ceil(Math.sqrt(tap.ch));
+        const rows = Math.ceil(tap.ch / cols);
+
+        const packed = tf.tidy(() => {
+            let a = actT.squeeze([0]);                              // [h, w, c]
+            const chMean = a.mean([0, 1]);
+            const chMax = a.max([0, 1]);
+            let order = tf.range(0, tap.ch, 1, 'int32');
+            if (sortChannels.checked) {
+                order = tf.topk(chMean, tap.ch).indices;
+                a = tf.gather(a, order, 2);
+            }
+            const denom = normSelect.value === 'channel'
+                ? a.max([0, 1], true).add(1e-6)
+                : a.max().add(1e-6);
+            let m = a.div(denom).transpose([2, 0, 1]);               // [c, h, w]
+            const padN = rows * cols - tap.ch;
+            if (padN > 0) m = m.pad([[0, padN], [0, 0], [0, 0]]);
+            m = m.reshape([rows, cols, tap.res, tap.res])
+                 .transpose([0, 2, 1, 3])
+                 .reshape([rows * tap.res, cols * tap.res]);
+            const idx = m.mul(255).clipByValue(0, 255).toInt().flatten();
+            const rgb = tf.gather(lut, idx)
+                          .reshape([rows * tap.res, cols * tap.res, 3]);
+            const energy = tf.stack(repIdx.map(k => outs[k].mean()));
+            const emb = outs[repIdx.at(-1)].flatten();
+            return { rgb, chMean, chMax, order, energy, emb };
+        });
+        held = [packed.rgb, packed.chMean, packed.chMax, packed.order, packed.energy, packed.emb];
+
+        const [lmData, scData, meanData, maxData, orderData, energyData, embData] = await Promise.all([
+            outs[0].data(), outs[1].data(), packed.chMean.data(), packed.chMax.data(),
+            packed.order.data(), packed.energy.data(), packed.emb.data()
+        ]);
+
+        // BlazeHand emits crop pixels, but guard against a normalized build.
+        let maxCoord = 0;
+        for (let i = 0; i < 63; i++) if (Math.abs(lmData[i]) > maxCoord) maxCoord = Math.abs(lmData[i]);
+        const k = maxCoord < 2.5 ? INPUT_SIZE : 1;
+        netLandmarks = [];
+        for (let i = 0; i < 21; i++) {
+            netLandmarks.push([lmData[i * 3] * k, lmData[i * 3 + 1] * k, lmData[i * 3 + 2] * k]);
+        }
+        netScore = scData[0];
+        stageEnergy = energyData;
+        lastEmbedding = new Float32Array(embData);
+
+        channelStats = { mean: meanData, max: maxData, order: orderData };
+        mosaicLayout = { cols, rows, ch: tap.ch, res: tap.res };
+
+        offscreen.width = cols * tap.res;
+        offscreen.height = rows * tap.res;
+        await tf.browser.toPixels(packed.rgb, offscreen);
+        paintMosaic();
+
+        // agreement with the MediaPipe tracker, in crop pixels
+        if (cropMatrix && landmarks) {
+            const W = video.videoWidth, H = video.videoHeight;
+            let sum = 0;
+            for (let i = 0; i < 21; i++) {
+                const p = cropMatrix.transformPoint(new DOMPoint(landmarks[i].x * W, landmarks[i].y * H));
+                sum += Math.hypot(p.x - netLandmarks[i][0], p.y - netLandmarks[i][1]);
+            }
+            netError = sum / 21;
+        }
+
+        const now = performance.now();
+        dissectMs = dissectMs ? dissectMs * 0.8 + (now - t0) * 0.2 : now - t0;
+        if (lastDissect) dissectHz = dissectHz ? dissectHz * 0.8 + (1000 / (now - lastDissect)) * 0.2 : 1000 / (now - lastDissect);
+        lastDissect = now;
+        updateTapInfo();
+    } catch (err) {
+        status.className = 'status error';
+        status.textContent = 'Inference error: ' + err.message;
+        running = false;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        captureBtn.disabled = true;
+    } finally {
+        held.forEach(t => t && t.dispose());
+        if (outs) outs.forEach(t => t && t.dispose());
+        dissectBusy = false;
+    }
+}
+
+function paintMosaic() {
+    if (!mosaicLayout) return;
+    const { cols, rows } = mosaicLayout;
+    const tile = Math.max(10, Math.floor(560 / cols));
+    mosaicCanvas.width = cols * tile;
+    mosaicCanvas.height = rows * tile;
+    mosaicCtx.imageSmoothingEnabled = false;
+    mosaicCtx.fillStyle = '#000';
+    mosaicCtx.fillRect(0, 0, mosaicCanvas.width, mosaicCanvas.height);
+    mosaicCtx.drawImage(offscreen, 0, 0, offscreen.width, offscreen.height,
+                        0, 0, mosaicCanvas.width, mosaicCanvas.height);
+    mosaicCtx.strokeStyle = 'rgba(0,0,0,0.55)';
+    mosaicCtx.lineWidth = 1;
+    for (let c = 1; c < cols; c++) {
+        mosaicCtx.beginPath();
+        mosaicCtx.moveTo(c * tile + 0.5, 0);
+        mosaicCtx.lineTo(c * tile + 0.5, mosaicCanvas.height);
+        mosaicCtx.stroke();
+    }
+    for (let r = 1; r < rows; r++) {
+        mosaicCtx.beginPath();
+        mosaicCtx.moveTo(0, r * tile + 0.5);
+        mosaicCtx.lineTo(mosaicCanvas.width, r * tile + 0.5);
+        mosaicCtx.stroke();
+    }
+    mosaicLayout.tile = tile;
+}
+
+function drawCropOverlay(px) {
+    const c = cropOverlayCtx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+    if (!cropMatrix) return;
+
+    if (toggles.skeleton.checked) {
+        const mp = px.map(([x, y]) => cropMatrix.transformPoint(new DOMPoint(x, y)));
+        c.strokeStyle = 'rgba(255,107,157,0.75)';
+        c.lineWidth = 1.5;
+        for (const [i, j] of HAND_EDGES) {
+            c.beginPath();
+            c.moveTo(mp[i].x, mp[i].y);
+            c.lineTo(mp[j].x, mp[j].y);
+            c.stroke();
+        }
+    }
+    if (netLandmarks) {
+        c.strokeStyle = '#4de2ff';
+        c.lineWidth = 1.5;
+        for (const [i, j] of HAND_EDGES) {
+            c.beginPath();
+            c.moveTo(netLandmarks[i][0], netLandmarks[i][1]);
+            c.lineTo(netLandmarks[j][0], netLandmarks[j][1]);
+            c.stroke();
+        }
+        c.fillStyle = '#4de2ff';
+        for (const [x, y] of netLandmarks) {
+            c.beginPath();
+            c.arc(x, y, 2.2, 0, Math.PI * 2);
+            c.fill();
+        }
+    }
+}
+
+function updateTapInfo() {
+    const tap = TAPS[parseInt(tapSlider.value, 10)];
+    tapInfo.textContent = '';
+    const parts = [
+        ['layer', `${tap.i + 1} / ${TAPS.length}`],
+        ['node', `activation${tap.i === 0 ? '' : '_' + tap.i}/Relu`],
+        ['shape', `${tap.res}×${tap.res}×${tap.ch}`],
+        ['stage', `${tap.stage + 1} / ${STAGE_SPEC.length}`]
+    ];
+    for (const [k, v] of parts) {
+        const span = document.createElement('span');
+        const b = document.createElement('b');
+        b.textContent = v;
+        span.textContent = k + ' ';
+        span.appendChild(b);
+        tapInfo.appendChild(span);
+    }
+}
+
+function buildLayerStrip() {
+    STAGE_SPEC.forEach(([count, res, ch], s) => {
+        const bar = document.createElement('div');
+        bar.style.height = '4px';
+        layerStrip.appendChild(bar);
+        const label = document.createElement('span');
+        label.textContent = `${res}²×${ch}`;
+        stageLabels.appendChild(label);
+    });
+}
+
+function updateStats() {
+    // The mosaic holds its last frame when tracking drops out; say so rather
+    // than letting a stale activation map read as live.
+    staleBadge.style.display = (running && !landmarks && mosaicLayout) ? 'block' : 'none';
+
+    const bars = layerStrip.children;
+    const mx = Math.max(...stageEnergy, 1e-6);
+    for (let i = 0; i < bars.length; i++) {
+        bars[i].style.height = Math.max(3, (stageEnergy[i] / mx) * 52) + 'px';
+    }
+    inputStats.textContent = '';
+    const rows = [
+        ['camera', `${fps} fps`],
+        ['tracker', `${mpMs.toFixed(1)} ms`],
+        ['net', `${dissectMs.toFixed(1)} ms (${dissectHz.toFixed(1)} Hz)`],
+        ['presence', landmarks ? netScore.toFixed(3) : '--'],
+        ['net vs tracker', netError !== null && landmarks ? `${netError.toFixed(1)} px of 256` : '--'],
+        ['backend', tf.getBackend()]
+    ];
+    for (const [k, v] of rows) {
+        const span = document.createElement('span');
+        const b = document.createElement('b');
+        b.textContent = v;
+        span.textContent = k + ' ';
+        span.appendChild(b);
+        inputStats.appendChild(span);
+    }
+
+    scopeStats.textContent = '';
+    if (scope) {
+        const sr = [
+            ['palm', `${scope.palm.toFixed(0)} px`],
+            ['motion', `${scope.energy.toFixed(2)} pl/s`],
+            ['pinch', scope.pinch.toFixed(2)],
+            ['spread', `${scope.spread.toFixed(1)}°`],
+            ['roll', `${scope.roll.toFixed(0)}°`],
+            ['roll rate', `${scope.rollSpeed.toFixed(0)}°/s`]
+        ];
+        for (const [k, v] of sr) {
+            const span = document.createElement('span');
+            const b = document.createElement('b');
+            b.textContent = v;
+            span.textContent = k + ' ';
+            span.appendChild(b);
+            scopeStats.appendChild(span);
+        }
+    }
+}
+
+/* ---------------------------- Pose subspace ---------------------------- */
+const frameColor = i => `hsl(${(i * 137.508) % 360}, 72%, 62%)`;
+let wantCapture = false;
+
+function takeCapture() {
+    if (!scope) return;
+    const thumb = document.createElement('canvas');
+    thumb.width = thumb.height = 96;
+    thumb.getContext('2d').drawImage(cropCanvas, 0, 0, 96, 96);
+    captures.push({
+        geometric: scope.geometric.slice(),
+        pairwise: scope.pairwise.slice(),
+        embedding: lastEmbedding ? Array.from(lastEmbedding) : null,
+        thumb: thumb.toDataURL('image/jpeg', 0.72)
+    });
+    updateGallery();
+    computePCA();
+}
+
+function updateGallery() {
+    captureCount.textContent = String(captures.length);
+    gallery.textContent = '';
+    captures.forEach((cap, idx) => {
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+        item.style.borderColor = frameColor(idx);
+        const img = document.createElement('img');
+        img.src = cap.thumb;
+        img.alt = `Captured pose ${idx + 1}`;
+        const rm = document.createElement('button');
+        rm.className = 'remove';
+        rm.textContent = '×';
+        rm.title = 'Remove';
+        rm.onclick = () => { captures.splice(idx, 1); updateGallery(); computePCA(); };
+        item.append(img, rm);
+        gallery.appendChild(item);
+    });
+}
+
+function vectorOf(source) {
+    const r = reprSelect.value;
+    if (r === 'geometric') return source.geometric;
+    if (r === 'distances') return source.pairwise;
+    return source.embedding ? Array.from(source.embedding) : null;
+}
+
+function powerIteration(X, nComp) {
+    const n = X.length, d = X[0].length;
+    const comps = [], eigs = [];
+    const dot = (a, b) => { let s = 0; for (let j = 0; j < d; j++) s += a[j] * b[j]; return s; };
+    for (let c = 0; c < nComp; c++) {
+        const v = new Float64Array(d);
+        for (let j = 0; j < d; j++) v[j] = Math.random() - 0.5;
+        let nv = Math.sqrt(dot(v, v)) || 1;
+        for (let j = 0; j < d; j++) v[j] /= nv;
+        for (let it = 0; it < 60; it++) {
+            for (const u of comps) { const p = dot(v, u); for (let j = 0; j < d; j++) v[j] -= p * u[j]; }
+            const w = new Float64Array(d);
+            for (let i = 0; i < n; i++) {
+                const row = X[i];
+                let p = 0;
+                for (let j = 0; j < d; j++) p += row[j] * v[j];
+                for (let j = 0; j < d; j++) w[j] += row[j] * p;
+            }
+            const nw = Math.sqrt(dot(w, w));
+            if (nw < 1e-12) break;
+            for (let j = 0; j < d; j++) v[j] = w[j] / nw;
+        }
+        for (const u of comps) { const p = dot(v, u); for (let j = 0; j < d; j++) v[j] -= p * u[j]; }
+        nv = Math.sqrt(dot(v, v));
+        if (nv < 1e-9) break;
+        for (let j = 0; j < d; j++) v[j] /= nv;
+        let lam = 0;
+        for (let i = 0; i < n; i++) {
+            const row = X[i];
+            let p = 0;
+            for (let j = 0; j < d; j++) p += row[j] * v[j];
+            lam += p * p;
+        }
+        comps.push(v);
+        eigs.push(lam / n);
+    }
+    return { comps, eigs };
+}
+
+function computePCA() {
+    pcaModel = null;
+    cachedProjections = null;
+    liveTrail = [];
+    const vectors = captures.map(vectorOf);
+    const usable = vectors.filter(Boolean);
+    if (usable.length < 3) {
+        setPcaStats(captures.length < 3
+            ? `Capture ${3 - captures.length} more pose(s) to build a subspace`
+            : 'Some captures have no embedding yet - recapture with the camera running');
+        return;
+    }
+    const n = usable.length, d = usable[0].length;
+    const mean = new Float64Array(d);
+    for (const v of usable) for (let j = 0; j < d; j++) mean[j] += v[j];
+    for (let j = 0; j < d; j++) mean[j] /= n;
+    const X = usable.map(v => { const r = new Float64Array(d); for (let j = 0; j < d; j++) r[j] = v[j] - mean[j]; return r; });
+
+    const { comps, eigs } = powerIteration(X, 2);
+    if (comps.length < 2) { setPcaStats('Captured poses are too similar to span two dimensions'); return; }
+    let total = 0;
+    for (const row of X) for (let j = 0; j < d; j++) total += row[j] * row[j];
+    total /= n;
+
+    pcaModel = { mean, comps, explained: eigs.map(e => 100 * e / (total || 1)), d };
+    cachedProjections = vectors.map(v => v ? project(v) : null);
+    setPcaStats(null);
+}
+
+function project(vec) {
+    const { mean, comps, d } = pcaModel;
+    if (!vec || vec.length !== d) return null;
+    return comps.map(c => {
+        let s = 0;
+        for (let j = 0; j < d; j++) s += (vec[j] - mean[j]) * c[j];
+        return s;
+    });
+}
+
+function setPcaStats(message) {
+    pcaStats.textContent = '';
+    const add = (k, v) => {
+        const span = document.createElement('span');
+        const b = document.createElement('b');
+        b.textContent = v;
+        span.textContent = k + ' ';
+        span.appendChild(b);
+        pcaStats.appendChild(span);
+    };
+    if (message) { pcaStats.textContent = message; return; }
+    add('poses', String(cachedProjections.filter(Boolean).length));
+    add('dims', String(pcaModel.d));
+    add('PC1', pcaModel.explained[0].toFixed(1) + '%');
+    add('PC2', pcaModel.explained[1].toFixed(1) + '%');
+}
+
+let pcaPoints = [];
+function drawPCA() {
+    const W = pcaCanvas.width, H = pcaCanvas.height;
+    pcaCtx.fillStyle = '#05050f';
+    pcaCtx.fillRect(0, 0, W, H);
+    pcaPoints = [];
+    if (!pcaModel || !cachedProjections) {
+        pcaCtx.fillStyle = '#555';
+        pcaCtx.font = '15px system-ui, sans-serif';
+        pcaCtx.textAlign = 'center';
+        pcaCtx.fillText('Capture at least 3 distinct hand shapes', W / 2, H / 2);
+        pcaCtx.textAlign = 'left';
+        return;
+    }
+
+    const live = scope ? project(vectorOf({ geometric: scope.geometric, pairwise: scope.pairwise, embedding: lastEmbedding })) : null;
+    if (live) {
+        liveTrail.push(live);
+        if (liveTrail.length > 60) liveTrail.shift();
+    }
+
+    const pts = cachedProjections.filter(Boolean).concat(live ? [live] : []);
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [x, y] of pts) {
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+    }
+    const spanX = Math.max(maxX - minX, 1e-6), spanY = Math.max(maxY - minY, 1e-6);
+    const pad = 46;
+    const sx = v => pad + ((v - minX) / spanX) * (W - pad * 1.5);
+    const sy = v => H - pad - ((v - minY) / spanY) * (H - pad * 1.6);
+
+    // axes
+    pcaCtx.strokeStyle = '#22224a';
+    pcaCtx.lineWidth = 1;
+    pcaCtx.beginPath();
+    pcaCtx.moveTo(pad * 0.6, H - pad);
+    pcaCtx.lineTo(W - pad * 0.4, H - pad);
+    pcaCtx.moveTo(pad * 0.6, H - pad);
+    pcaCtx.lineTo(pad * 0.6, pad * 0.4);
+    pcaCtx.stroke();
+    pcaCtx.fillStyle = '#777';
+    pcaCtx.font = '12px system-ui, sans-serif';
+    pcaCtx.fillText(`PC1 · ${pcaModel.explained[0].toFixed(1)}% variance`, pad * 0.6, H - pad + 18);
+    pcaCtx.save();
+    pcaCtx.translate(pad * 0.6 - 8, H - pad);
+    pcaCtx.rotate(-Math.PI / 2);
+    pcaCtx.fillText(`PC2 · ${pcaModel.explained[1].toFixed(1)}%`, 0, 0);
+    pcaCtx.restore();
+
+    // live trail
+    if (liveTrail.length > 1) {
+        pcaCtx.strokeStyle = 'rgba(255,107,157,0.45)';
+        pcaCtx.lineWidth = 1.5;
+        pcaCtx.beginPath();
+        liveTrail.forEach(([x, y], i) => i ? pcaCtx.lineTo(sx(x), sy(y)) : pcaCtx.moveTo(sx(x), sy(y)));
+        pcaCtx.stroke();
+    }
+
+    cachedProjections.forEach((p, idx) => {
+        if (!p) return;
+        const x = sx(p[0]), y = sy(p[1]);
+        pcaPoints.push({ x, y, idx });
+        pcaCtx.fillStyle = frameColor(idx);
+        pcaCtx.beginPath();
+        pcaCtx.arc(x, y, 7, 0, Math.PI * 2);
+        pcaCtx.fill();
+        pcaCtx.strokeStyle = 'rgba(0,0,0,0.6)';
+        pcaCtx.lineWidth = 1.5;
+        pcaCtx.stroke();
+    });
+
+    if (live) {
+        const x = sx(live[0]), y = sy(live[1]);
+        pcaCtx.fillStyle = '#ff6b9d';
+        pcaCtx.beginPath();
+        pcaCtx.arc(x, y, 9, 0, Math.PI * 2);
+        pcaCtx.fill();
+        pcaCtx.strokeStyle = '#fff';
+        pcaCtx.lineWidth = 2;
+        pcaCtx.stroke();
+    }
+}
+
+/* ------------------------------- Wiring ------------------------------- */
+startBtn.onclick = startCamera;
+stopBtn.onclick = stopCamera;
+captureBtn.onclick = () => { wantCapture = true; };
+clearBtn.onclick = () => { captures = []; updateGallery(); computePCA(); };
+reprSelect.onchange = computePCA;
+
+cropScale.oninput = () => { cropScaleVal.textContent = parseFloat(cropScale.value).toFixed(2); };
+smoothSlider.oninput = () => { smoothVal.textContent = parseFloat(smoothSlider.value).toFixed(2); };
+tapSlider.oninput = updateTapInfo;
+
+mosaicCanvas.addEventListener('mousemove', e => {
+    if (!mosaicLayout || !channelStats || !mosaicLayout.tile) { tooltip.style.display = 'none'; return; }
+    const rect = mosaicCanvas.getBoundingClientRect();
+    const scale = mosaicCanvas.width / rect.width;
+    const col = Math.floor(((e.clientX - rect.left) * scale) / mosaicLayout.tile);
+    const row = Math.floor(((e.clientY - rect.top) * scale) / mosaicLayout.tile);
+    const slot = row * mosaicLayout.cols + col;
+    if (slot < 0 || slot >= mosaicLayout.ch) { tooltip.style.display = 'none'; return; }
+    const ch = channelStats.order[slot];
+    tooltip.textContent = `channel ${ch}  ·  mean ${channelStats.mean[ch].toFixed(3)}  ·  max ${channelStats.max[ch].toFixed(3)}`;
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY + 14) + 'px';
+});
+mosaicCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+pcaCanvas.addEventListener('mousemove', e => {
+    const rect = pcaCanvas.getBoundingClientRect();
+    const scale = pcaCanvas.width / rect.width;
+    const mx = (e.clientX - rect.left) * scale, my = (e.clientY - rect.top) * scale;
+    const hit = pcaPoints.find(p => Math.hypot(p.x - mx, p.y - my) < 14);
+    if (!hit) { tooltip.style.display = 'none'; return; }
+    tooltip.textContent = '';
+    const img = document.createElement('img');
+    img.src = captures[hit.idx].thumb;
+    img.style.width = '110px';
+    img.style.display = 'block';
+    img.style.borderRadius = '4px';
+    const cap = document.createElement('div');
+    cap.textContent = `Pose ${hit.idx + 1}`;
+    tooltip.append(img, cap);
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.clientX + 14) + 'px';
+    tooltip.style.top = (e.clientY + 14) + 'px';
+});
+pcaCanvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// Canvases size themselves during the render loop; redraw on resize too so a
+// window change while the camera is stopped does not leave them stretched.
+window.addEventListener('resize', () => { drawScope(); drawPCA(); });
+
+window.addEventListener('beforeunload', () => { if (stream) stream.getTracks().forEach(t => t.stop()); });
+
+buildLayerStrip();
+updateTapInfo();
+updateGallery();
+computePCA();
+drawScope();
+drawPCA();
+loadModels();
+</script>
+</body>
+</html>
