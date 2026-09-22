@@ -47,6 +47,9 @@
         }
         video { display: none; }
         canvas { display: block; width: 100%; height: auto; }
+        /* Landmark overlays live on their own layer: #cropCanvas must stay a
+           pristine copy of the frame, because that is the model's input. */
+        canvas.overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
         .controls {
             display: flex;
             gap: 10px;
@@ -219,6 +222,7 @@
                 <div class="crop-col">
                     <div class="video-container">
                         <canvas id="cropCanvas" width="256" height="256"></canvas>
+                        <canvas id="cropOverlay" class="overlay" width="256" height="256"></canvas>
                     </div>
                     <p class="hint">The 256&times;256 wrist-aligned crop the network actually sees.</p>
                 </div>
@@ -410,6 +414,7 @@ const $ = id => document.getElementById(id);
 const video = $('video');
 const viewCanvas = $('viewCanvas'), viewCtx = viewCanvas.getContext('2d');
 const cropCanvas = $('cropCanvas'), cropCtx = cropCanvas.getContext('2d', { willReadFrequently: false });
+const cropOverlay = $('cropOverlay'), cropOverlayCtx = cropOverlay.getContext('2d');
 const mosaicCanvas = $('mosaicCanvas'), mosaicCtx = mosaicCanvas.getContext('2d');
 const scopeCanvas = $('scopeCanvas'), scopeCtx = scopeCanvas.getContext('2d');
 const pcaCanvas = $('pcaCanvas'), pcaCtx = pcaCanvas.getContext('2d');
@@ -547,6 +552,8 @@ function stopCamera() {
     viewCtx.clearRect(0, 0, viewCanvas.width, viewCanvas.height);
     cropCtx.setTransform(1, 0, 0, 1, 0, 0);
     cropCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+    cropOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+    cropOverlayCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
     status.textContent = 'Camera stopped.';
     startBtn.disabled = false;
     stopBtn.disabled = true;
@@ -630,9 +637,9 @@ function loop() {
         prevTime = now;
 
         cropInfo = computeCropRect(px, parseFloat(cropScale.value));
-        drawCrop(cropInfo);
+        drawCrop(cropInfo);   // #cropCanvas is now the clean model input, always
         if (wantCapture) { wantCapture = false; takeCapture(); }
-        drawCropOverlay(px);
+        drawCropOverlay(px);  // skeletons go to #cropOverlay, never to the input
         drawOverlay(px);
         if (!freezeScope.checked) pushScope(now);
 
@@ -646,6 +653,8 @@ function loop() {
         cropCtx.setTransform(1, 0, 0, 1, 0, 0);
         cropCtx.fillStyle = '#000';
         cropCtx.fillRect(0, 0, INPUT_SIZE, INPUT_SIZE);
+        cropOverlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+        cropOverlayCtx.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
         trails.forEach(t => t.length = 0);
     }
 
@@ -1143,34 +1152,36 @@ function paintMosaic() {
 }
 
 function drawCropOverlay(px) {
-    cropCtx.setTransform(1, 0, 0, 1, 0, 0);
+    const c = cropOverlayCtx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, INPUT_SIZE, INPUT_SIZE);
     if (!cropMatrix) return;
 
     if (toggles.skeleton.checked) {
         const mp = px.map(([x, y]) => cropMatrix.transformPoint(new DOMPoint(x, y)));
-        cropCtx.strokeStyle = 'rgba(255,107,157,0.75)';
-        cropCtx.lineWidth = 1.5;
+        c.strokeStyle = 'rgba(255,107,157,0.75)';
+        c.lineWidth = 1.5;
         for (const [i, j] of HAND_EDGES) {
-            cropCtx.beginPath();
-            cropCtx.moveTo(mp[i].x, mp[i].y);
-            cropCtx.lineTo(mp[j].x, mp[j].y);
-            cropCtx.stroke();
+            c.beginPath();
+            c.moveTo(mp[i].x, mp[i].y);
+            c.lineTo(mp[j].x, mp[j].y);
+            c.stroke();
         }
     }
     if (netLandmarks) {
-        cropCtx.strokeStyle = '#4de2ff';
-        cropCtx.lineWidth = 1.5;
+        c.strokeStyle = '#4de2ff';
+        c.lineWidth = 1.5;
         for (const [i, j] of HAND_EDGES) {
-            cropCtx.beginPath();
-            cropCtx.moveTo(netLandmarks[i][0], netLandmarks[i][1]);
-            cropCtx.lineTo(netLandmarks[j][0], netLandmarks[j][1]);
-            cropCtx.stroke();
+            c.beginPath();
+            c.moveTo(netLandmarks[i][0], netLandmarks[i][1]);
+            c.lineTo(netLandmarks[j][0], netLandmarks[j][1]);
+            c.stroke();
         }
-        cropCtx.fillStyle = '#4de2ff';
+        c.fillStyle = '#4de2ff';
         for (const [x, y] of netLandmarks) {
-            cropCtx.beginPath();
-            cropCtx.arc(x, y, 2.2, 0, Math.PI * 2);
-            cropCtx.fill();
+            c.beginPath();
+            c.arc(x, y, 2.2, 0, Math.PI * 2);
+            c.fill();
         }
     }
 }
