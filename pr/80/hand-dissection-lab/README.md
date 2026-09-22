@@ -24,9 +24,18 @@ underlying **BlazeHand landmark network** directly as a TF.js graph model:
 | Body | 45 ReLU activations in a 7-stage pyramid, 344 graph nodes |
 
 MediaPipe still does the *tracking* (finding and following the hand), but the crop it produces is
-fed to the standalone network, which predicts landmarks independently. Both skeletons are drawn on
+fed to the standalone network, which predicts landmarks independently. Both skeletons are drawn over
 the crop &mdash; magenta for MediaPipe, cyan for the standalone net &mdash; with their mean
 disagreement reported in crop pixels. They should sit nearly on top of each other.
+
+Those skeletons are drawn on a **separate transparent layer** stacked over the crop, never composited
+into it. `#cropCanvas` is a pristine copy of the frame and is exactly what `tf.browser.fromPixels()`
+reads, so the caption above it is literal. This matters more than it sounds: an earlier version
+painted the overlay onto the crop before inference, which fed the network MediaPipe's answer *and the
+network's own previous prediction* as part of its input &mdash; about 1.6% of pixels. Measured on a
+fixed scene, overlay at that coverage moved the predicted landmarks by ~30 px out of 256 and changed
+stage-2 activations by ~43% in relative L2, so it also polluted the layer mosaics. There is a
+regression test asserting the model input contains zero overlay-coloured pixels.
 
 The crop is built the way the real BlazeHand pipeline builds it: rotated so the wrist &rarr; middle
 knuckle axis points up, then squared off around the hand's extent. **Crop scale** widens or tightens
