@@ -421,6 +421,9 @@
               <option value="basler8">Basler ace 2 + 8mm</option>
               <option value="basler12">Basler ace 2 + 12mm</option>
               <option value="basler16">Basler ace 2 + 16mm</option>
+              <option value="basler25">Basler ace 2 + 25mm</option>
+              <option value="basler35">Basler ace 2 + 35mm</option>
+              <option value="basler50">Basler ace 2 + 50mm</option>
               <option value="custom">Custom</option>
             </select>
           </div>
@@ -437,7 +440,7 @@
         <div id="compareSelect" style="display:none">
           <select id="calcCamera2" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;padding:8px 10px;font-size:14px">
             <option value="gopro">GoPro HERO 13 (4K)</option><option value="dji">DJI Action 6 (4K)</option>
-            <option value="basler">Basler + 6mm</option><option value="basler8">Basler + 8mm</option><option value="basler12">Basler + 12mm</option>
+            <option value="basler">Basler + 6mm</option><option value="basler8">Basler + 8mm</option><option value="basler12">Basler + 12mm</option><option value="basler16">Basler + 16mm</option><option value="basler25">Basler + 25mm</option><option value="basler35">Basler + 35mm</option><option value="basler50">Basler + 50mm</option>
           </select>
         </div>
       </div>
@@ -445,12 +448,12 @@
         <div class="card-title">Arena</div>
         <div class="form-grid">
           <div class="form-group full"><label>Preset</label>
-            <select id="arenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option></select>
+            <select id="arenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option><option value="headshoulders">Head &amp; shoulders 80&times;50</option><option value="oneperson">One seated person 120&times;100</option><option value="dyad">Seated dyad 260&times;160</option><option value="consultroom">Consult room 300&times;250</option><option value="examroom">Exam room 400&times;300</option><option value="gaitpath">Walking path 500&times;150</option></select>
           </div>
           <div class="form-group"><label>Width (cm)</label><input type="number" id="calcObjW" value="120"></div>
           <div class="form-group"><label>Depth (cm)</label><input type="number" id="calcObjH" value="80"></div>
-          <div class="form-group"><label>Mounting</label><select id="calcMount"><option value="topdown">Top-down</option><option value="bottomup">Bottom-up</option></select></div>
-          <div class="form-group"><label>Animal width (cm)</label><input type="number" id="animalSize" step="0.1" value="3"></div>
+          <div class="form-group"><label>Mounting</label><select id="calcMount"><option value="topdown">Top-down</option><option value="bottomup">Bottom-up</option><option value="oblique">Oblique (wall/corner)</option></select></div>
+          <div class="form-group"><label>Target feature</label><select id="targetPreset"><option value="mouse">Mouse body</option><option value="rat">Rat body</option><option value="torso">Human torso</option><option value="hand">Human hand</option><option value="head">Human head</option><option value="eyes">Inter-ocular (AU/gaze)</option><option value="custom">Custom</option></select></div><div class="form-group"><label>Target width (cm)</label><input type="number" id="animalSize" step="0.1" value="3"></div>
         </div>
       </div>
       <div class="card">
@@ -470,7 +473,7 @@
         <div class="diagram-tooltip" id="diagramTooltip"></div>
         <div class="dist-slider-wrap">
           <div class="dist-slider-label"><span>Distance</span><span id="sliderValue">115 cm</span></div>
-          <input type="range" id="distSlider" min="5" max="200" value="115" step="1">
+          <input type="range" id="distSlider" min="5" max="600" value="115" step="1">
         </div>
       </div>
       <div style="font-size:10px;color:#555;margin-top:6px;text-align:center">Drag camera icon or use slider &middot; Hover top view for pixel info</div>
@@ -500,7 +503,7 @@
         <div class="card-title">Arena</div>
         <div class="form-grid">
           <div class="form-group full"><label>Preset</label>
-            <select id="mcArenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option></select>
+            <select id="mcArenaPreset"><option value="custom">Custom</option><option value="tmaze">T-Maze (120&times;80)</option><option value="openfield40">Open Field 40&times;40</option><option value="openfield60">Open Field 60&times;60</option><option value="linear150">Linear Track 150&times;15</option><option value="homecage">Home Cage 30&times;20</option><option value="epm">EPM 70&times;70</option><option value="barnes">Barnes 90&times;90</option><option value="mwm">MWM 120&times;120</option><option value="spacecage">SpaceCage 300&times;30</option><option value="headshoulders">Head &amp; shoulders 80&times;50</option><option value="oneperson">One seated person 120&times;100</option><option value="dyad">Seated dyad 260&times;160</option><option value="consultroom">Consult room 300&times;250</option><option value="examroom">Exam room 400&times;300</option><option value="gaitpath">Walking path 500&times;150</option></select>
           </div>
           <div class="form-group"><label>Width (cm)</label><input type="number" id="mcArenaW" value="120"></div>
           <div class="form-group"><label>Depth (cm)</label><input type="number" id="mcArenaH" value="80"></div>
@@ -512,7 +515,8 @@
         <div class="mc-toolbar">
           <button class="mc-btn" id="mcAddDji">+ DJI</button>
           <button class="mc-btn" id="mcAddGopro">+ GoPro</button>
-          <button class="mc-btn" id="mcAddBasler">+ Basler 6mm</button>
+          <select id="mcBaslerLens" class="mc-btn" style="padding:6px 8px"><option value="basler">6mm</option><option value="basler8">8mm</option><option value="basler12">12mm</option><option value="basler16">16mm</option><option value="basler25">25mm</option><option value="basler35">35mm</option><option value="basler50">50mm</option></select>
+          <button class="mc-btn" id="mcAddBasler">+ Basler</button>
           <button class="mc-btn" id="mcClear">Clear all</button>
         </div>
         <div class="mc-cam-list" id="mcCamList"></div>
@@ -709,8 +713,25 @@ var PRESETS = {
   basler8:  { sw:6.68, sh:4.20, fl:8, crop:1, rw:1920, rh:1200, name:"Basler + 8mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
   basler12: { sw:6.68, sh:4.20, fl:12, crop:1, rw:1920, rh:1200, name:"Basler + 12mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
   basler16: { sw:6.68, sh:4.20, fl:16, crop:1, rw:1920, rh:1200, name:"Basler + 16mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler25: { sw:6.68, sh:4.20, fl:25, crop:1, rw:1920, rh:1200, name:"Basler + 25mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler35: { sw:6.68, sh:4.20, fl:35, crop:1, rw:1920, rh:1200, name:"Basler + 35mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler50: { sw:6.68, sh:4.20, fl:50, crop:1, rw:1920, rh:1200, name:"Basler + 50mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
 };
-var ARENA_PRESETS = { custom:null, tmaze:{w:120,h:80}, openfield40:{w:40,h:40}, openfield60:{w:60,h:60}, linear150:{w:150,h:15}, homecage:{w:30,h:20}, epm:{w:70,h:70}, barnes:{w:90,h:90}, mwm:{w:120,h:120}, spacecage:{w:300,h:30} };
+var ARENA_PRESETS = { custom:null, tmaze:{w:120,h:80}, openfield40:{w:40,h:40}, openfield60:{w:60,h:60}, linear150:{w:150,h:15}, homecage:{w:30,h:20}, epm:{w:70,h:70}, barnes:{w:90,h:90}, mwm:{w:120,h:120}, spacecage:{w:300,h:30},
+  headshoulders:{w:80,h:50}, oneperson:{w:120,h:100}, dyad:{w:260,h:160},
+  consultroom:{w:300,h:250}, examroom:{w:400,h:300}, gaitpath:{w:500,h:150} };
+
+// Pixel-count thresholds belong to the target feature, not the tool. "ok" is the floor for a
+// usable estimate, "good" is comfortable. Rodent values are the original SLEAP figures.
+var TARGET_PRESETS = {
+  mouse:  { w:3,    ok:15,  good:30,  use:"SLEAP" },
+  rat:    { w:6,    ok:15,  good:30,  use:"SLEAP" },
+  torso:  { w:50,   ok:125, good:250, use:"body pose" },
+  hand:   { w:19,   ok:40,  good:100, use:"hand tracking" },
+  head:   { w:16,   ok:150, good:240, use:"face landmarks" },
+  eyes:   { w:6.3,  ok:60,  good:95,  use:"facial AUs / gaze" },
+  custom: { w:null, ok:15,  good:30,  use:"tracking" }
+};
 
 // ══════════════════════════════════════════════════════════════════
 // CALCULATOR
@@ -722,6 +743,7 @@ var $rw=document.getElementById("calcResW"), $rh=document.getElementById("calcRe
 var $ow=document.getElementById("calcObjW"), $oh=document.getElementById("calcObjH");
 var $mount=document.getElementById("calcMount"), $animal=document.getElementById("animalSize");
 var $arenaP=document.getElementById("arenaPreset"), $cmpOn=document.getElementById("compareOn");
+var $targetP=document.getElementById("targetPreset");
 var $cmpSel=document.getElementById("compareSelect");
 var $results=document.getElementById("calcResults"), $feas=document.getElementById("feasibility");
 var $slider=document.getElementById("distSlider"), $sliderVal=document.getElementById("sliderValue");
@@ -730,13 +752,14 @@ var canvas=document.getElementById("fovDiagram"), ctx=canvas.getContext("2d");
 var $estFps=document.getElementById("estFps"), $estDur=document.getElementById("estDur");
 var $estResult=document.getElementById("estResult"), $checklist=document.getElementById("checklist");
 
-var currentDist=115, isDragging=false, lastCalc={}, sliderLocked=false;
+var currentDist=115, isDragging=false, lastCalc={}, sliderLocked=false, sliderMax=200;
 var camIconPos={x:0,y:0,r:12};
 
 function applyPreset(k) { var p=PRESETS[k]; if(p){$sw.value=p.sw;$sh.value=p.sh;$fl.value=p.fl;$crop.value=p.crop;$rw.value=p.rw;$rh.value=p.rh;} }
 $cam.addEventListener("change", function(){ applyPreset($cam.value); sliderLocked=false; updateCalculator(); });
 $cam2.addEventListener("change", function(){ updateCalculator(); });
 $arenaP.addEventListener("change", function(){ var a=ARENA_PRESETS[$arenaP.value]; if(a){$ow.value=a.w;$oh.value=a.h;sliderLocked=false;updateCalculator();} });
+$targetP.addEventListener("change", function(){ var t=TARGET_PRESETS[$targetP.value]; if(t&&t.w!==null){$animal.value=t.w;} updateCalculator(); });
 $cmpOn.addEventListener("change", function(){ $cmpSel.style.display=$cmpOn.checked?"block":"none"; updateCalculator(); });
 [$sw,$sh,$fl,$crop,$rw,$rh,$ow,$oh,$mount,$animal].forEach(function(e){e.addEventListener("input",function(){sliderLocked=false;updateCalculator();});});
 [$estFps,$estDur].forEach(function(e){e.addEventListener("input",updateCalculator);});
@@ -750,25 +773,33 @@ function computeCam(k){var p=PRESETS[k];if(!p)return null;return{hfov:calcFOV(p.
 function updateCalculator() {
   var sw=+$sw.value||9.6,sh=+$sh.value||7.2,fl=+$fl.value||2.8,crop=+$crop.value||1;
   var rw=+$rw.value||3840,rh=+$rh.value||2160,objW=+$ow.value||120,objH=+$oh.value||80;
-  var anW=+$animal.value||3, isTop=$mount.value==="topdown";
+  var anW=+$animal.value||3, isTop=$mount.value!=="bottomup";
+  var tgt=TARGET_PRESETS[$targetP.value]||TARGET_PRESETS.custom;
+  var okPx=tgt.ok, goodPx=tgt.good, useFor=tgt.use;
   var hfov=calcFOV(sw*crop,fl),vfov=calcFOV(sh*crop,fl);
   var minD=Math.max(calcDst(hfov,objW),calcDst(vfov,objH)),recD=minD*1.15;
+  // Widen the range BEFORE assigning .value, or the browser clamps to the previous max.
+  sliderMax=Math.max(200,Math.ceil(recD*1.6/50)*50); $slider.max=sliderMax;
   if(!sliderLocked){currentDist=recD;$slider.value=Math.round(currentDist);$sliderVal.textContent=Math.round(currentDist)+" cm";}
-  var d=currentDist; $slider.max=200;
+  var d=currentDist;
   var covW=calcCov(hfov,d),covH=calcCov(vfov,d);
   var pxH=rw/covW,pxV=rh/covH,pxA=Math.min(pxH,pxV)*anW;
   var fits=covW>=objW&&covH>=objH;
-  var tC=pxA>=30?"#4ade80":pxA>=15?"#22d3ee":pxA>=8?"#facc15":"#f87171";
-  var tL=pxA>=30?"Excellent":pxA>=15?"Sufficient":pxA>=8?"Marginal":"Insufficient";
+  var margPx=okPx*0.55;
+  var tC=pxA>=goodPx?"#4ade80":pxA>=okPx?"#22d3ee":pxA>=margPx?"#facc15":"#f87171";
+  var tL=pxA>=goodPx?"Excellent":pxA>=okPx?"Sufficient":pxA>=margPx?"Marginal":"Insufficient";
   lastCalc={hfov:hfov,vfov:vfov,dist:d,covW:covW,covH:covH,objW:objW,objH:objH,isTopDown:isTop,rw:rw,rh:rh,pxH:pxH,pxV:pxV};
   $results.innerHTML=
     rc(Math.round(d),"","Distance",isTop?"mounting height":"clearance","#667eea")+
     rc(Math.round(hfov)+"&deg;&times;"+Math.round(vfov)+"&deg;","","FOV","H &times; V","#facc15")+
     rc(Math.round(covW)+"&times;"+Math.round(covH),"cm","Coverage","","#22d3ee")+
     rc(pxH.toFixed(1),"px/cm","Px density",(covW/rw*10).toFixed(1)+" mm/px",pxH>7?"#4ade80":pxH>3?"#facc15":"#f87171")+
-    rc(Math.round(pxA),"px","On animal",anW+"cm body",tC)+
+    rc(Math.round(pxA),"px","On target",anW+"cm "+useFor,tC)+
     rc(fits?"YES":"NO","","Fits?",fits?Math.round((covW-objW)/2)+"cm margin":"Too close",fits?"#4ade80":"#f87171");
-  $feas.innerHTML='<div class="feasibility-bar"><div class="feasibility-dot" style="background:'+tC+'"></div><span style="color:'+tC+';font-weight:600">'+tL+' for SLEAP</span><span style="color:#666;margin-left:auto">'+Math.round(pxA)+'px / '+anW+'cm (need &ge;15)</span></div>';
+  $feas.innerHTML='<div class="feasibility-bar"><div class="feasibility-dot" style="background:'+tC+'"></div><span style="color:'+tC+';font-weight:600">'+tL+' for '+useFor+'</span><span style="color:#666;margin-left:auto">'+Math.round(pxA)+'px / '+anW+'cm (need &ge;'+okPx+')</span></div>'
+    + ($mount.value==="oblique"
+       ? '<div class="feasibility-bar" style="background:rgba(250,204,21,0.07)"><div class="feasibility-dot" style="background:#facc15"></div><span style="color:#facc15">Oblique mount &mdash; coverage is a trapezoid, not a rectangle</span><span style="color:#666;margin-left:auto">Evaluate at the farthest subject</span></div>'
+       : '');
 
   // Recording estimator
   var fps=+$estFps.value||120, dur=+$estDur.value||60;
@@ -786,16 +817,18 @@ function updateCalculator() {
 
   // Checklist
   var cl=[];
-  cl.push("Mount camera at <strong>"+Math.round(d)+" cm</strong> "+($mount.value==="topdown"?"above":"below")+" the arena");
+  var mountWord = $mount.value==="bottomup" ? "below the arena" : $mount.value==="oblique" ? "from the subject, off-axis" : "above the arena";
+  cl.push("Mount camera at <strong>"+Math.round(d)+" cm</strong> "+mountWord);
   cl.push("Arena coverage: "+Math.round(covW)+" &times; "+Math.round(covH)+" cm ("+Math.round((covW-objW)/2)+"cm margin)");
-  cl.push("Pixel density: "+pxH.toFixed(1)+" px/cm &mdash; "+tL+" for "+anW+"cm animal");
+  cl.push("Pixel density: "+pxH.toFixed(1)+" px/cm &mdash; "+tL+" for "+anW+"cm target ("+useFor+")");
   cl.push("Storage needed for "+dur+"min: <strong>"+fileSizeGB.toFixed(1)+" GB</strong>");
   if(!isBasler) cl.push("Charge battery fully &mdash; "+p.battery+" min runtime at this resolution");
   if(isBasler) cl.push("Connect 5GigE Ethernet cable (Cat6 or better, max 100m)");
   if(isBasler) cl.push("Attach "+fl+"mm C-mount lens &mdash; verify focus and aperture");
   if(!isBasler) cl.push("Set camera to "+rw+"&times;"+rh+" @ "+fps+"fps");
   cl.push("Run distortion check with charuco board if arena fills >70% of frame");
-  cl.push("Verify animal is visible at all arena positions before recording");
+  cl.push("Verify the subject is visible at all positions in the volume before recording");
+  if($mount.value==="oblique") cl.push("Oblique view &mdash; re-check framing at the near AND far edge of the volume");
   $checklist.innerHTML=cl.map(function(c){return'<li>'+c+'</li>';}).join("");
 
   var cmp=$cmpOn.checked?computeCam($cam2.value):null;
@@ -805,7 +838,7 @@ function rc(v,u,l,s,c){return'<div class="result-card"><div class="result-value"
 
 // ── Drag camera ──
 canvas.addEventListener("mousedown",function(e){var r=canvas.getBoundingClientRect(),mx=(e.clientX-r.left)*(canvas.width/r.width),my=(e.clientY-r.top)*(canvas.height/r.height),dx=mx-camIconPos.x,dy=my-camIconPos.y;if(Math.sqrt(dx*dx+dy*dy)<camIconPos.r+10){isDragging=true;canvas.classList.add("dragging");e.preventDefault();}});
-window.addEventListener("mousemove",function(e){if(!isDragging)return;var r=canvas.getBoundingClientRect(),my=(e.clientY-r.top)*(canvas.height/r.height);var H=canvas.height,pad=40,sideH=H-pad*2-60,maxD=200,scale2=sideH/maxD,centerY=H/2;
+window.addEventListener("mousemove",function(e){if(!isDragging)return;var r=canvas.getBoundingClientRect(),my=(e.clientY-r.top)*(canvas.height/r.height);var H=canvas.height,pad=40,sideH=H-pad*2-60,maxD=sliderMax,scale2=sideH/maxD,centerY=H/2;
   // Distance = how far camera is from center, doubled (since center is midpoint of camera-to-ground)
   var nd=Math.abs(centerY-my)*2/scale2;
   nd=Math.max(5,Math.min(maxD,nd));currentDist=nd;$slider.value=Math.round(nd);$sliderVal.textContent=Math.round(nd)+" cm";sliderLocked=true;updateCalculator();});
@@ -828,7 +861,7 @@ function drawDiagram(hfov,vfov,dist,covW,covH,objW,objH,isTop,rw,rh,cmp) {
   for(var y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
   var midX=W/2,pad=40,camX=pad+(midX-pad*2)/2;
   // Center the side view vertically: camera and ground spaced around the vertical midpoint
-  var sideH=H-pad*2-60, maxSD=200;
+  var sideH=H-pad*2-60, maxSD=sliderMax;
   var scale=sideH/maxSD;
   var spanPx=dist*scale;
   var centerY=H/2;
@@ -975,7 +1008,12 @@ renderWizStep();
 var mcCanvas=document.getElementById("mcCanvas"),mcCtx=mcCanvas.getContext("2d");
 var mcCams=[], mcDrag=null;
 var MC_COLORS=["#667eea","#22d3ee","#a78bfa","#4ade80","#facc15","#f87171"];
-var MC_PRESETS={dji:{hfov:145,vfov:122,name:"DJI"},gopro:{hfov:140,vfov:105,name:"GoPro"},basler:{hfov:58,vfov:39,name:"Basler 6mm"}};
+var MC_PRESETS={dji:{hfov:145,vfov:122,name:"DJI"},gopro:{hfov:140,vfov:105,name:"GoPro"}};
+Object.keys(PRESETS).forEach(function(k){
+  if(k.indexOf("basler")!==0) return;
+  var p=PRESETS[k];
+  MC_PRESETS[k]={hfov:calcFOV(p.sw*p.crop,p.fl),vfov:calcFOV(p.sh*p.crop,p.fl),name:"Basler "+p.fl+"mm"};
+});
 
 function addMcCam(type){
   var aw=+document.getElementById("mcArenaW").value||120,ah=+document.getElementById("mcArenaH").value||80;
@@ -986,7 +1024,7 @@ document.getElementById("mcArenaPreset").addEventListener("change",function(){
 });
 document.getElementById("mcAddDji").addEventListener("click",function(){addMcCam("dji");});
 document.getElementById("mcAddGopro").addEventListener("click",function(){addMcCam("gopro");});
-document.getElementById("mcAddBasler").addEventListener("click",function(){addMcCam("basler");});
+document.getElementById("mcAddBasler").addEventListener("click",function(){addMcCam(document.getElementById("mcBaslerLens").value);});
 document.getElementById("mcClear").addEventListener("click",function(){mcCams=[];drawMultiCam();});
 [document.getElementById("mcArenaW"),document.getElementById("mcArenaH"),document.getElementById("mcHeight")].forEach(function(e){e.addEventListener("input",drawMultiCam);});
 

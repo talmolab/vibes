@@ -20,6 +20,35 @@ Plan your lab camera setup: compare DJI Action 6, GoPro HERO 13, and Basler ace 
 - Dark/light theme toggle
 - Theory tutorial (FOV, GSD, shutter types, distortion, mounting)
 
+## Human-scale setups
+
+The tool was built around rodent arenas but the optics are scale-free, so it also plans
+human-subject rigs (interaction studies, gait, clinical recording):
+
+- **Distance range** adapts to the computed working distance instead of a fixed 200 cm ceiling
+- **Target feature** selector replaces the raw "animal width" field. Each preset carries its own
+  pixel thresholds, because "enough pixels" means something different per measure:
+
+  | Target | Width | Usable | Comfortable | For |
+  |---|---|---|---|---|
+  | Mouse body | 3 cm | 15 px | 30 px | SLEAP |
+  | Rat body | 6 cm | 15 px | 30 px | SLEAP |
+  | Human torso | 50 cm | 125 px | 250 px | body pose |
+  | Human hand | 19 cm | 40 px | 100 px | hand tracking |
+  | Human head | 16 cm | 150 px | 240 px | face landmarks |
+  | Inter-ocular | 6.3 cm | 60 px | 95 px | facial AUs / gaze |
+
+- **Arena presets** for head-and-shoulders, one seated person, a seated dyad, consult and exam
+  rooms, and a walking path
+- **Oblique (wall/corner) mounting** option. The math still assumes a plane perpendicular to the
+  optical axis, so the tool flags that real coverage is a trapezoid and you should evaluate at
+  the distance to the farthest subject
+- **Basler lens ladder** extended to 25/35/50 mm, and the multi-camera planner now takes any lens
+  rather than assuming 6 mm
+
+Rodent defaults are unchanged: the target selector opens on "Mouse body" with the original
+15/30 px SLEAP thresholds.
+
 ## Camera specs
 
 Verified from official sources: [dji.com](https://www.dji.com/osmo-action-6), [gopro.com](https://gopro.com/en/us/shop/cameras/buy/hero13black/CHDHX-131-master.html), [docs.baslerweb.com](https://docs.baslerweb.com/a2a1920-165g5mbas)
