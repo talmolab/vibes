@@ -43,8 +43,12 @@ human-subject rigs (interaction studies, gait, clinical recording):
 - **Oblique (wall/corner) mounting** option. The math still assumes a plane perpendicular to the
   optical axis, so the tool flags that real coverage is a trapezoid and you should evaluate at
   the distance to the farthest subject
-- **Basler lens ladder** extended to 25/35/50 mm, and the multi-camera planner now takes any lens
-  rather than assuming 6 mm
+- **Basler lens ladder** extended both ways — 2.8/3.5/4/5 mm for small rooms, 25/35/50 mm for
+  detail tiers — and the multi-camera planner now takes any lens rather than assuming 6 mm
+- **"Lens fit" reverse lookup**: given the distance you actually have, the longest focal length
+  that still frames the volume. In a small room the distance is fixed and the lens is the free
+  variable, which is the inverse of the question the tool originally answered
+- Lenses under 6 mm carry a barrel-distortion and C-mount/image-circle warning
 
 Rodent defaults are unchanged: the target selector opens on "Mouse body" with the original
 15/30 px SLEAP thresholds.

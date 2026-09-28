@@ -417,6 +417,10 @@
               <option value="dji1080">DJI Action 6 (1080p)</option>
               <option value="gopro">GoPro HERO 13 (4K)</option>
               <option value="gopro53">GoPro HERO 13 (5.3K)</option>
+              <option value="basler2p8">Basler ace 2 + 2.8mm</option>
+              <option value="basler3p5">Basler ace 2 + 3.5mm</option>
+              <option value="basler4">Basler ace 2 + 4mm</option>
+              <option value="basler5">Basler ace 2 + 5mm</option>
               <option value="basler">Basler ace 2 + 6mm</option>
               <option value="basler8">Basler ace 2 + 8mm</option>
               <option value="basler12">Basler ace 2 + 12mm</option>
@@ -440,7 +444,7 @@
         <div id="compareSelect" style="display:none">
           <select id="calcCamera2" style="width:100%;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;padding:8px 10px;font-size:14px">
             <option value="gopro">GoPro HERO 13 (4K)</option><option value="dji">DJI Action 6 (4K)</option>
-            <option value="basler">Basler + 6mm</option><option value="basler8">Basler + 8mm</option><option value="basler12">Basler + 12mm</option><option value="basler16">Basler + 16mm</option><option value="basler25">Basler + 25mm</option><option value="basler35">Basler + 35mm</option><option value="basler50">Basler + 50mm</option>
+            <option value="basler2p8">Basler + 2.8mm</option><option value="basler3p5">Basler + 3.5mm</option><option value="basler4">Basler + 4mm</option><option value="basler5">Basler + 5mm</option><option value="basler">Basler + 6mm</option><option value="basler8">Basler + 8mm</option><option value="basler12">Basler + 12mm</option><option value="basler16">Basler + 16mm</option><option value="basler25">Basler + 25mm</option><option value="basler35">Basler + 35mm</option><option value="basler50">Basler + 50mm</option>
           </select>
         </div>
       </div>
@@ -515,7 +519,7 @@
         <div class="mc-toolbar">
           <button class="mc-btn" id="mcAddDji">+ DJI</button>
           <button class="mc-btn" id="mcAddGopro">+ GoPro</button>
-          <select id="mcBaslerLens" class="mc-btn" style="padding:6px 8px"><option value="basler">6mm</option><option value="basler8">8mm</option><option value="basler12">12mm</option><option value="basler16">16mm</option><option value="basler25">25mm</option><option value="basler35">35mm</option><option value="basler50">50mm</option></select>
+          <select id="mcBaslerLens" class="mc-btn" style="padding:6px 8px"><option value="basler2p8">2.8mm</option><option value="basler3p5">3.5mm</option><option value="basler4">4mm</option><option value="basler5">5mm</option><option value="basler">6mm</option><option value="basler8">8mm</option><option value="basler12">12mm</option><option value="basler16">16mm</option><option value="basler25">25mm</option><option value="basler35">35mm</option><option value="basler50">50mm</option></select>
           <button class="mc-btn" id="mcAddBasler">+ Basler</button>
           <button class="mc-btn" id="mcClear">Clear all</button>
         </div>
@@ -709,6 +713,10 @@ var PRESETS = {
   dji1080:  { sw:10.2, sh:5.7, fl:1.6, crop:1, rw:1920, rh:1080, name:"DJI Action 6 (1080p)", color:"#667eea", bitrate:45, battery:240, thermal:999 },
   gopro:    { sw:6.2, sh:4.6, fl:2.92, crop:1, rw:3840, rh:2160, name:"GoPro HERO 13 (4K)", color:"#22d3ee", bitrate:120, battery:90, thermal:90 },
   gopro53:  { sw:6.2, sh:4.6, fl:2.92, crop:1, rw:5312, rh:2988, name:"GoPro HERO 13 (5.3K)", color:"#22d3ee", bitrate:120, battery:60, thermal:60 },
+  basler2p8:{ sw:6.68, sh:4.20, fl:2.8, crop:1, rw:1920, rh:1200, name:"Basler + 2.8mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler3p5:{ sw:6.68, sh:4.20, fl:3.5, crop:1, rw:1920, rh:1200, name:"Basler + 3.5mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler4:  { sw:6.68, sh:4.20, fl:4, crop:1, rw:1920, rh:1200, name:"Basler + 4mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
+  basler5:  { sw:6.68, sh:4.20, fl:5, crop:1, rw:1920, rh:1200, name:"Basler + 5mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
   basler:   { sw:6.68, sh:4.20, fl:6, crop:1, rw:1920, rh:1200, name:"Basler + 6mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
   basler8:  { sw:6.68, sh:4.20, fl:8, crop:1, rw:1920, rh:1200, name:"Basler + 8mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
   basler12: { sw:6.68, sh:4.20, fl:12, crop:1, rw:1920, rh:1200, name:"Basler + 12mm", color:"#a78bfa", bitrate:0, battery:999, thermal:999 },
@@ -785,6 +793,11 @@ function updateCalculator() {
   var covW=calcCov(hfov,d),covH=calcCov(vfov,d);
   var pxH=rw/covW,pxV=rh/covH,pxA=Math.min(pxH,pxV)*anW;
   var fits=covW>=objW&&covH>=objH;
+  // Reverse lookup: the longest focal length that still frames the whole volume from here.
+  // In a small room this is the question you actually have - distance is fixed, lens is not.
+  var fMax=Math.min(sw*crop*d/objW, sh*crop*d/objH);
+  var LENS_LADDER=[2.8,3.5,4,5,6,8,12,16,25,35,50], pickLens=null;
+  for(var li=LENS_LADDER.length-1;li>=0;li--){ if(LENS_LADDER[li]<=fMax){pickLens=LENS_LADDER[li];break;} }
   var margPx=okPx*0.55;
   var tC=pxA>=goodPx?"#4ade80":pxA>=okPx?"#22d3ee":pxA>=margPx?"#facc15":"#f87171";
   var tL=pxA>=goodPx?"Excellent":pxA>=okPx?"Sufficient":pxA>=margPx?"Marginal":"Insufficient";
@@ -795,10 +808,14 @@ function updateCalculator() {
     rc(Math.round(covW)+"&times;"+Math.round(covH),"cm","Coverage","","#22d3ee")+
     rc(pxH.toFixed(1),"px/cm","Px density",(covW/rw*10).toFixed(1)+" mm/px",pxH>7?"#4ade80":pxH>3?"#facc15":"#f87171")+
     rc(Math.round(pxA),"px","On target",anW+"cm "+useFor,tC)+
-    rc(fits?"YES":"NO","","Fits?",fits?Math.round((covW-objW)/2)+"cm margin":"Too close",fits?"#4ade80":"#f87171");
+    rc(fits?"YES":"NO","","Fits?",fits?Math.round((covW-objW)/2)+"cm margin":"Too close",fits?"#4ade80":"#f87171")+
+    rc(pickLens?pickLens+"mm":"&lt;2.8mm","","Lens fit","max "+fMax.toFixed(1)+"mm from "+Math.round(d)+"cm",pickLens?"#4ade80":"#f87171");
   $feas.innerHTML='<div class="feasibility-bar"><div class="feasibility-dot" style="background:'+tC+'"></div><span style="color:'+tC+';font-weight:600">'+tL+' for '+useFor+'</span><span style="color:#666;margin-left:auto">'+Math.round(pxA)+'px / '+anW+'cm (need &ge;'+okPx+')</span></div>'
     + ($mount.value==="oblique"
        ? '<div class="feasibility-bar" style="background:rgba(250,204,21,0.07)"><div class="feasibility-dot" style="background:#facc15"></div><span style="color:#facc15">Oblique mount &mdash; coverage is a trapezoid, not a rectangle</span><span style="color:#666;margin-left:auto">Evaluate at the farthest subject</span></div>'
+       : '')
+    + (fl<6
+       ? '<div class="feasibility-bar" style="background:rgba(250,204,21,0.07)"><div class="feasibility-dot" style="background:#facc15"></div><span style="color:#facc15">Ultra-wide '+fl+'mm &mdash; expect 5&ndash;20% barrel distortion</span><span style="color:#666;margin-left:auto">Confirm C-mount (not CS) and &ge;1/2&quot; image circle</span></div>'
        : '');
 
   // Recording estimator
@@ -825,6 +842,7 @@ function updateCalculator() {
   if(!isBasler) cl.push("Charge battery fully &mdash; "+p.battery+" min runtime at this resolution");
   if(isBasler) cl.push("Connect 5GigE Ethernet cable (Cat6 or better, max 100m)");
   if(isBasler) cl.push("Attach "+fl+"mm C-mount lens &mdash; verify focus and aperture");
+  if(isBasler&&fl<6) cl.push("Ultra-wide lens &mdash; run a full charuco calibration and check corner sharpness before trusting 3D");
   if(!isBasler) cl.push("Set camera to "+rw+"&times;"+rh+" @ "+fps+"fps");
   cl.push("Run distortion check with charuco board if arena fills >70% of frame");
   cl.push("Verify the subject is visible at all positions in the volume before recording");
