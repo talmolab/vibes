@@ -53,6 +53,38 @@ human-subject rigs (interaction studies, gait, clinical recording):
 Rodent defaults are unchanged: the target selector opens on "Mouse body" with the original
 15/30 px SLEAP thresholds.
 
+## Room 445 planner
+
+The **Room 445** tab (open directly with `#room`) plans a specific rig: 15 Basler a2A1920-165g5c
+cameras around two seated participants facing each other in the Empathy & Compassion Center
+room (210 × 304 cm). Unlike the other tabs it models the room in 3D:
+
+- A seated body model (19 keypoints per person, plus torso/head/limb and chair volumes) placed
+  from the hip-to-hip spacing
+- Each camera is a pinhole with a real look-at pose (position + aim target), so framing, oblique
+  angles and foreshortening come out of the projection instead of a flat-plane approximation
+- Per keypoint: in frame, occluded (by the other person, own limbs or chairs), and px/cm
+- Faces: pixels between the eyes as they actually project, plus angle off frontal. A gaze/AU view
+  needs ≤45° and ≥60 px (≥95 px comfortable)
+- **Auto-fit**: the longest lens on the ladder that keeps each camera's target (a head box with
+  room for motion, one person, both people, or legs + hands) in frame with an 8% margin
+- Coverage matrix (views per keypoint group, per person), a simulated 1920×1200 frame for the
+  selected camera, plan and side views with drag-to-move, depth of field at the chosen aperture
+- Shopping list (lens counts), aggregate bandwidth, raw vs. encoded storage per hour
+- The layout persists in localStorage; "Copy plan as text" exports it
+
+Room geometry comes from a LiDAR point cloud of the room (9.9M points, 5 mm voxels), aligned to
+the walls: 305 cm long, 210 cm wide by tape (the scan reads ~216 because of a few cm of wall
+doubling from drift), a 273 cm drop ceiling on a 60 cm tile grid, an 84 × 205 cm door at the far end
+of one long wall, the grey wall (outlets) opposite it, a 132 cm wall monitor at 120–195 cm on
+one short wall, and a 28 × 22 cm full-height column in that wall's corner. The column and
+monitor block views like any other object. A camera placed inside the column, the monitor, the
+doorway or above the ceiling is flagged.
+
+Default layout: 6 face cameras (3 per person, placed over the partner's head and on both side
+walls at about 35°), 4 body cameras in the high corners, and 5 wide cameras (side walls high and
+low, plus one looking straight down).
+
 ## Camera specs
 
 Verified from official sources: [dji.com](https://www.dji.com/osmo-action-6), [gopro.com](https://gopro.com/en/us/shop/cameras/buy/hero13black/CHDHX-131-master.html), [docs.baslerweb.com](https://docs.baslerweb.com/a2a1920-165g5mbas)
