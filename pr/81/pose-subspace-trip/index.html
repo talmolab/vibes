@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pose Subspace Trip</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #0a0a14;
+            color: #eee;
+        }
+        h1 { margin-bottom: 0.3rem; color: #fff; }
+        .description { color: #9aa; margin-top: 0; }
+        .howto {
+            background: #11112a;
+            border: 1px solid #2a2a44;
+            border-radius: 10px;
+            padding: 4px 16px;
+            margin: 0 0 20px;
+        }
+        .howto summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #cdd;
+            padding: 8px 0;
+            list-style: none;
+        }
+        .howto summary::-webkit-details-marker { display: none; }
+        .howto summary::before { content: '▸ '; color: #f093fb; }
+        .howto[open] summary::before { content: '▾ '; }
+        .howto ol { margin: 4px 0 12px; padding-left: 22px; color: #aab; font-size: 14px; }
+        .howto li { margin: 5px 0; }
+        .howto strong { color: #e6e6ff; }
+        .container {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 20px;
+            width: 100%;
+        }
+        .panel {
+            background: #11112a;
+            border-radius: 12px;
+            padding: 16px;
+        }
+        .panel h2 { margin-top: 0; font-size: 1.1rem; color: #fff; }
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        video { display: none; }
+        canvas { display: block; width: 100%; height: auto; }
+        #glWrap {
+            position: relative;
+            width: 100%;
+            height: clamp(320px, 56vh, 600px);
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #glCanvas, #vizCanvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+        #glWrap:fullscreen { width: 100vw; height: 100vh; border-radius: 0; }
+        .controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin: 12px 0;
+            align-items: center;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 9px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+        .capture-btn { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+        select {
+            background: #20203a;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 7px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #bbc; }
+        input[type="range"] { accent-color: #f093fb; }
+        .status { padding: 10px; color: #889; font-size: 12px; text-align: center; }
+        .gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .gallery-item {
+            position: relative;
+            aspect-ratio: 4/3;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 2px solid transparent;
+        }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; }
+        .gallery-item .remove {
+            position: absolute; top: 2px; right: 2px;
+            background: rgba(255,0,0,0.8); color: #fff; border: none;
+            border-radius: 50%; width: 18px; height: 18px; font-size: 11px;
+            cursor: pointer; padding: 0; line-height: 18px;
+        }
+        .bars { margin-top: 14px; }
+        .bar-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 11px; color: #99a; }
+        .bar-label { width: 92px; flex: none; }
+        .bar-track {
+            position: relative; flex: 1; height: 10px;
+            background: #1c1c34; border-radius: 5px; overflow: hidden;
+        }
+        .bar-track::after {
+            content: ''; position: absolute; left: 50%; top: 0; bottom: 0;
+            width: 1px; background: #444;
+        }
+        .bar-fill {
+            position: absolute; top: 0; bottom: 0; left: 50%;
+            background: linear-gradient(90deg, #f093fb, #667eea);
+            border-radius: 3px; transform-origin: left center;
+        }
+        footer {
+            margin-top: 30px; padding-top: 18px; border-top: 1px solid #222;
+            text-align: center; font-size: 14px; color: #666;
+        }
+        footer a { color: #667eea; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 900px) {
+            .container { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) { body { padding: 12px; } }
+    </style>
+</head>
+<body>
+    <h1>Pose Subspace Trip</h1>
+    <p class="description">
+        Capture a few extreme poses to define your control axes, then warp a trippy 3D visualization with your body.
+        Your live pose is projected onto a PCA subspace whose coordinates drive the scene.
+    </p>
+
+    <details class="howto" open>
+        <summary>How to use</summary>
+        <ol>
+            <li><strong>Start Camera</strong> and allow access — you'll see yourself with a skeleton overlay.</li>
+            <li>Strike a distinct pose and click <strong>Capture Pose</strong>. Capture <strong>3+ poses that are as different as possible</strong> (arms up, crouched, leaning left/right…). These define your control axes.</li>
+            <li>Now <strong>move</strong>: your live pose is projected onto the captured subspace, and the 6 coordinates drive the visualization in real time. The bars show where you are on each axis.</li>
+            <li>Switch <strong>Visualization</strong> between <strong>Pose Constellation</strong> (your skeleton as glowing 3D points) and <strong>Fractal Hyperspace</strong>. Hit <strong>⛶ Fullscreen</strong> for the full trip.</li>
+        </ol>
+        <p style="color:#889;font-size:13px;margin:0 0 10px;">
+            Tips: <strong>Sens.</strong> sets how far a pose pushes the scene; <strong>Smooth</strong> trades snappiness for flow.
+            Try <strong>Hands</strong> mode for fine control. Before 3 poses are captured it runs an idle animation and reacts loosely to your overall position.
+        </p>
+    </details>
+
+    <div class="container">
+        <div class="panel">
+            <h2>You</h2>
+            <div class="video-container">
+                <video id="video" playsinline></video>
+                <canvas id="poseCanvas"></canvas>
+                <div id="status" class="status">Click "Start Camera" to begin</div>
+            </div>
+
+            <div class="controls">
+                <button id="startBtn">Start Camera</button>
+                <button id="stopBtn" disabled>Stop</button>
+                <button id="captureBtn" class="capture-btn" disabled>Capture Pose</button>
+            </div>
+
+            <div class="controls">
+                <label>Track:
+                    <select id="keypointSelect">
+                        <option value="pose">Body</option>
+                        <option value="left_hand">Left Hand</option>
+                        <option value="right_hand">Right Hand</option>
+                        <option value="both_hands">Both Hands</option>
+                    </select>
+                </label>
+                <label>Features:
+                    <select id="featureSelect">
+                        <option value="normalized">Keypoints</option>
+                        <option value="distances">Distances</option>
+                        <option value="angles">Angles</option>
+                    </select>
+                </label>
+                <label>Display:
+                    <select id="displaySelect">
+                        <option value="video" selected>Video + Keypoints</option>
+                        <option value="point_light">Point Light</option>
+                    </select>
+                </label>
+            </div>
+
+            <div class="controls">
+                <label>Model:
+                    <select id="modelSelect">
+                        <option value="lite" selected>Lite</option>
+                        <option value="full">Full</option>
+                        <option value="heavy">Heavy</option>
+                    </select>
+                </label>
+                <label>Sens.
+                    <input type="range" id="sensRange" min="0.4" max="3" step="0.1" value="1.4">
+                </label>
+                <label>Smooth
+                    <input type="range" id="smoothRange" min="0.02" max="0.4" step="0.02" value="0.12">
+                </label>
+            </div>
+
+            <h3 style="font-size: 0.95rem; margin: 14px 0 4px;">
+                Captured poses (<span id="frameCount">0</span>)
+                <button id="clearBtn" style="float:right;padding:3px 9px;font-size:12px;">Clear</button>
+            </h3>
+            <div id="gallery" class="gallery"></div>
+
+            <div class="bars" id="bars"></div>
+        </div>
+
+        <div class="panel">
+            <h2>Hyperspace
+                <button id="fsBtn" style="float:right;padding:4px 10px;font-size:12px;">⛶ Fullscreen</button>
+            </h2>
+            <div id="glWrap">
+                <canvas id="vizCanvas"></canvas>
+                <canvas id="glCanvas"></canvas>
+            </div>
+            <div class="controls">
+                <label>Visualization:
+                    <select id="vizSelect">
+                        <option value="constellation" selected>Pose Constellation</option>
+                        <option value="fractal">Fractal Hyperspace</option>
+                    </select>
+                </label>
+                <label>Quality:
+                    <select id="qualitySelect">
+                        <option value="0.5">Low</option>
+                        <option value="0.75" selected>Medium</option>
+                        <option value="1">High</option>
+                    </select>
+                </label>
+            </div>
+            <div class="controls">
+                <span id="tripStatus" class="status" style="padding:0;flex:1;text-align:left;">
+                    Idle drift — capture 3+ poses to take control.
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/talmolab/vibes">Source</a>
+    </footer>
+
+    <script type="module">
+        import { PoseLandmarker, HandLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
+
+        const video = document.getElementById('video');
+        const poseCanvas = document.getElementById('poseCanvas');
+        const pctx = poseCanvas.getContext('2d');
+        const glCanvas = document.getElementById('glCanvas');
+        const glWrap = document.getElementById('glWrap');
+        const vizCanvas = document.getElementById('vizCanvas');
+        const vctx = vizCanvas.getContext('2d');
+        const status = document.getElementById('status');
+        const tripStatus = document.getElementById('tripStatus');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const captureBtn = document.getElementById('captureBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const fsBtn = document.getElementById('fsBtn');
+        const gallery = document.getElementById('gallery');
+        const frameCount = document.getElementById('frameCount');
+        const keypointSelect = document.getElementById('keypointSelect');
+        const featureSelect = document.getElementById('featureSelect');
+        const modelSelect = document.getElementById('modelSelect');
+        const displaySelect = document.getElementById('displaySelect');
+        const vizSelect = document.getElementById('vizSelect');
+        const qualitySelect = document.getElementById('qualitySelect');
+        const sensRange = document.getElementById('sensRange');
+        const smoothRange = document.getElementById('smoothRange');
+        const barsEl = document.getElementById('bars');
+
+        const NPC = 6;
+        const PC_NAMES = ['orbit', 'fold', 'twist', 'color', 'zoom', 'symmetry'];
+
+        // ---- skeleton connections + point-light rendering (from pose-subspace-analysis) ----
+        const POSE_CONNECTIONS = [
+            [11,12],[11,13],[13,15],[12,14],[14,16],
+            [11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]
+        ];
+        const HAND_CONNECTIONS = [
+            [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+            [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+            [13,17],[0,17],[17,18],[18,19],[19,20]
+        ];
+        function getConnections() {
+            const m = keypointSelect.value;
+            if (m === 'pose') return POSE_CONNECTIONS;
+            if (m === 'left_hand' || m === 'right_hand') return HAND_CONNECTIONS;
+            if (m === 'both_hands') return [...HAND_CONNECTIONS, ...HAND_CONNECTIONS.map(([i,j]) => [i+21, j+21])];
+            return [];
+        }
+
+        const GS = 64;
+        const gaussianSprite = (() => {
+            const c = document.createElement('canvas');
+            c.width = c.height = GS;
+            const g = c.getContext('2d');
+            const r = GS / 2;
+            const grad = g.createRadialGradient(r, r, 0, r, r, r);
+            grad.addColorStop(0, 'rgba(255,255,255,1)');
+            grad.addColorStop(0.14, 'rgba(200,160,255,0.6)');
+            grad.addColorStop(0.34, 'rgba(120,140,255,0.14)');
+            grad.addColorStop(1, 'rgba(255,255,255,0)');
+            g.fillStyle = grad;
+            g.fillRect(0, 0, GS, GS);
+            return c;
+        })();
+
+        function drawPointLight(context, lm, w, h) {
+            context.save();
+            context.fillStyle = '#000';
+            context.fillRect(0, 0, w, h);
+            context.strokeStyle = 'rgba(180,180,255,0.3)';
+            context.lineWidth = Math.max(1, Math.min(w, h) / 400);
+            for (const [i, j] of getConnections()) {
+                if (lm[i] && lm[j]) {
+                    context.beginPath();
+                    context.moveTo(lm[i].x * w, lm[i].y * h);
+                    context.lineTo(lm[j].x * w, lm[j].y * h);
+                    context.stroke();
+                }
+            }
+            context.globalCompositeOperation = 'lighter';
+            const gsz = Math.max(20, Math.min(w, h) / 12), half = gsz / 2;
+            for (const p of lm) context.drawImage(gaussianSprite, p.x * w - half, p.y * h - half, gsz, gsz);
+            context.restore();
+        }
+
+        // Colored skeleton overlay drawn on top of the live video.
+        function drawLandmarks(context, lm, w, h) {
+            context.strokeStyle = '#7fd0ff';
+            context.fillStyle = '#ff6bd6';
+            context.lineWidth = Math.max(2, Math.min(w, h) / 200);
+            for (const [i, j] of getConnections()) {
+                if (lm[i] && lm[j]) {
+                    context.beginPath();
+                    context.moveTo(lm[i].x * w, lm[i].y * h);
+                    context.lineTo(lm[j].x * w, lm[j].y * h);
+                    context.stroke();
+                }
+            }
+            const r = Math.max(3, Math.min(w, h) / 130);
+            for (const p of lm) {
+                context.beginPath();
+                context.arc(p.x * w, p.y * h, r, 0, 2 * Math.PI);
+                context.fill();
+            }
+        }
+
+        // ---- state ----
+        let poseLandmarker = null, handLandmarker = null, stream = null, rafId = null;
+        let currentLandmarks = null;
+        let capturedFrames = [];
+        let pcaModel = null;
+        const control = new Float32Array(NPC);   // smoothed values fed to shader
+        const target = new Float32Array(NPC);     // latest raw target
+
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+        // ---- feature engineering ----
+        function computeFeatures(lm) {
+            const mode = featureSelect.value;
+            const pts = lm.map(p => [p.x, p.y, p.z || 0]);
+            if (mode === 'distances') {
+                const out = [];
+                for (let i = 0; i < pts.length; i++)
+                    for (let j = i + 1; j < pts.length; j++) {
+                        const dx = pts[i][0]-pts[j][0], dy = pts[i][1]-pts[j][1], dz = pts[i][2]-pts[j][2];
+                        out.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+                    }
+                return out;
+            } else if (mode === 'angles') {
+                const out = [];
+                for (let i = 0; i < pts.length; i++)
+                    for (let j = i + 1; j < pts.length; j++)
+                        out.push(Math.atan2(pts[j][1]-pts[i][1], pts[j][0]-pts[i][0]));
+                return out;
+            } else {
+                const xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]), zs = pts.map(p=>p[2]);
+                const midX = (Math.min(...xs)+Math.max(...xs))/2;
+                const midY = (Math.min(...ys)+Math.max(...ys))/2;
+                const midZ = (Math.min(...zs)+Math.max(...zs))/2;
+                const size = Math.max(Math.max(...xs)-Math.min(...xs), Math.max(...ys)-Math.min(...ys), Math.max(...zs)-Math.min(...zs)) || 1;
+                return pts.flatMap(p => [(p[0]-midX)/size, (p[1]-midY)/size, (p[2]-midZ)/size]);
+            }
+        }
+
+        // Generic control signal when no subspace has been built yet.
+        function fallbackControl(lm) {
+            const xs = lm.map(p=>p.x), ys = lm.map(p=>p.y);
+            const cx = xs.reduce((a,b)=>a+b,0)/xs.length;
+            const cy = ys.reduce((a,b)=>a+b,0)/ys.length;
+            const bw = Math.max(...xs)-Math.min(...xs), bh = Math.max(...ys)-Math.min(...ys);
+            const stdX = Math.sqrt(xs.reduce((a,b)=>a+(b-cx)**2,0)/xs.length);
+            const stdY = Math.sqrt(ys.reduce((a,b)=>a+(b-cy)**2,0)/ys.length);
+            return [
+                (cx-0.5)*2.6, (0.5-cy)*2.6, (bw-0.3)*4.0,
+                (bh-0.45)*3.0, stdX*6-0.6, stdY*6-0.6
+            ];
+        }
+
+        // ---- PCA via power iteration (top NPC components) ----
+        function powerIteration(data, numComp) {
+            const n = data.length, d = data[0].length;
+            const comps = [], eig = [];
+            for (let c = 0; c < numComp; c++) {
+                let v = Array.from({length: d}, (_, i) => Math.sin(i * 12.9898 + c * 4.0) * 0.5);
+                let lambda = 0;
+                for (let it = 0; it < 24; it++) {
+                    for (const cp of comps) {
+                        const dot = v.reduce((s, val, i) => s + val * cp[i], 0);
+                        v = v.map((val, i) => val - dot * cp[i]);
+                    }
+                    const Av = new Array(d).fill(0);
+                    for (let i = 0; i < n; i++) {
+                        let dot = 0;
+                        for (let j = 0; j < d; j++) dot += data[i][j] * v[j];
+                        for (let j = 0; j < d; j++) Av[j] += data[i][j] * dot;
+                    }
+                    const norm = Math.sqrt(Av.reduce((s, x) => s + x*x, 0)) || 1;
+                    v = Av.map(x => x / norm);
+                    lambda = norm / n;
+                }
+                comps.push(v); eig.push(lambda);
+            }
+            return { comps, eig };
+        }
+
+        function projectToPCA(features, model) {
+            return model.comps.map(cp => {
+                let s = 0;
+                for (let i = 0; i < cp.length; i++) s += (features[i] - model.mean[i]) * cp[i];
+                return s;
+            });
+        }
+
+        function computePCA() {
+            if (capturedFrames.length < 3) {
+                pcaModel = null;
+                tripStatus.textContent = `Idle drift — capture ${3 - capturedFrames.length} more pose(s) to take control.`;
+                return;
+            }
+            const feats = capturedFrames.map(f => computeFeatures(f.landmarks));
+            const n = feats.length, d = feats[0].length;
+            const mean = new Array(d).fill(0);
+            for (const f of feats) for (let j = 0; j < d; j++) mean[j] += f[j] / n;
+            const centered = feats.map(f => f.map((v, j) => v - mean[j]));
+            const numComp = Math.min(NPC, n - 1);
+            const { comps } = powerIteration(centered, numComp);
+            const model = { mean, comps };
+
+            // per-axis scale = std of training projections, so movement maps to roughly [-1,1]
+            const projs = feats.map(f => projectToPCA(f, model));
+            model.scale = comps.map((_, k) => {
+                const vals = projs.map(p => p[k]);
+                const mu = vals.reduce((a,b)=>a+b,0)/vals.length;
+                return Math.max(1e-3, Math.sqrt(vals.reduce((a,b)=>a+(b-mu)**2,0)/vals.length));
+            });
+            pcaModel = model;
+            tripStatus.textContent = `In control — ${numComp}D subspace from ${n} poses driving the trip.`;
+        }
+
+        function controlFromLandmarks(lm) {
+            const sens = parseFloat(sensRange.value);
+            const out = new Float32Array(NPC);
+            if (pcaModel) {
+                const proj = projectToPCA(computeFeatures(lm), pcaModel);
+                for (let i = 0; i < proj.length && i < NPC; i++)
+                    out[i] = clamp(proj[i] / (2 * pcaModel.scale[i]) * sens, -2.5, 2.5);
+            } else {
+                const fb = fallbackControl(lm);
+                for (let i = 0; i < NPC; i++) out[i] = clamp(fb[i] * sens, -2.5, 2.5);
+            }
+            return out;
+        }
+
+        // ---- WebGL trippy renderer ----
+        const VERT = `attribute vec2 a_pos; void main(){ gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+        const FRAG = `
+        precision highp float;
+        uniform vec2 u_res;
+        uniform float u_time;
+        uniform float u_pc[6];
+
+        mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
+
+        vec3 palette(float t){
+            return 0.5 + 0.5*cos(6.28318*(vec3(1.0)*t + vec3(0.0, 0.33, 0.67) + u_pc[3]));
+        }
+
+        float de(vec3 p, out float trap){
+            float scale = 2.05 + 0.55*u_pc[1];
+            float minRad2 = clamp(0.35 + 0.4*u_pc[5], 0.05, 0.95);
+            float ra = 0.4*u_pc[2];
+            vec4 q = vec4(p, 1.0);
+            vec4 q0 = q;
+            trap = 1e10;
+            for(int i = 0; i < 9; i++){
+                q.xyz = clamp(q.xyz, -1.0, 1.0)*2.0 - q.xyz;
+                q.xy *= rot(ra);
+                q.yz *= rot(ra*0.6 + 0.2);
+                float r2 = dot(q.xyz, q.xyz);
+                trap = min(trap, r2);
+                q *= clamp(max(minRad2/r2, minRad2), 0.0, 1.0);
+                q = q*scale + q0;
+            }
+            return length(q.xyz)/abs(q.w);
+        }
+
+        void main(){
+            vec2 uv = (gl_FragCoord.xy - 0.5*u_res)/u_res.y;
+            float r0 = length(uv);
+
+            // kaleidoscope symmetry driven by pose
+            float seg = 2.0 + floor(2.0 + 4.0*(0.5 + 0.5*u_pc[3]));
+            float gap = 6.28318/seg;
+            float ang = mod(atan(uv.y, uv.x), gap);
+            ang = abs(ang - 0.5*gap);
+            uv = vec2(cos(ang), sin(ang))*r0;
+
+            float camDist = 5.5 - 1.8*u_pc[4];
+            vec3 ro = vec3(0.0, 0.0, camDist);
+            vec3 rd = normalize(vec3(uv, -1.6));
+            float ca = u_time*0.08 + u_pc[0]*2.2;
+            ro.xz *= rot(ca); rd.xz *= rot(ca);
+            float cb = u_pc[4]*0.6 + u_time*0.02;
+            ro.xy *= rot(cb); rd.xy *= rot(cb);
+
+            float t = 0.0, trap = 0.0, glow = 0.0;
+            bool hit = false;
+            for(int i = 0; i < 96; i++){
+                vec3 p = ro + rd*t;
+                float tr;
+                float d = de(p, tr);
+                glow += exp(-d*9.0);
+                trap = tr;
+                if(d < 0.0008){ hit = true; break; }
+                t += d*0.75;
+                if(t > 22.0) break;
+            }
+
+            vec3 col = palette(trap*1.5 + u_time*0.04) * (hit ? (1.0 - t/22.0) : 0.0);
+            col += palette(0.3 + u_time*0.02) * glow * 0.018;
+            col = pow(max(col, 0.0), vec3(0.85));
+            col *= 1.0 - 0.35*r0;
+            gl_FragColor = vec4(col, 1.0);
+        }`;
+
+        const gl = glCanvas.getContext('webgl', { antialias: false, alpha: false });
+        let glReady = false, uRes, uTime, uPc;
+        if (gl) {
+            const compile = (type, src) => {
+                const sh = gl.createShader(type);
+                gl.shaderSource(sh, src);
+                gl.compileShader(sh);
+                if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS))
+                    throw new Error(gl.getShaderInfoLog(sh));
+                return sh;
+            };
+            try {
+                const prog = gl.createProgram();
+                gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+                gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+                gl.linkProgram(prog);
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS))
+                    throw new Error(gl.getProgramInfoLog(prog));
+                gl.useProgram(prog);
+                const buf = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+                const loc = gl.getAttribLocation(prog, 'a_pos');
+                gl.enableVertexAttribArray(loc);
+                gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+                uRes = gl.getUniformLocation(prog, 'u_res');
+                uTime = gl.getUniformLocation(prog, 'u_time');
+                uPc = gl.getUniformLocation(prog, 'u_pc');
+                glReady = true;
+            } catch (e) {
+                tripStatus.textContent = 'WebGL shader error: ' + e.message;
+            }
+        } else {
+            tripStatus.textContent = 'WebGL not available in this browser.';
+        }
+
+        function resizeGL() {
+            if (!glReady) return;
+            const scale = parseFloat(qualitySelect.value);
+            const rect = glCanvas.getBoundingClientRect();
+            const w = Math.max(1, Math.round(rect.width * scale));
+            const h = Math.max(1, Math.round(rect.height * scale));
+            if (glCanvas.width !== w || glCanvas.height !== h) {
+                glCanvas.width = w; glCanvas.height = h;
+            }
+        }
+
+        function renderGL(timeSec) {
+            if (!glReady) return;
+            resizeGL();
+            gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+            gl.uniform2f(uRes, glCanvas.width, glCanvas.height);
+            gl.uniform1f(uTime, timeSec);
+            gl.uniform1fv(uPc, control);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+
+        // ---- Pose Constellation renderer (keypoints as 3D point sources) ----
+        // Pre-tinted glow sprites across the hue wheel for cheap colored points.
+        const HUES = 24;
+        const glowSprites = Array.from({ length: HUES }, (_, i) => {
+            const hue = i * 360 / HUES;
+            const c = document.createElement('canvas');
+            c.width = c.height = GS;
+            const g = c.getContext('2d');
+            const r = GS / 2;
+            const grad = g.createRadialGradient(r, r, 0, r, r, r);
+            grad.addColorStop(0, `hsla(${hue},100%,88%,1)`);
+            grad.addColorStop(0.16, `hsla(${hue},100%,66%,0.65)`);
+            grad.addColorStop(0.42, `hsla(${hue},100%,55%,0.14)`);
+            grad.addColorStop(1, `hsla(${hue},100%,50%,0)`);
+            g.fillStyle = grad;
+            g.fillRect(0, 0, GS, GS);
+            return c;
+        });
+        const glowFor = (hue) => glowSprites[((Math.round(hue / (360 / HUES)) % HUES) + HUES) % HUES];
+
+        const rotY = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [c*p[0] + s*p[2], p[1], -s*p[0] + c*p[2]]; };
+        const rotX = (p, a) => { const c = Math.cos(a), s = Math.sin(a); return [p[0], c*p[1] - s*p[2], s*p[1] + c*p[2]]; };
+
+        // Centered 3D points + edges from the live pose.
+        function poseToPoints(lm) {
+            let cx = 0, cy = 0, cz = 0;
+            for (const p of lm) { cx += p.x; cy += p.y; cz += (p.z || 0); }
+            const n = lm.length; cx /= n; cy /= n; cz /= n;
+            const pts = lm.map(p => [(p.x - cx) * 1.7, (p.y - cy) * 1.7, ((p.z || 0) - cz) * 1.7]);
+            return { pts, cons: getConnections() };
+        }
+
+        // A flowing knot used as the idle attractor before a pose is tracked.
+        function idlePoints(t) {
+            const N = 44, pts = [], cons = [];
+            for (let i = 0; i < N; i++) {
+                const u = i / N * Math.PI * 2;
+                pts.push([0.6*Math.sin(3*u + t*0.4), 0.6*Math.sin(2*u), 0.6*Math.cos(3*u)]);
+                if (i > 0) cons.push([i - 1, i]);
+            }
+            cons.push([N - 1, 0]);
+            return { pts, cons };
+        }
+
+        function resizeViz() {
+            const scale = parseFloat(qualitySelect.value);
+            const rect = glWrap.getBoundingClientRect();
+            const w = Math.max(1, Math.round(rect.width * scale));
+            const h = Math.max(1, Math.round(rect.height * scale));
+            if (vizCanvas.width !== w || vizCanvas.height !== h) {
+                vizCanvas.width = w; vizCanvas.height = h;
+                vctx.fillStyle = '#000'; vctx.fillRect(0, 0, w, h);
+            }
+        }
+
+        function renderConstellation(timeSec, lm) {
+            resizeViz();
+            const W = vizCanvas.width, H = vizCanvas.height;
+            const minDim = Math.min(W, H);
+
+            // motion-trail feedback
+            vctx.globalCompositeOperation = 'source-over';
+            vctx.fillStyle = 'rgba(0,0,0,0.25)';
+            vctx.fillRect(0, 0, W, H);
+
+            const { pts, cons } = (lm && lm.length) ? poseToPoints(lm) : idlePoints(timeSec);
+
+            // PCA subspace -> structured transforms (axis names match the control bars)
+            const yaw   = timeSec * 0.3 + control[0] * Math.PI;            // PC1 orbit
+            const depth = 1 + Math.min(3, Math.round(Math.abs(control[1]) * 2.4)); // PC2 fold (recursion)
+            const twist = control[2] * 2.2;                                // PC3 twist (helix)
+            const pitch = 0.22 + control[2] * 0.35;
+            const hue0  = control[3] * 120 + timeSec * 14;                 // PC4 color
+            const focal = minDim * 0.8 * (1 + control[4] * 0.35);          // PC5 zoom (dolly)
+            const camDist = 2.1;
+            const sym   = 1 + Math.min(7, Math.round(Math.abs(control[5]) * 3.2)); // PC6 symmetry (mandala)
+
+            // 3D transform + perspective project to base 2D points
+            const P = pts.map(p0 => {
+                let p = rotY(p0, twist * p0[1]);     // helical twist by height
+                p = rotY(p, yaw);
+                p = rotX(p, pitch);
+                const zc = camDist + p[2];
+                if (zc < 0.1) return null;
+                return {
+                    x: focal * p[0] / zc,
+                    y: focal * p[1] / zc,
+                    size: Math.min(minDim * 0.16, focal * 0.05 / zc),
+                    bright: Math.min(1.5, 1.4 / zc)
+                };
+            });
+
+            vctx.globalCompositeOperation = 'lighter';
+            const cxs = W / 2, cys = H / 2;
+
+            for (let d = 0; d < depth; d++) {
+                const sc = Math.pow(0.6, d);            // nested shrinking copies
+                const rotD = d * (0.5 + control[2] * 0.8);
+                const hueD = hue0 + d * 50;
+                for (let m = 0; m < sym; m++) {
+                    const ang = rotD + m * (Math.PI * 2 / sym);
+                    const ca = Math.cos(ang), sa = Math.sin(ang);
+                    const hue = hueD + m * (sym > 1 ? 18 : 0);
+                    // transform base points by this copy's rotate+scale around center
+                    const T = P.map(b => b && {
+                        x: cxs + (b.x * ca - b.y * sa) * sc,
+                        y: cys + (b.x * sa + b.y * ca) * sc,
+                        size: b.size * sc, bright: b.bright
+                    });
+                    // edges
+                    vctx.lineWidth = Math.max(1, focal * 0.004 * sc);
+                    for (const [i, j] of cons) {
+                        const a = T[i], b = T[j];
+                        if (!a || !b) continue;
+                        vctx.strokeStyle = `hsla(${((hue % 360) + 360) % 360},90%,62%,${0.45 * Math.min(a.bright, b.bright)})`;
+                        vctx.beginPath();
+                        vctx.moveTo(a.x, a.y); vctx.lineTo(b.x, b.y);
+                        vctx.stroke();
+                    }
+                    // nodes (point sources)
+                    const sprite = glowFor(hue);
+                    for (const t of T) {
+                        if (!t) continue;
+                        const s = Math.max(6, t.size) * (0.6 + t.bright);
+                        vctx.drawImage(sprite, t.x - s / 2, t.y - s / 2, s, s);
+                    }
+                }
+            }
+            vctx.globalCompositeOperation = 'source-over';
+        }
+
+        // ---- control bars UI ----
+        const barFills = [];
+        for (let i = 0; i < NPC; i++) {
+            const row = document.createElement('div');
+            row.className = 'bar-row';
+            const lab = document.createElement('div');
+            lab.className = 'bar-label';
+            lab.textContent = `PC${i+1} · ${PC_NAMES[i]}`;
+            const track = document.createElement('div');
+            track.className = 'bar-track';
+            const fill = document.createElement('div');
+            fill.className = 'bar-fill';
+            track.appendChild(fill);
+            row.appendChild(lab); row.appendChild(track);
+            barsEl.appendChild(row);
+            barFills.push(fill);
+        }
+        function updateBars() {
+            for (let i = 0; i < NPC; i++) {
+                const v = clamp(control[i] / 2.5, -1, 1); // -1..1
+                const w = Math.abs(v) * 50; // % of half track
+                barFills[i].style.width = w + '%';
+                barFills[i].style.left = v >= 0 ? '50%' : (50 - w) + '%';
+            }
+        }
+
+        // ---- MediaPipe ----
+        async function initLandmarkers() {
+            status.textContent = 'Loading models...';
+            const vision = await FilesetResolver.forVisionTasks(
+                'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+            );
+            const mt = modelSelect.value;
+            poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${mt}/float16/1/pose_landmarker_${mt}.task`,
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO', numPoses: 1
+            });
+            handLandmarker = await HandLandmarker.createFromOptions(vision, {
+                baseOptions: {
+                    modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+                    delegate: 'GPU'
+                },
+                runningMode: 'VIDEO', numHands: 2
+            });
+            status.textContent = 'Models loaded. Click "Start Camera".';
+        }
+
+        function getLandmarks(poseRes, handRes) {
+            const m = keypointSelect.value;
+            if (m === 'pose' && poseRes.landmarks?.[0]) return poseRes.landmarks[0];
+            if (m === 'left_hand' && handRes.landmarks?.[0]) return handRes.landmarks[0];
+            if (m === 'right_hand' && handRes.landmarks?.[1]) return handRes.landmarks[1];
+            if (m === 'both_hands' && handRes.landmarks)
+                return [...(handRes.landmarks[0] || []), ...(handRes.landmarks[1] || [])];
+            return null;
+        }
+
+        async function startCamera() {
+            if (!poseLandmarker) {
+                try { await initLandmarkers(); }
+                catch (e) { status.style.display = 'block'; status.textContent = 'Failed to load models: ' + e.message; return; }
+            }
+            try {
+                status.textContent = 'Requesting camera… (allow access in the browser prompt)';
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = stream;
+                await video.play();
+                status.style.display = 'none';
+                startBtn.disabled = true; stopBtn.disabled = false; captureBtn.disabled = false;
+            } catch (err) {
+                stream = null;
+                status.style.display = 'block';
+                status.textContent = 'Camera blocked: ' + err.message +
+                    ' — check the camera icon in the address bar and allow access.';
+            }
+        }
+
+        function stopCamera() {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            stream = null; currentLandmarks = null;
+            target.fill(0);
+            video.srcObject = null;
+            pctx.clearRect(0, 0, poseCanvas.width, poseCanvas.height);
+            status.style.display = 'block';
+            status.textContent = 'Camera stopped.';
+            startBtn.disabled = false; stopBtn.disabled = true; captureBtn.disabled = true;
+        }
+
+        // ---- main loop: draw the feed every frame, detect (throttled), drive the trip ----
+        let detectAt = 0;
+        function loop(now) {
+            rafId = requestAnimationFrame(loop);
+
+            if (stream && poseLandmarker && video.videoWidth) {
+                // keep the overlay canvas matched to the actual video size
+                if (poseCanvas.width !== video.videoWidth) {
+                    poseCanvas.width = video.videoWidth;
+                    poseCanvas.height = video.videoHeight;
+                }
+
+                // run detection at most ~30fps; reuse last landmarks between detections
+                if (now - detectAt > 30) {
+                    detectAt = now;
+                    const poseRes = poseLandmarker.detectForVideo(video, now);
+                    const handRes = handLandmarker.detectForVideo(video, now);
+                    currentLandmarks = getLandmarks(poseRes, handRes);
+                    if (currentLandmarks) {
+                        const tgt = controlFromLandmarks(currentLandmarks);
+                        for (let i = 0; i < NPC; i++) target[i] = tgt[i];
+                    }
+                }
+
+                // draw every frame so the feed stays smooth and obviously live
+                const w = poseCanvas.width, h = poseCanvas.height;
+                if (displaySelect.value === 'point_light') {
+                    if (currentLandmarks) drawPointLight(pctx, currentLandmarks, w, h);
+                    else { pctx.fillStyle = '#000'; pctx.fillRect(0, 0, w, h); }
+                } else {
+                    pctx.drawImage(video, 0, 0, w, h);
+                    if (currentLandmarks) drawLandmarks(pctx, currentLandmarks, w, h);
+                }
+            }
+
+            const a = parseFloat(smoothRange.value);
+            for (let i = 0; i < NPC; i++) control[i] += (target[i] - control[i]) * a;
+            updateBars();
+
+            if (vizSelect.value === 'fractal') renderGL(now / 1000);
+            else renderConstellation(now / 1000, stream ? currentLandmarks : null);
+        }
+
+        // ---- capture / gallery ----
+        function captureFrame() {
+            if (!currentLandmarks) return;
+            const imageData = poseCanvas.toDataURL('image/jpeg', 0.6);
+            capturedFrames.push({ imageData, landmarks: JSON.parse(JSON.stringify(currentLandmarks)) });
+            frameCount.textContent = capturedFrames.length;
+            updateGallery();
+            computePCA();
+        }
+
+        function updateGallery() {
+            gallery.replaceChildren();
+            capturedFrames.forEach((frame, idx) => {
+                const item = document.createElement('div');
+                item.className = 'gallery-item';
+                const img = document.createElement('img');
+                img.src = frame.imageData;
+                const rm = document.createElement('button');
+                rm.className = 'remove'; rm.textContent = '×';
+                rm.onclick = () => {
+                    capturedFrames.splice(idx, 1);
+                    frameCount.textContent = capturedFrames.length;
+                    updateGallery(); computePCA();
+                };
+                item.appendChild(img); item.appendChild(rm);
+                gallery.appendChild(item);
+            });
+        }
+
+        // ---- events ----
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        captureBtn.addEventListener('click', captureFrame);
+        clearBtn.addEventListener('click', () => {
+            capturedFrames = []; frameCount.textContent = '0';
+            updateGallery(); computePCA();
+        });
+        featureSelect.addEventListener('change', () => { if (capturedFrames.length >= 3) computePCA(); });
+        modelSelect.addEventListener('change', async () => {
+            const wasRunning = stream !== null;
+            if (wasRunning) stopCamera();
+            poseLandmarker = handLandmarker = null;
+            if (wasRunning) await startCamera(); else await initLandmarkers();
+        });
+        function applyVizMode() {
+            const fractal = vizSelect.value === 'fractal';
+            glCanvas.style.display = fractal ? '' : 'none';
+            vizCanvas.style.display = fractal ? 'none' : '';
+        }
+        vizSelect.addEventListener('change', () => { applyVizMode(); resizeGL(); resizeViz(); });
+        qualitySelect.addEventListener('change', () => { resizeGL(); resizeViz(); });
+        window.addEventListener('resize', () => { resizeGL(); resizeViz(); });
+        fsBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) glWrap.requestFullscreen?.();
+            else document.exitFullscreen?.();
+        });
+
+        // start render loop immediately (idle animation before camera)
+        applyVizMode();
+        resizeGL();
+        resizeViz();
+        rafId = requestAnimationFrame(loop);
+        initLandmarkers().catch(e => { status.textContent = 'Failed to load models: ' + e.message; });
+    </script>
+</body>
+</html>

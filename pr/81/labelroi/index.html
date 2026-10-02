@@ -1,0 +1,2299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label ROI</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .container {
+            width: 100%;
+            max-width: none;
+        }
+        .main-layout {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .video-panel {
+            flex: 1;
+            min-width: 400px;
+        }
+        .controls-panel {
+            width: 350px;
+            flex-shrink: 0;
+        }
+        .controls {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .controls h3 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            font-size: 14px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 3px;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+        button.active {
+            background: #4ade80;
+            color: #1a1a1a;
+        }
+        button.danger {
+            background: #ef4444;
+        }
+        button.danger:hover {
+            background: #dc2626;
+        }
+        .canvas-container {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            cursor: crosshair;
+            overflow: hidden;
+        }
+        .canvas-wrapper {
+            position: relative;
+            margin: 0 auto;
+        }
+        .canvas-container.panning {
+            cursor: grab;
+        }
+        .canvas-container.panning:active {
+            cursor: grabbing;
+        }
+        canvas {
+            display: block;
+        }
+        #roiCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: auto;
+        }
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .zoom-controls label {
+            color: #aaa;
+            font-size: 12px;
+        }
+        .zoom-controls span {
+            color: #fff;
+            font-size: 12px;
+            min-width: 45px;
+        }
+        .seekbar-container {
+            background: #2a2a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .seekbar {
+            width: 100%;
+            height: 8px;
+            background: #444;
+            border-radius: 4px;
+            position: relative;
+            cursor: pointer;
+        }
+        .seekbar-progress {
+            height: 100%;
+            background: #667eea;
+            border-radius: 4px;
+            width: 0%;
+            pointer-events: none;
+        }
+        .seekbar-thumb {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: white;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            left: 0%;
+            pointer-events: none;
+        }
+        .frame-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        .metrics {
+            background: #2a2a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        .metric {
+            margin: 3px 0;
+        }
+        .metric-label {
+            color: #667eea;
+            font-weight: bold;
+        }
+        .roi-list {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .roi-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: #333;
+            border-radius: 4px;
+            margin-bottom: 5px;
+            transition: background 0.15s, box-shadow 0.15s;
+        }
+        .roi-item:last-child {
+            margin-bottom: 0;
+        }
+        .roi-item.highlighted {
+            background: #444;
+            box-shadow: 0 0 0 2px #667eea;
+        }
+        .roi-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            flex-shrink: 0;
+        }
+        .roi-name {
+            flex: 1;
+            background: transparent;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+        .roi-name:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        .roi-delete {
+            background: transparent;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 16px;
+            margin: 0;
+        }
+        .roi-delete:hover {
+            background: transparent;
+            color: #ff6b6b;
+        }
+        .yaml-output {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .yaml-output h3 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .yaml-output textarea {
+            width: 100%;
+            height: 200px;
+            background: #1a1a1a;
+            border: 1px solid #444;
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            resize: vertical;
+        }
+        .hotkeys {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+        }
+        .hotkeys h3 {
+            margin: 0 0 10px 0;
+            color: #fff;
+            font-size: 14px;
+        }
+        .hotkey {
+            display: flex;
+            gap: 10px;
+            margin: 4px 0;
+        }
+        .hotkey-key {
+            color: #667eea;
+            font-family: 'Courier New', monospace;
+            min-width: 80px;
+        }
+        .hotkey-desc {
+            color: #aaa;
+        }
+        .status-bar {
+            background: #333;
+            padding: 8px 15px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 15px;
+        }
+        .status-bar.drawing {
+            background: #4ade80;
+            color: #1a1a1a;
+        }
+        /* ROI label edit input overlay */
+        .roi-label-edit {
+            position: absolute;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-family: system-ui, -apple-system, sans-serif;
+            color: #000;
+            outline: none;
+            z-index: 100;
+            min-width: 80px;
+        }
+        /* Node coordinate tooltip */
+        .node-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            transform: translate(-50%, -100%);
+            margin-top: -8px;
+        }
+        .canvas-container.dragging-node {
+            cursor: move;
+        }
+        @media (max-width: 1000px) {
+            .main-layout {
+                flex-direction: column;
+            }
+            .video-panel {
+                min-width: 100%;
+            }
+            .controls-panel {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Label ROI</h1>
+        <p class="description">Draw ROI annotations on videos with zoom/pan and YAML export.</p>
+
+        <div class="main-layout">
+            <div class="video-panel">
+                <div class="controls">
+                    <input type="file" id="fileInput" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.m4v,.webm" style="display: none;">
+                    <button id="loadBtn">Load Video</button>
+                    <button id="loadUrlBtn">Load from URL</button>
+                    <button id="playBtn" disabled>Play</button>
+                    <button id="drawBtn" disabled>Start Drawing ROI</button>
+                    <button id="clearBtn" disabled class="danger">Clear All ROIs</button>
+                </div>
+                <div id="urlInputContainer" style="display: none; background: #2a2a2a; padding: 10px; border-radius: 8px; margin-bottom: 15px;">
+                    <input type="text" id="urlInput" placeholder="Enter video URL" style="flex: 1; background: #1a1a1a; border: 1px solid #444; color: #e0e0e0; padding: 8px; border-radius: 4px; width: calc(100% - 130px); font-size: 14px;">
+                    <button id="urlLoadBtn" style="margin-left: 5px;">Load</button>
+                    <button id="urlCancelBtn" style="margin-left: 5px; background: #444;">Cancel</button>
+                </div>
+
+                <div id="statusBar" class="status-bar">Load a video to begin</div>
+
+                <div class="canvas-container" id="canvasContainer" style="display: none;">
+                    <div class="canvas-wrapper" id="canvasWrapper">
+                        <canvas id="videoCanvas"></canvas>
+                    </div>
+                    <canvas id="roiCanvas"></canvas>
+                </div>
+
+                <div class="seekbar-container" id="seekbarContainer" style="display: none;">
+                    <div class="zoom-controls" id="zoomControls">
+                        <label>Zoom:</label>
+                        <button id="zoomOutBtn" style="padding: 5px 12px;">-</button>
+                        <span id="zoomLevel">100%</span>
+                        <button id="zoomInBtn" style="padding: 5px 12px;">+</button>
+                        <button id="zoomResetBtn" style="padding: 5px 12px;">Reset</button>
+                        <button id="zoomFitBtn" style="padding: 5px 12px;">Fit</button>
+                    </div>
+                    <div class="seekbar" id="seekbar">
+                        <div class="seekbar-progress" id="seekbarProgress"></div>
+                        <div class="seekbar-thumb" id="seekbarThumb"></div>
+                    </div>
+                    <div class="frame-info">
+                        <span id="frameInfo">Frame 0 / 0</span>
+                        <span id="timeInfo">0:00 / 0:00</span>
+                    </div>
+                </div>
+
+                <div class="yaml-output" id="yamlContainer" style="display: none;">
+                    <h3>
+                        YAML Output
+                        <button id="copyBtn" style="padding: 4px 10px; font-size: 12px;">Copy</button>
+                        <button id="downloadBtn" style="padding: 4px 10px; font-size: 12px;">Download</button>
+                    </h3>
+                    <textarea id="yamlOutput" readonly placeholder="ROI annotations will appear here..."></textarea>
+                </div>
+            </div>
+
+            <div class="controls-panel">
+                <div class="controls">
+                    <h3>ROI Controls</h3>
+                    <button id="polygonBtn" disabled>Draw Polygon</button>
+                    <button id="polylineBtn" disabled>Draw Polyline</button>
+                    <button id="undoBtn" disabled>Undo Point</button>
+                    <button id="finishBtn" disabled>Finish ROI</button>
+                </div>
+
+                <div class="roi-list" id="roiList">
+                    <h3 style="margin: 0 0 10px 0; color: #fff; font-size: 14px;">ROIs (0)</h3>
+                    <div id="roiItems">No ROIs yet</div>
+                </div>
+
+                <div class="metrics" id="metrics" style="display: none;">
+                    <div class="metric"><span class="metric-label">File:</span> <span id="metricFile">-</span></div>
+                    <div class="metric"><span class="metric-label">Resolution:</span> <span id="metricRes">-</span></div>
+                    <div class="metric"><span class="metric-label">FPS:</span> <span id="metricFps">-</span></div>
+                </div>
+
+                <div class="hotkeys">
+                    <h3>Keyboard Shortcuts</h3>
+                    <div class="hotkey"><span class="hotkey-key">Space</span><span class="hotkey-desc">Play/Pause</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Left/Right</span><span class="hotkey-desc">+-1 frame</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Up/Down</span><span class="hotkey-desc">+-10 frames</span></div>
+                    <div class="hotkey"><span class="hotkey-key">D</span><span class="hotkey-desc">Toggle draw mode</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Enter</span><span class="hotkey-desc">Finish ROI</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Escape</span><span class="hotkey-desc">Cancel drawing</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Z</span><span class="hotkey-desc">Undo last point</span></div>
+                    <div class="hotkey"><span class="hotkey-key">+/-</span><span class="hotkey-desc">Zoom in/out</span></div>
+                    <div class="hotkey"><span class="hotkey-key">0</span><span class="hotkey-desc">Reset zoom</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Shift+Drag</span><span class="hotkey-desc">Pan view</span></div>
+                    <div class="hotkey"><span class="hotkey-key">Scroll</span><span class="hotkey-desc">Zoom at cursor</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- mp4box.js for demuxing MP4 files -->
+    <script src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js"></script>
+
+    <script>
+        // ============================================
+        // Color palette for ROIs (from matplotlib tab20)
+        // ============================================
+        const ROI_COLORS = [
+            '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+            '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf',
+            '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5',
+            '#c49c94', '#f7b6d2', '#c7c7c7', '#dbdb8d', '#9edae5'
+        ];
+
+        // ============================================
+        // On-Demand Video Decoder
+        // ============================================
+        class OnDemandVideoDecoder {
+            constructor(options = {}) {
+                this.cacheSize = options.cacheSize || 30;
+                this.lookahead = options.lookahead || 5;
+                this.cache = new Map();
+                this.samples = [];
+                this.keyframeIndices = [];
+                this.decoder = null;
+                this.config = null;
+                this.videoTrack = null;
+                this.mp4boxFile = null;
+                this.file = null;
+                this.url = null;
+                this.fileSize = 0;
+                this.CHUNK_SIZE = 1024 * 1024;
+                this.isDecoding = false;
+                this.supportsRangeRequests = false;
+
+                // Playback optimization properties
+                this.pendingFrame = null;           // Queue the latest requested frame
+                this.prefetchRequested = false;     // Flag to trigger background prefetch
+                this.lastAccessedFrame = -1;        // Track access pattern for prefetching
+                this.accessDirection = 1;           // 1 = forward, -1 = backward
+            }
+
+            async init(source) {
+                if (typeof source === 'string') {
+                    this.url = source;
+                    const headResponse = await fetch(source, { method: 'HEAD' });
+                    if (!headResponse.ok) {
+                        throw new Error(`Failed to fetch URL: ${headResponse.status}`);
+                    }
+                    this.fileSize = parseInt(headResponse.headers.get('Content-Length')) || 0;
+                    this.supportsRangeRequests = headResponse.headers.get('Accept-Ranges') === 'bytes';
+
+                    if (!this.supportsRangeRequests || !this.fileSize) {
+                        const response = await fetch(source);
+                        const blob = await response.blob();
+                        this.file = blob;
+                        this.fileSize = blob.size;
+                        this.url = null;
+                    }
+                } else {
+                    this.file = source;
+                    this.fileSize = source.size;
+                }
+
+                this.mp4boxFile = MP4Box.createFile();
+
+                const ready = new Promise((resolve, reject) => {
+                    this.mp4boxFile.onError = reject;
+                    this.mp4boxFile.onReady = resolve;
+                });
+
+                let offset = 0;
+                let resolved = false;
+                ready.then(() => { resolved = true; });
+
+                while (offset < this.fileSize && !resolved) {
+                    const buffer = await this.readChunk(offset, this.CHUNK_SIZE);
+                    buffer.fileStart = offset;
+                    const nextOffset = this.mp4boxFile.appendBuffer(buffer);
+                    offset = nextOffset === undefined ? offset + buffer.byteLength : nextOffset;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+
+                const info = await ready;
+
+                if (info.videoTracks.length === 0) {
+                    throw new Error('No video tracks found');
+                }
+
+                this.videoTrack = info.videoTracks[0];
+                const trak = this.mp4boxFile.getTrackById(this.videoTrack.id);
+                const description = this.getCodecDescription(trak);
+
+                this.config = {
+                    codec: this.videoTrack.codec,
+                    codedWidth: this.videoTrack.video.width,
+                    codedHeight: this.videoTrack.video.height,
+                };
+                if (description) {
+                    this.config.description = description;
+                }
+
+                const support = await VideoDecoder.isConfigSupported(this.config);
+                if (!support.supported) {
+                    throw new Error(`Codec ${this.config.codec} not supported`);
+                }
+
+                this.extractSamples();
+
+                const duration = this.videoTrack.duration / this.videoTrack.timescale;
+                this.fps = this.samples.length / duration;
+
+                return {
+                    width: this.videoTrack.video.width,
+                    height: this.videoTrack.video.height,
+                    totalFrames: this.samples.length,
+                    duration: duration,
+                    fps: this.fps,
+                };
+            }
+
+            async readChunk(offset, size) {
+                const end = Math.min(offset + size, this.fileSize);
+                if (this.url && this.supportsRangeRequests) {
+                    const response = await fetch(this.url, {
+                        headers: { 'Range': `bytes=${offset}-${end - 1}` }
+                    });
+                    return await response.arrayBuffer();
+                } else {
+                    const blob = this.file.slice(offset, end);
+                    return await blob.arrayBuffer();
+                }
+            }
+
+            getCodecDescription(trak) {
+                for (const entry of trak.mdia.minf.stbl.stsd.entries) {
+                    const box = entry.avcC || entry.hvcC || entry.vpcC || entry.av1C;
+                    if (box) {
+                        const stream = new DataStream(undefined, 0, DataStream.BIG_ENDIAN);
+                        box.write(stream);
+                        return new Uint8Array(stream.buffer, 8);
+                    }
+                }
+                return null;
+            }
+
+            extractSamples() {
+                const samplesInfo = this.mp4boxFile.getTrackSamplesInfo(this.videoTrack.id);
+                const timescale = this.videoTrack.timescale;
+
+                for (let i = 0; i < samplesInfo.length; i++) {
+                    const sample = samplesInfo[i];
+                    this.samples.push({
+                        offset: sample.offset,
+                        size: sample.size,
+                        timestamp: sample.cts * 1e6 / timescale,
+                        duration: sample.duration * 1e6 / timescale,
+                        isKeyframe: sample.is_sync,
+                    });
+                    if (sample.is_sync) {
+                        this.keyframeIndices.push(i);
+                    }
+                }
+            }
+
+            findKeyframeBefore(frameIndex) {
+                // Binary search for O(log n) performance
+                let left = 0, right = this.keyframeIndices.length - 1;
+                let result = 0;
+
+                while (left <= right) {
+                    const mid = Math.floor((left + right) / 2);
+                    if (this.keyframeIndices[mid] <= frameIndex) {
+                        result = this.keyframeIndices[mid];
+                        left = mid + 1;
+                    } else {
+                        right = mid - 1;
+                    }
+                }
+
+                return result;
+            }
+
+            findKeyframeAfter(frameIndex) {
+                // Binary search for next keyframe
+                let left = 0, right = this.keyframeIndices.length - 1;
+                let result = this.samples.length;
+
+                while (left <= right) {
+                    const mid = Math.floor((left + right) / 2);
+                    if (this.keyframeIndices[mid] > frameIndex) {
+                        result = this.keyframeIndices[mid];
+                        right = mid - 1;
+                    } else {
+                        left = mid + 1;
+                    }
+                }
+
+                return result;
+            }
+
+            async getFrame(frameIndex) {
+                if (frameIndex < 0 || frameIndex >= this.samples.length) {
+                    return null;
+                }
+
+                // Track access direction for prefetching
+                if (this.lastAccessedFrame >= 0) {
+                    const delta = frameIndex - this.lastAccessedFrame;
+                    if (delta > 0) this.accessDirection = 1;
+                    else if (delta < 0) this.accessDirection = -1;
+                }
+                this.lastAccessedFrame = frameIndex;
+
+                // Check cache first
+                if (this.cache.has(frameIndex)) {
+                    const bitmap = this.cache.get(frameIndex);
+                    this.cache.delete(frameIndex);
+                    this.cache.set(frameIndex, bitmap);
+
+                    this.maybeStartPrefetch(frameIndex);
+                    return { bitmap, fromCache: true };
+                }
+
+                // If currently decoding, queue this frame and wait
+                if (this.isDecoding) {
+                    this.pendingFrame = frameIndex;
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (!this.isDecoding) resolve();
+                            else setTimeout(check, 10);
+                        };
+                        check();
+                    });
+                    // Check cache again - might have been decoded
+                    if (this.cache.has(frameIndex)) {
+                        const bitmap = this.cache.get(frameIndex);
+                        this.cache.delete(frameIndex);
+                        this.cache.set(frameIndex, bitmap);
+                        return { bitmap, fromCache: true };
+                    }
+                    // If there's a newer pending frame, skip this one
+                    if (this.pendingFrame !== null && this.pendingFrame !== frameIndex) {
+                        return null;  // Skip stale request
+                    }
+                }
+
+                // Find keyframe and decode range with lookahead
+                const keyframe = this.findKeyframeBefore(frameIndex);
+                const endFrame = Math.min(frameIndex + this.lookahead, this.samples.length - 1);
+                const nextKeyframe = this.findKeyframeAfter(frameIndex);
+                const actualEnd = nextKeyframe > frameIndex ? Math.min(endFrame, nextKeyframe - 1) : endFrame;
+
+                await this.decodeRange(keyframe, actualEnd, frameIndex);
+
+                const bitmap = this.cache.get(frameIndex);
+                return bitmap ? { bitmap, fromCache: false } : null;
+            }
+
+            maybeStartPrefetch(currentFrame) {
+                if (this.isDecoding || this.prefetchRequested) return;
+
+                let cachedAhead = 0;
+                if (this.accessDirection > 0) {
+                    // Moving forward - count cached frames ahead
+                    for (let i = currentFrame + 1; i < this.samples.length && this.cache.has(i); i++) {
+                        cachedAhead++;
+                    }
+                } else {
+                    // Moving backward - count cached frames behind
+                    for (let i = currentFrame - 1; i >= 0 && this.cache.has(i); i--) {
+                        cachedAhead++;
+                    }
+                }
+
+                // If we don't have enough cached frames in the direction of travel, prefetch
+                if (cachedAhead < this.lookahead) {
+                    this.prefetchRequested = true;
+                    setTimeout(() => this.prefetch(currentFrame), 0);
+                }
+            }
+
+            async prefetch(fromFrame) {
+                this.prefetchRequested = false;
+
+                if (this.isDecoding) return;
+
+                let targetFrame;
+                if (this.accessDirection > 0) {
+                    // Find next uncached frame
+                    targetFrame = fromFrame + 1;
+                    while (targetFrame < this.samples.length && this.cache.has(targetFrame)) {
+                        targetFrame++;
+                    }
+                    if (targetFrame >= this.samples.length) return;
+                } else {
+                    // Find previous uncached frame
+                    targetFrame = fromFrame - 1;
+                    while (targetFrame >= 0 && this.cache.has(targetFrame)) {
+                        targetFrame--;
+                    }
+                    if (targetFrame < 0) return;
+                }
+
+                const keyframe = this.findKeyframeBefore(targetFrame);
+                const endFrame = Math.min(targetFrame + this.lookahead, this.samples.length - 1);
+                const nextKeyframe = this.findKeyframeAfter(targetFrame);
+                const actualEnd = nextKeyframe > targetFrame ? Math.min(endFrame, nextKeyframe - 1) : endFrame;
+
+                await this.decodeRange(keyframe, actualEnd, targetFrame);
+            }
+
+            async decodeRange(startFrame, endFrame, targetFrame) {
+                this.isDecoding = true;
+                try {
+                    await this._decodeRangeInternal(startFrame, endFrame, targetFrame);
+                } finally {
+                    this.isDecoding = false;
+                }
+            }
+
+            async _decodeRangeInternal(startFrame, endFrame, targetFrame) {
+                const expectedFrames = endFrame - startFrame + 1;
+                let decodedCount = 0;
+
+                // Calculate cache window around target frame
+                const halfCache = Math.floor(this.cacheSize / 2);
+                const cacheWindowStart = Math.max(startFrame, targetFrame - halfCache);
+                const cacheWindowEnd = Math.min(endFrame, targetFrame + halfCache);
+
+                if (this.decoder) {
+                    try { this.decoder.close(); } catch (e) {}
+                }
+
+                const sampleDataArray = await this.readSampleDataRange(startFrame, endFrame);
+
+                return new Promise((resolve, reject) => {
+                    this.decoder = new VideoDecoder({
+                        output: (frame) => {
+                            const frameIndex = startFrame + decodedCount;
+
+                            // Only cache frames within the window around the target
+                            if (frameIndex >= cacheWindowStart && frameIndex <= cacheWindowEnd) {
+                                createImageBitmap(frame).then(bitmap => {
+                                    this.addToCache(frameIndex, bitmap);
+                                    frame.close();
+                                    decodedCount++;
+                                    if (decodedCount >= expectedFrames) resolve();
+                                }).catch(() => {
+                                    frame.close();
+                                    decodedCount++;
+                                    if (decodedCount >= expectedFrames) resolve();
+                                });
+                            } else {
+                                // Skip caching frames outside window
+                                frame.close();
+                                decodedCount++;
+                                if (decodedCount >= expectedFrames) resolve();
+                            }
+                        },
+                        error: (e) => {
+                            if (e.name === 'AbortError') resolve();
+                            else reject(e);
+                        }
+                    });
+
+                    this.decoder.configure(this.config);
+
+                    for (let i = startFrame; i <= endFrame; i++) {
+                        const sample = this.samples[i];
+                        const chunk = new EncodedVideoChunk({
+                            type: sample.isKeyframe ? 'key' : 'delta',
+                            timestamp: sample.timestamp,
+                            duration: sample.duration,
+                            data: sampleDataArray[i - startFrame],
+                        });
+                        this.decoder.decode(chunk);
+                    }
+
+                    this.decoder.flush();
+                });
+            }
+
+            async readSampleDataRange(startFrame, endFrame) {
+                const results = [];
+                let regionStart = startFrame;
+
+                while (regionStart <= endFrame) {
+                    const firstSample = this.samples[regionStart];
+                    let regionEnd = regionStart;
+                    let regionBytes = firstSample.size;
+
+                    while (regionEnd < endFrame) {
+                        const currentSample = this.samples[regionEnd];
+                        const nextSample = this.samples[regionEnd + 1];
+                        if (nextSample.offset === currentSample.offset + currentSample.size) {
+                            regionEnd++;
+                            regionBytes += nextSample.size;
+                        } else break;
+                    }
+
+                    const buffer = await this.readChunk(firstSample.offset, regionBytes);
+                    const bufferView = new Uint8Array(buffer);
+
+                    let bufferOffset = 0;
+                    for (let i = regionStart; i <= regionEnd; i++) {
+                        const sample = this.samples[i];
+                        results.push(bufferView.slice(bufferOffset, bufferOffset + sample.size));
+                        bufferOffset += sample.size;
+                    }
+
+                    regionStart = regionEnd + 1;
+                }
+
+                return results;
+            }
+
+            addToCache(frameIndex, bitmap) {
+                if (this.cache.size >= this.cacheSize) {
+                    const firstKey = this.cache.keys().next().value;
+                    const oldBitmap = this.cache.get(firstKey);
+                    oldBitmap.close();
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(frameIndex, bitmap);
+            }
+
+            close() {
+                if (this.decoder) this.decoder.close();
+                for (const bitmap of this.cache.values()) bitmap.close();
+                this.cache.clear();
+            }
+        }
+
+        // ============================================
+        // ROI Manager
+        // ============================================
+        class ROIManager {
+            constructor() {
+                this.rois = [];
+                this.currentPoints = [];
+                this.isDrawing = false;
+                this.drawMode = 'polygon';
+                this.colorIndex = 0;
+                this.hoveredROIIndex = -1;
+                this.hoveredNodeIndex = -1;  // Index of hovered node within hovered ROI
+            }
+
+            getNextColor() {
+                const color = ROI_COLORS[this.colorIndex % ROI_COLORS.length];
+                this.colorIndex++;
+                return color;
+            }
+
+            startDrawing(mode = 'polygon') {
+                this.isDrawing = true;
+                this.drawMode = mode;
+                this.currentPoints = [];
+            }
+
+            addPoint(x, y) {
+                if (!this.isDrawing) return false;
+                this.currentPoints.push({ x, y });
+                return true;
+            }
+
+            undoPoint() {
+                if (this.currentPoints.length > 0) {
+                    this.currentPoints.pop();
+                    return true;
+                }
+                return false;
+            }
+
+            cancelDrawing() {
+                this.isDrawing = false;
+                this.currentPoints = [];
+            }
+
+            finishROI(frame = 0) {
+                if (this.currentPoints.length < 2) {
+                    this.cancelDrawing();
+                    return null;
+                }
+
+                if (this.drawMode === 'polygon' && this.currentPoints.length < 3) {
+                    this.cancelDrawing();
+                    return null;
+                }
+
+                const roi = {
+                    name: `ROI ${this.rois.length + 1}`,
+                    type: this.drawMode,
+                    points: [...this.currentPoints],
+                    color: this.getNextColor(),
+                    frame: frame
+                };
+
+                this.rois.push(roi);
+                this.isDrawing = false;
+                this.currentPoints = [];
+
+                return roi;
+            }
+
+            isNearFirstPoint(x, y, threshold = 15) {
+                if (this.currentPoints.length < 3) return false;
+                const first = this.currentPoints[0];
+                const dist = Math.sqrt((x - first.x) ** 2 + (y - first.y) ** 2);
+                return dist < threshold;
+            }
+
+            deleteROI(index) {
+                if (index >= 0 && index < this.rois.length) {
+                    this.rois.splice(index, 1);
+                    return true;
+                }
+                return false;
+            }
+
+            clearAll() {
+                this.rois = [];
+                this.colorIndex = 0;
+            }
+
+            updateROIName(index, name) {
+                if (index >= 0 && index < this.rois.length) {
+                    this.rois[index].name = name;
+                }
+            }
+
+            // Find ROI at given coordinates (in video space)
+            findROIAtPoint(x, y) {
+                // Check in reverse order (top-most first)
+                for (let i = this.rois.length - 1; i >= 0; i--) {
+                    const roi = this.rois[i];
+                    if (this.isPointInROI(x, y, roi)) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            isPointInROI(x, y, roi) {
+                const points = roi.points;
+                if (points.length < 3 || roi.type !== 'polygon') {
+                    // For polylines, check if near any segment
+                    return this.isPointNearPolyline(x, y, points, 10);
+                }
+                // Ray casting algorithm for polygon
+                let inside = false;
+                for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                    const xi = points[i].x, yi = points[i].y;
+                    const xj = points[j].x, yj = points[j].y;
+                    if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+                        inside = !inside;
+                    }
+                }
+                return inside;
+            }
+
+            isPointNearPolyline(x, y, points, threshold) {
+                for (let i = 0; i < points.length - 1; i++) {
+                    const dist = this.pointToSegmentDistance(x, y, points[i], points[i + 1]);
+                    if (dist < threshold) return true;
+                }
+                return false;
+            }
+
+            pointToSegmentDistance(px, py, p1, p2) {
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const lengthSq = dx * dx + dy * dy;
+                if (lengthSq === 0) return Math.sqrt((px - p1.x) ** 2 + (py - p1.y) ** 2);
+                let t = ((px - p1.x) * dx + (py - p1.y) * dy) / lengthSq;
+                t = Math.max(0, Math.min(1, t));
+                const nearX = p1.x + t * dx;
+                const nearY = p1.y + t * dy;
+                return Math.sqrt((px - nearX) ** 2 + (py - nearY) ** 2);
+            }
+
+            // Find node at given coordinates (in video space)
+            // Returns { roiIndex, nodeIndex } or null
+            findNodeAtPoint(x, y, threshold = 10) {
+                for (let i = this.rois.length - 1; i >= 0; i--) {
+                    const roi = this.rois[i];
+                    for (let j = 0; j < roi.points.length; j++) {
+                        const pt = roi.points[j];
+                        const dist = Math.sqrt((x - pt.x) ** 2 + (y - pt.y) ** 2);
+                        if (dist < threshold) {
+                            return { roiIndex: i, nodeIndex: j };
+                        }
+                    }
+                }
+                return null;
+            }
+
+            // Remove a node from a ROI
+            // Returns true if successful, false if it would leave too few points
+            removeNode(roiIndex, nodeIndex) {
+                if (roiIndex < 0 || roiIndex >= this.rois.length) return false;
+                const roi = this.rois[roiIndex];
+
+                // Check minimum points required
+                const minPoints = roi.type === 'polygon' ? 3 : 2;
+                if (roi.points.length <= minPoints) {
+                    return false;  // Can't remove - would have too few points
+                }
+
+                roi.points.splice(nodeIndex, 1);
+                return true;
+            }
+
+            // Update a specific node's position
+            updateNodePosition(roiIndex, nodeIndex, x, y) {
+                if (roiIndex >= 0 && roiIndex < this.rois.length) {
+                    const roi = this.rois[roiIndex];
+                    if (nodeIndex >= 0 && nodeIndex < roi.points.length) {
+                        roi.points[nodeIndex] = { x, y };
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Check if point is near label (for double-click rename)
+            findLabelAtPoint(x, y, ctx) {
+                for (let i = this.rois.length - 1; i >= 0; i--) {
+                    const roi = this.rois[i];
+                    const points = roi.points;
+                    const cx = points.reduce((s, p) => s + p.x, 0) / points.length;
+                    const cy = points.reduce((s, p) => s + p.y, 0) / points.length;
+
+                    ctx.font = 'bold 14px system-ui';
+                    const textWidth = ctx.measureText(roi.name).width;
+                    const labelWidth = textWidth + 12;
+                    const labelHeight = 22;
+
+                    if (x >= cx - labelWidth / 2 && x <= cx + labelWidth / 2 &&
+                        y >= cy - labelHeight / 2 && y <= cy + labelHeight / 2) {
+                        return i;
+                    }
+                }
+                return -1;
+            }
+
+            toYAML(videoInfo = null, currentFrame = 0) {
+                const lines = [];
+
+                if (videoInfo) {
+                    lines.push(`source: ${videoInfo.fileName || 'video.mp4'}`);
+                    lines.push(`resolution: [${videoInfo.width}, ${videoInfo.height}]`);
+                    lines.push(`fps: ${videoInfo.fps.toFixed(2)}`);
+                    lines.push(`total_frames: ${videoInfo.totalFrames}`);
+                }
+
+                lines.push(`frame: ${currentFrame}`);
+                lines.push(`roi_count: ${this.rois.length}`);
+                lines.push('rois:');
+
+                if (this.rois.length === 0) {
+                    lines.push('  []');
+                } else {
+                    for (let i = 0; i < this.rois.length; i++) {
+                        const roi = this.rois[i];
+                        lines.push(`  - id: ${i + 1}`);
+                        lines.push(`    name: "${roi.name}"`);
+                        lines.push(`    type: ${roi.type}`);
+                        lines.push(`    color: "${roi.color}"`);
+                        lines.push('    coordinates:');
+                        for (const pt of roi.points) {
+                            lines.push(`      - [${pt.x.toFixed(1)}, ${pt.y.toFixed(1)}]`);
+                        }
+
+                        const vertexCount = roi.points.length;
+                        const perimeter = this.calculatePerimeter(roi.points, roi.type === 'polygon');
+                        lines.push('    properties:');
+                        lines.push(`      vertex_count: ${vertexCount}`);
+                        lines.push(`      perimeter: ${perimeter.toFixed(1)}`);
+
+                        if (roi.type === 'polygon') {
+                            const area = this.calculateArea(roi.points);
+                            lines.push(`      area: ${area.toFixed(1)}`);
+                        }
+                    }
+                }
+
+                return lines.join('\n');
+            }
+
+            calculatePerimeter(points, closed = false) {
+                let perimeter = 0;
+                for (let i = 0; i < points.length - 1; i++) {
+                    const dx = points[i + 1].x - points[i].x;
+                    const dy = points[i + 1].y - points[i].y;
+                    perimeter += Math.sqrt(dx * dx + dy * dy);
+                }
+                if (closed && points.length > 2) {
+                    const dx = points[0].x - points[points.length - 1].x;
+                    const dy = points[0].y - points[points.length - 1].y;
+                    perimeter += Math.sqrt(dx * dx + dy * dy);
+                }
+                return perimeter;
+            }
+
+            calculateArea(points) {
+                let area = 0;
+                const n = points.length;
+                for (let i = 0; i < n; i++) {
+                    const j = (i + 1) % n;
+                    area += points[i].x * points[j].y;
+                    area -= points[j].x * points[i].y;
+                }
+                return Math.abs(area / 2);
+            }
+        }
+
+        // ============================================
+        // Main Application
+        // ============================================
+        let videoDecoder = null;
+        let roiManager = new ROIManager();
+        let currentFrame = 0;
+        let totalFrames = 0;
+        let fps = 0;
+        let videoInfo = null;
+        let isPlaying = false;
+        let playInterval = null;
+        let currentBitmap = null;
+
+        // Zoom and pan state
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let isPanning = false;
+        let lastPanX = 0;
+        let lastPanY = 0;
+        let videoWidth = 0;
+        let videoHeight = 0;
+
+        // Node dragging state
+        let isDraggingNode = false;
+        let draggingROIIndex = -1;
+        let draggingNodeIndex = -1;
+
+        // Tooltip element
+        let nodeTooltip = null;
+
+        const videoCanvas = document.getElementById('videoCanvas');
+        const roiCanvas = document.getElementById('roiCanvas');
+        const videoCtx = videoCanvas.getContext('2d');
+        const roiCtx = roiCanvas.getContext('2d');
+
+        const loadBtn = document.getElementById('loadBtn');
+        const fileInput = document.getElementById('fileInput');
+        const playBtn = document.getElementById('playBtn');
+        const drawBtn = document.getElementById('drawBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const polygonBtn = document.getElementById('polygonBtn');
+        const polylineBtn = document.getElementById('polylineBtn');
+        const undoBtn = document.getElementById('undoBtn');
+        const finishBtn = document.getElementById('finishBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const canvasContainer = document.getElementById('canvasContainer');
+        const canvasWrapper = document.getElementById('canvasWrapper');
+        const seekbar = document.getElementById('seekbar');
+        const seekbarProgress = document.getElementById('seekbarProgress');
+        const seekbarThumb = document.getElementById('seekbarThumb');
+        const seekbarContainer = document.getElementById('seekbarContainer');
+        const metricsDiv = document.getElementById('metrics');
+        const statusBar = document.getElementById('statusBar');
+        const yamlOutput = document.getElementById('yamlOutput');
+        const roiItems = document.getElementById('roiItems');
+        const zoomControls = document.getElementById('zoomControls');
+
+        // Check WebCodecs support
+        if (!('VideoDecoder' in window)) {
+            statusBar.textContent = 'WebCodecs API not supported. Use Chrome, Edge, or Firefox.';
+            loadBtn.disabled = true;
+        }
+
+        // Setup high-DPI canvas
+        function setupCanvas(canvas, width, height) {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            return ctx;
+        }
+
+        // Setup ROI canvas to cover the full container at native resolution
+        function setupROICanvas() {
+            const containerRect = canvasContainer.getBoundingClientRect();
+            const width = containerRect.width;
+            const height = containerRect.height;
+            const dpr = window.devicePixelRatio || 1;
+
+            roiCanvas.width = width * dpr;
+            roiCanvas.height = height * dpr;
+            roiCanvas.style.width = width + 'px';
+            roiCanvas.style.height = height + 'px';
+
+            // Store container dimensions for coordinate mapping
+            roiCanvas.containerWidth = width;
+            roiCanvas.containerHeight = height;
+
+            roiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
+        // Load video function
+        async function loadVideo(source) {
+            const fileName = typeof source === 'string'
+                ? source.split('/').pop().split('?')[0] || 'remote video'
+                : source.name;
+
+            statusBar.textContent = `Loading ${fileName}...`;
+
+            try {
+                if (videoDecoder) videoDecoder.close();
+
+                videoDecoder = new OnDemandVideoDecoder();
+                const info = await videoDecoder.init(source);
+
+                videoInfo = {
+                    fileName: fileName,
+                    width: info.width,
+                    height: info.height,
+                    totalFrames: info.totalFrames,
+                    fps: info.fps,
+                    duration: info.duration,
+                };
+
+                totalFrames = info.totalFrames;
+                fps = info.fps;
+                currentFrame = 0;
+                videoWidth = info.width;
+                videoHeight = info.height;
+
+                // Reset zoom/pan
+                zoom = 1;
+                panX = 0;
+                panY = 0;
+
+                // Calculate display size to fit container
+                const containerWidth = canvasContainer.parentElement.clientWidth - 40;
+                const aspectRatio = info.height / info.width;
+                const displayWidth = Math.min(containerWidth, info.width);
+                const displayHeight = displayWidth * aspectRatio;
+
+                // Setup video canvas with high-DPI support
+                setupCanvas(videoCanvas, displayWidth, displayHeight);
+
+                // Store logical size
+                videoCanvas.logicalWidth = displayWidth;
+                videoCanvas.logicalHeight = displayHeight;
+
+                // Set container height to match canvas
+                canvasContainer.style.height = displayHeight + 'px';
+
+                // Show container first so it has dimensions
+                canvasContainer.style.display = 'flex';
+
+                // Setup ROI canvas to cover the full container (for crisp annotations)
+                setupROICanvas();
+
+                // Apply initial transform
+                updateCanvasTransform();
+                seekbarContainer.style.display = 'block';
+                metricsDiv.style.display = 'block';
+                document.getElementById('yamlContainer').style.display = 'block';
+
+                // Enable buttons
+                playBtn.disabled = false;
+                drawBtn.disabled = false;
+                clearBtn.disabled = false;
+                polygonBtn.disabled = false;
+                polylineBtn.disabled = false;
+
+                // Update metrics
+                document.getElementById('metricFile').textContent = fileName;
+                document.getElementById('metricRes').textContent = `${info.width}x${info.height}`;
+                document.getElementById('metricFps').textContent = info.fps.toFixed(2);
+
+                // Load first frame
+                await seekToFrame(0);
+                statusBar.textContent = 'Ready. Draw ROIs by clicking on the video.';
+
+            } catch (err) {
+                console.error('Error loading video:', err);
+                statusBar.textContent = `Error: ${err.message}`;
+            }
+        }
+
+        // File input handler
+        loadBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) await loadVideo(file);
+        });
+
+        // URL input handlers
+        const loadUrlBtn = document.getElementById('loadUrlBtn');
+        const urlInputContainer = document.getElementById('urlInputContainer');
+        const urlInput = document.getElementById('urlInput');
+        const urlLoadBtn = document.getElementById('urlLoadBtn');
+        const urlCancelBtn = document.getElementById('urlCancelBtn');
+
+        loadUrlBtn.addEventListener('click', () => {
+            urlInputContainer.style.display = 'block';
+            urlInput.focus();
+        });
+
+        urlCancelBtn.addEventListener('click', () => {
+            urlInputContainer.style.display = 'none';
+            urlInput.value = '';
+        });
+
+        urlLoadBtn.addEventListener('click', async () => {
+            const url = urlInput.value.trim();
+            if (url) {
+                urlInputContainer.style.display = 'none';
+                await loadVideo(url);
+            }
+        });
+
+        urlInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') urlLoadBtn.click();
+            else if (e.key === 'Escape') urlCancelBtn.click();
+        });
+
+        // Seek to frame
+        async function seekToFrame(frameIndex) {
+            if (!videoDecoder) return;
+
+            frameIndex = Math.max(0, Math.min(frameIndex, totalFrames - 1));
+            const result = await videoDecoder.getFrame(frameIndex);
+
+            if (result && result.bitmap) {
+                currentFrame = frameIndex;
+                currentBitmap = result.bitmap;
+                renderFrame();
+                updateSeekbar();
+                updateYAML();
+            }
+        }
+
+        // Update canvas transform using CSS (smoother than redrawing)
+        function updateCanvasTransform() {
+            const logicalWidth = videoCanvas.logicalWidth;
+            const logicalHeight = videoCanvas.logicalHeight;
+
+            // Calculate the center offset for the transform origin
+            const centerX = logicalWidth / 2;
+            const centerY = logicalHeight / 2;
+
+            // Apply CSS transform for zoom and pan
+            // Pan is relative to the zoomed coordinate system
+            canvasWrapper.style.transformOrigin = `${centerX}px ${centerY}px`;
+            canvasWrapper.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+
+            // Re-render ROIs at native resolution with new transform
+            renderROIs();
+        }
+
+        // Convert screen coordinates to video coordinates
+        function screenToVideo(screenX, screenY) {
+            const rect = canvasWrapper.getBoundingClientRect();
+
+            // Get position relative to the transformed wrapper
+            // getBoundingClientRect() returns the transformed size
+            const relX = screenX - rect.left;
+            const relY = screenY - rect.top;
+
+            // Map from transformed rect to video coordinates
+            // rect.width/height already includes the zoom transform
+            const videoX = relX / rect.width * videoWidth;
+            const videoY = relY / rect.height * videoHeight;
+
+            return { x: videoX, y: videoY };
+        }
+
+        // Convert video coordinates to ROI canvas coordinates (applying zoom/pan)
+        function videoToCanvas(videoX, videoY) {
+            const logicalWidth = videoCanvas.logicalWidth;
+            const logicalHeight = videoCanvas.logicalHeight;
+            const containerWidth = roiCanvas.containerWidth;
+            const containerHeight = roiCanvas.containerHeight;
+
+            // First map video coords to logical canvas coords
+            const canvasX = videoX / videoWidth * logicalWidth;
+            const canvasY = videoY / videoHeight * logicalHeight;
+
+            // Apply zoom and pan to get position in container
+            // The video canvas center is at (logicalWidth/2, logicalHeight/2)
+            // After zoom, the center moves by panX, panY
+            const centerX = logicalWidth / 2;
+            const centerY = logicalHeight / 2;
+
+            // Transform: translate to origin, scale, translate back, then pan
+            const scaledX = (canvasX - centerX) * zoom + centerX + panX;
+            const scaledY = (canvasY - centerY) * zoom + centerY + panY;
+
+            // Offset by the wrapper's position within the container (centered)
+            const wrapperOffsetX = (containerWidth - logicalWidth) / 2;
+            const wrapperOffsetY = (containerHeight - logicalHeight) / 2;
+
+            return {
+                x: scaledX + wrapperOffsetX,
+                y: scaledY + wrapperOffsetY
+            };
+        }
+
+        // Render video frame (no zoom/pan - handled by CSS)
+        function renderFrame() {
+            if (!currentBitmap) return;
+
+            const logicalWidth = videoCanvas.logicalWidth;
+            const logicalHeight = videoCanvas.logicalHeight;
+            const dpr = window.devicePixelRatio || 1;
+
+            // Clear canvas
+            videoCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            videoCtx.clearRect(0, 0, logicalWidth, logicalHeight);
+
+            // Draw video frame scaled to fit canvas
+            videoCtx.drawImage(currentBitmap, 0, 0, logicalWidth, logicalHeight);
+
+            renderROIs();
+        }
+
+        // Render ROIs on overlay canvas
+        function renderROIs() {
+            const containerWidth = roiCanvas.containerWidth || videoCanvas.logicalWidth;
+            const containerHeight = roiCanvas.containerHeight || videoCanvas.logicalHeight;
+            const dpr = window.devicePixelRatio || 1;
+
+            roiCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            roiCtx.clearRect(0, 0, containerWidth, containerHeight);
+
+            // Draw completed ROIs
+            for (let i = 0; i < roiManager.rois.length; i++) {
+                const roi = roiManager.rois[i];
+                const isHighlighted = i === roiManager.hoveredROIIndex;
+                drawROI(roi.points, roi.color, roi.type === 'polygon', roi.name, isHighlighted, i);
+            }
+
+            // Draw current drawing
+            if (roiManager.isDrawing && roiManager.currentPoints.length > 0) {
+                drawCurrentROI();
+            }
+        }
+
+        function drawROI(points, color, closed, name, highlighted = false, roiIndex = -1) {
+            if (points.length < 2) return;
+
+            // Convert video coordinates to canvas coordinates
+            const canvasPoints = points.map(p => videoToCanvas(p.x, p.y));
+
+            roiCtx.beginPath();
+            roiCtx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+            for (let i = 1; i < canvasPoints.length; i++) {
+                roiCtx.lineTo(canvasPoints[i].x, canvasPoints[i].y);
+            }
+            if (closed) roiCtx.closePath();
+
+            // Fill for polygons
+            if (closed) {
+                roiCtx.fillStyle = color + (highlighted ? '66' : '4D');
+                roiCtx.fill();
+            }
+
+            // Stroke
+            roiCtx.strokeStyle = color;
+            roiCtx.lineWidth = highlighted ? 3 : 2;
+            roiCtx.stroke();
+
+            // Draw vertices (fixed size regardless of zoom)
+            const vertexRadius = highlighted ? 6 : 5;
+            for (let i = 0; i < canvasPoints.length; i++) {
+                const pt = canvasPoints[i];
+                const isNodeHovered = (roiIndex === roiManager.hoveredROIIndex && i === roiManager.hoveredNodeIndex);
+                const isNodeDragging = (roiIndex === draggingROIIndex && i === draggingNodeIndex);
+                const nodeRadius = (isNodeHovered || isNodeDragging) ? 8 : vertexRadius;
+
+                roiCtx.beginPath();
+                roiCtx.arc(pt.x, pt.y, nodeRadius, 0, Math.PI * 2);
+                roiCtx.fillStyle = color;
+                roiCtx.fill();
+
+                // White border for highlighted ROI nodes or individually hovered/dragged nodes
+                if (highlighted || isNodeHovered || isNodeDragging) {
+                    roiCtx.strokeStyle = '#fff';
+                    roiCtx.lineWidth = (isNodeHovered || isNodeDragging) ? 3 : 2;
+                    roiCtx.stroke();
+                }
+            }
+
+            // Draw name label at centroid (in canvas space)
+            if (name) {
+                const cx = canvasPoints.reduce((s, p) => s + p.x, 0) / canvasPoints.length;
+                const cy = canvasPoints.reduce((s, p) => s + p.y, 0) / canvasPoints.length;
+
+                roiCtx.font = 'bold 14px system-ui';
+                const textWidth = roiCtx.measureText(name).width;
+
+                // Label background
+                roiCtx.fillStyle = highlighted ? 'rgba(102, 126, 234, 0.95)' : 'rgba(255,255,255,0.95)';
+                roiCtx.fillRect(cx - textWidth/2 - 6, cy - 11, textWidth + 12, 22);
+
+                // Label border
+                roiCtx.strokeStyle = color;
+                roiCtx.lineWidth = 2;
+                roiCtx.strokeRect(cx - textWidth/2 - 6, cy - 11, textWidth + 12, 22);
+
+                roiCtx.fillStyle = highlighted ? '#fff' : '#000';
+                roiCtx.textAlign = 'center';
+                roiCtx.textBaseline = 'middle';
+                roiCtx.fillText(name, cx, cy);
+            }
+        }
+
+        function drawCurrentROI() {
+            const points = roiManager.currentPoints;
+            const color = '#ff0000';
+
+            if (points.length > 0) {
+                // Convert to canvas coordinates
+                const canvasPoints = points.map(p => videoToCanvas(p.x, p.y));
+
+                // Draw lines
+                roiCtx.beginPath();
+                roiCtx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+                for (let i = 1; i < canvasPoints.length; i++) {
+                    roiCtx.lineTo(canvasPoints[i].x, canvasPoints[i].y);
+                }
+                roiCtx.strokeStyle = color;
+                roiCtx.lineWidth = 2;
+                roiCtx.stroke();
+
+                // Draw vertices
+                for (let i = 0; i < canvasPoints.length; i++) {
+                    roiCtx.beginPath();
+                    const radius = i === 0 && points.length >= 3 ? 10 : 5;
+                    roiCtx.arc(canvasPoints[i].x, canvasPoints[i].y, radius, 0, Math.PI * 2);
+                    roiCtx.fillStyle = i === 0 && points.length >= 3 ? '#4ade80' : color;
+                    roiCtx.fill();
+                    if (i === 0 && points.length >= 3) {
+                        roiCtx.strokeStyle = '#fff';
+                        roiCtx.lineWidth = 2;
+                        roiCtx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Update seekbar
+        function updateSeekbar() {
+            const progress = totalFrames > 0 ? (currentFrame / totalFrames) * 100 : 0;
+            seekbarProgress.style.width = progress + '%';
+            seekbarThumb.style.left = progress + '%';
+
+            document.getElementById('frameInfo').textContent = `Frame ${currentFrame} / ${totalFrames}`;
+
+            const currentTime = currentFrame / fps;
+            const totalTime = totalFrames / fps;
+            document.getElementById('timeInfo').textContent =
+                `${formatTime(currentTime)} / ${formatTime(totalTime)}`;
+        }
+
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Update YAML output
+        function updateYAML() {
+            yamlOutput.value = roiManager.toYAML(videoInfo, currentFrame);
+        }
+
+        // Update ROI list
+        function updateROIList() {
+            const listHeader = document.querySelector('#roiList h3');
+            listHeader.textContent = `ROIs (${roiManager.rois.length})`;
+
+            if (roiManager.rois.length === 0) {
+                roiItems.innerHTML = '<div style="color: #666;">No ROIs yet</div>';
+                return;
+            }
+
+            roiItems.innerHTML = roiManager.rois.map((roi, i) => `
+                <div class="roi-item" data-index="${i}">
+                    <div class="roi-color" style="background: ${roi.color}"></div>
+                    <input type="text" class="roi-name" value="${roi.name}" data-index="${i}">
+                    <span style="color: #666; font-size: 11px;">${roi.type}</span>
+                    <button class="roi-delete" data-index="${i}">&times;</button>
+                </div>
+            `).join('');
+
+            // Add event listeners
+            roiItems.querySelectorAll('.roi-name').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    roiManager.updateROIName(index, e.target.value);
+                    updateYAML();
+                    renderROIs();
+                });
+            });
+
+            roiItems.querySelectorAll('.roi-delete').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.dataset.index);
+                    roiManager.deleteROI(index);
+                    updateROIList();
+                    updateYAML();
+                    renderROIs();
+                });
+            });
+
+            // Add hover listeners for table rows
+            roiItems.querySelectorAll('.roi-item').forEach(item => {
+                item.addEventListener('mouseenter', (e) => {
+                    const index = parseInt(e.currentTarget.dataset.index);
+                    roiManager.hoveredROIIndex = index;
+                    renderROIs();
+                });
+                item.addEventListener('mouseleave', () => {
+                    roiManager.hoveredROIIndex = -1;
+                    renderROIs();
+                });
+            });
+        }
+
+        // Highlight ROI in table
+        function highlightTableRow(index) {
+            roiItems.querySelectorAll('.roi-item').forEach((item, i) => {
+                if (i === index) {
+                    item.classList.add('highlighted');
+                } else {
+                    item.classList.remove('highlighted');
+                }
+            });
+        }
+
+        // Canvas mouse handlers
+        // Helper functions for tooltip
+        function showNodeTooltip(screenX, screenY, videoX, videoY) {
+            if (!nodeTooltip) {
+                nodeTooltip = document.createElement('div');
+                nodeTooltip.className = 'node-tooltip';
+                canvasContainer.appendChild(nodeTooltip);
+            }
+            const rect = canvasContainer.getBoundingClientRect();
+            nodeTooltip.textContent = `(${videoX.toFixed(1)}, ${videoY.toFixed(1)})`;
+            nodeTooltip.style.left = (screenX - rect.left) + 'px';
+            nodeTooltip.style.top = (screenY - rect.top) + 'px';
+            nodeTooltip.style.display = 'block';
+        }
+
+        function hideNodeTooltip() {
+            if (nodeTooltip) {
+                nodeTooltip.style.display = 'none';
+            }
+        }
+
+        roiCanvas.addEventListener('mousedown', (e) => {
+            if (e.shiftKey || e.button === 1) {
+                // Start panning
+                isPanning = true;
+                lastPanX = e.clientX;
+                lastPanY = e.clientY;
+                canvasContainer.classList.add('panning');
+                e.preventDefault();
+                return;
+            }
+
+            // Check if clicking on a node to start dragging
+            if (!roiManager.isDrawing && e.button === 0) {
+                const video = screenToVideo(e.clientX, e.clientY);
+                const nodeThreshold = 12 / zoom;  // Adjust threshold based on zoom
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) {
+                    isDraggingNode = true;
+                    draggingROIIndex = node.roiIndex;
+                    draggingNodeIndex = node.nodeIndex;
+                    canvasContainer.classList.add('dragging-node');
+                    e.preventDefault();
+                    return;
+                }
+            }
+        });
+
+        roiCanvas.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const dx = e.clientX - lastPanX;
+                const dy = e.clientY - lastPanY;
+                panX += dx;
+                panY += dy;
+                lastPanX = e.clientX;
+                lastPanY = e.clientY;
+                updateCanvasTransform();
+                return;
+            }
+
+            // Handle node dragging
+            if (isDraggingNode) {
+                const video = screenToVideo(e.clientX, e.clientY);
+                roiManager.updateNodePosition(draggingROIIndex, draggingNodeIndex, video.x, video.y);
+                showNodeTooltip(e.clientX, e.clientY, video.x, video.y);
+                renderROIs();
+                updateYAML();
+                return;
+            }
+
+            // Hover detection for nodes and ROIs
+            if (!roiManager.isDrawing) {
+                const video = screenToVideo(e.clientX, e.clientY);
+
+                // First check for node hover (higher priority)
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+
+                if (node) {
+                    const prevHoveredROI = roiManager.hoveredROIIndex;
+                    const prevHoveredNode = roiManager.hoveredNodeIndex;
+                    roiManager.hoveredROIIndex = node.roiIndex;
+                    roiManager.hoveredNodeIndex = node.nodeIndex;
+
+                    // Show tooltip with coordinates
+                    const pt = roiManager.rois[node.roiIndex].points[node.nodeIndex];
+                    showNodeTooltip(e.clientX, e.clientY, pt.x, pt.y);
+
+                    if (prevHoveredROI !== node.roiIndex || prevHoveredNode !== node.nodeIndex) {
+                        highlightTableRow(node.roiIndex);
+                        renderROIs();
+                    }
+
+                    // Change cursor to indicate draggable
+                    roiCanvas.style.cursor = 'move';
+                } else {
+                    // Check for ROI hover
+                    hideNodeTooltip();
+                    roiCanvas.style.cursor = 'crosshair';
+
+                    const prevHoveredNode = roiManager.hoveredNodeIndex;
+                    roiManager.hoveredNodeIndex = -1;
+
+                    const hoveredIndex = roiManager.findROIAtPoint(video.x, video.y);
+                    if (hoveredIndex !== roiManager.hoveredROIIndex || prevHoveredNode !== -1) {
+                        roiManager.hoveredROIIndex = hoveredIndex;
+                        highlightTableRow(hoveredIndex);
+                        renderROIs();
+                    }
+                }
+            }
+        });
+
+        roiCanvas.addEventListener('mouseup', (e) => {
+            if (isPanning) {
+                isPanning = false;
+                canvasContainer.classList.remove('panning');
+                return;
+            }
+
+            if (isDraggingNode) {
+                isDraggingNode = false;
+                draggingROIIndex = -1;
+                draggingNodeIndex = -1;
+                canvasContainer.classList.remove('dragging-node');
+                hideNodeTooltip();
+                updateROIList();  // Update the list in case coordinates changed significantly
+                return;
+            }
+        });
+
+        roiCanvas.addEventListener('mouseleave', () => {
+            if (isPanning) {
+                isPanning = false;
+                canvasContainer.classList.remove('panning');
+            }
+            if (isDraggingNode) {
+                isDraggingNode = false;
+                draggingROIIndex = -1;
+                draggingNodeIndex = -1;
+                canvasContainer.classList.remove('dragging-node');
+            }
+            hideNodeTooltip();
+            roiCanvas.style.cursor = 'crosshair';
+            if (!roiManager.isDrawing) {
+                roiManager.hoveredROIIndex = -1;
+                roiManager.hoveredNodeIndex = -1;
+                highlightTableRow(-1);
+                renderROIs();
+            }
+        });
+
+        // Click handler for ROI drawing
+        roiCanvas.addEventListener('click', (e) => {
+            if (e.shiftKey || isPanning || isDraggingNode) return;
+
+            const video = screenToVideo(e.clientX, e.clientY);
+
+            // If not drawing, check if we clicked on a node (don't process click in that case)
+            if (!roiManager.isDrawing) {
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) return;  // Node was clicked, but we handle this in mousedown/mouseup
+                return;
+            }
+
+            // Adjust threshold based on zoom for closing polygon
+            const closeThreshold = 15 / zoom;
+
+            // Check if clicking near first point to close polygon
+            if (roiManager.drawMode === 'polygon' && roiManager.isNearFirstPoint(video.x, video.y, closeThreshold)) {
+                const roi = roiManager.finishROI(currentFrame);
+                if (roi) {
+                    updateROIList();
+                    updateYAML();
+                    statusBar.textContent = `Created ${roi.type}: ${roi.name}`;
+                    statusBar.classList.remove('drawing');
+                    drawBtn.classList.remove('active');
+                    updateButtonStates();
+                }
+            } else {
+                roiManager.addPoint(video.x, video.y);
+            }
+
+            renderROIs();
+        });
+
+        // Double-click to rename ROI label or start new polygon
+        roiCanvas.addEventListener('dblclick', (e) => {
+            if (e.shiftKey) return;  // Ignore if panning
+
+            const video = screenToVideo(e.clientX, e.clientY);
+
+            // If already drawing, ignore double-click
+            if (roiManager.isDrawing) return;
+
+            // First check if clicking on a label to rename
+            const labelIndex = roiManager.findLabelAtPoint(video.x, video.y, roiCtx);
+            if (labelIndex >= 0) {
+                showLabelEditInput(labelIndex, e.clientX, e.clientY);
+                return;
+            }
+
+            // Otherwise, start a new polygon at this point
+            roiManager.startDrawing('polygon');
+            roiManager.addPoint(video.x, video.y);
+            statusBar.textContent = 'Drawing polygon: click to add points, click first point to close';
+            statusBar.classList.add('drawing');
+            drawBtn.classList.add('active');
+            polygonBtn.classList.add('active');
+            polylineBtn.classList.remove('active');
+            updateButtonStates();
+            renderROIs();
+        });
+
+        // Show input for editing label
+        function showLabelEditInput(roiIndex, screenX, screenY) {
+            const roi = roiManager.rois[roiIndex];
+            const rect = canvasContainer.getBoundingClientRect();
+
+            // Create input element
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'roi-label-edit';
+            input.value = roi.name;
+            input.style.left = (screenX - rect.left - 40) + 'px';
+            input.style.top = (screenY - rect.top - 12) + 'px';
+
+            canvasContainer.appendChild(input);
+            input.focus();
+            input.select();
+
+            let finished = false;
+            const finishEdit = () => {
+                if (finished) return;
+                finished = true;
+                const newName = input.value.trim() || roi.name;
+                roiManager.updateROIName(roiIndex, newName);
+                updateROIList();
+                updateYAML();
+                renderROIs();
+                if (input.parentNode) input.remove();
+            };
+
+            input.addEventListener('blur', finishEdit);
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    finishEdit();
+                } else if (e.key === 'Escape') {
+                    finished = true;
+                    if (input.parentNode) input.remove();
+                }
+            });
+        }
+
+        // Right-click to finish polyline or remove node
+        roiCanvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+
+            const video = screenToVideo(e.clientX, e.clientY);
+
+            // If drawing a polyline, right-click finishes it
+            if (roiManager.isDrawing && roiManager.currentPoints.length >= 2) {
+                if (roiManager.drawMode === 'polyline') {
+                    const roi = roiManager.finishROI(currentFrame);
+                    if (roi) {
+                        updateROIList();
+                        updateYAML();
+                        statusBar.textContent = `Created ${roi.type}: ${roi.name}`;
+                        statusBar.classList.remove('drawing');
+                        drawBtn.classList.remove('active');
+                        updateButtonStates();
+                        renderROIs();
+                    }
+                }
+                return;
+            }
+
+            // If not drawing, check if right-clicking on a node to remove it
+            if (!roiManager.isDrawing) {
+                const nodeThreshold = 12 / zoom;
+                const node = roiManager.findNodeAtPoint(video.x, video.y, nodeThreshold);
+                if (node) {
+                    const roi = roiManager.rois[node.roiIndex];
+                    const minPoints = roi.type === 'polygon' ? 3 : 2;
+
+                    if (roi.points.length > minPoints) {
+                        roiManager.removeNode(node.roiIndex, node.nodeIndex);
+                        updateYAML();
+                        statusBar.textContent = `Removed node from ${roi.name}`;
+                        hideNodeTooltip();
+                        roiManager.hoveredNodeIndex = -1;
+                        renderROIs();
+                    } else {
+                        statusBar.textContent = `Cannot remove node: ${roi.type} needs at least ${minPoints} points`;
+                    }
+                }
+            }
+        });
+
+        // Mouse wheel zoom
+        roiCanvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Zoom factor
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.max(0.25, Math.min(10, zoom * delta));
+
+            // Zoom toward mouse position (adjust pan to keep point under cursor)
+            const wrapperRect = canvasWrapper.getBoundingClientRect();
+            const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+            const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
+
+            // Calculate offset from wrapper center
+            const offsetX = e.clientX - wrapperCenterX;
+            const offsetY = e.clientY - wrapperCenterY;
+
+            // Adjust pan to zoom toward cursor
+            const scale = newZoom / zoom;
+            panX = panX * scale - offsetX * (scale - 1);
+            panY = panY * scale - offsetY * (scale - 1);
+
+            zoom = newZoom;
+            updateZoomDisplay();
+            updateCanvasTransform();
+        });
+
+        // Zoom controls
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            zoom = Math.min(10, zoom * 1.25);
+            updateZoomDisplay();
+            updateCanvasTransform();
+        });
+
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            zoom = Math.max(0.25, zoom / 1.25);
+            updateZoomDisplay();
+            updateCanvasTransform();
+        });
+
+        document.getElementById('zoomResetBtn').addEventListener('click', () => {
+            zoom = 1;
+            panX = 0;
+            panY = 0;
+            updateZoomDisplay();
+            updateCanvasTransform();
+        });
+
+        document.getElementById('zoomFitBtn').addEventListener('click', () => {
+            zoom = 1;
+            panX = 0;
+            panY = 0;
+            updateZoomDisplay();
+            updateCanvasTransform();
+        });
+
+        function updateZoomDisplay() {
+            document.getElementById('zoomLevel').textContent = Math.round(zoom * 100) + '%';
+        }
+
+        // Button handlers
+        function updateButtonStates() {
+            const drawing = roiManager.isDrawing;
+            undoBtn.disabled = !drawing || roiManager.currentPoints.length === 0;
+            finishBtn.disabled = !drawing || roiManager.currentPoints.length < 2;
+        }
+
+        drawBtn.addEventListener('click', () => {
+            if (roiManager.isDrawing) {
+                roiManager.cancelDrawing();
+                statusBar.textContent = 'Drawing cancelled';
+                statusBar.classList.remove('drawing');
+                drawBtn.classList.remove('active');
+            } else {
+                roiManager.startDrawing('polygon');
+                statusBar.textContent = 'Drawing polygon: click to add points, click first point to close';
+                statusBar.classList.add('drawing');
+                drawBtn.classList.add('active');
+            }
+            updateButtonStates();
+            renderROIs();
+        });
+
+        polygonBtn.addEventListener('click', () => {
+            roiManager.startDrawing('polygon');
+            statusBar.textContent = 'Drawing polygon: click to add points, click first point to close';
+            statusBar.classList.add('drawing');
+            drawBtn.classList.add('active');
+            updateButtonStates();
+        });
+
+        polylineBtn.addEventListener('click', () => {
+            roiManager.startDrawing('polyline');
+            statusBar.textContent = 'Drawing polyline: click to add points, right-click to finish';
+            statusBar.classList.add('drawing');
+            drawBtn.classList.add('active');
+            updateButtonStates();
+        });
+
+        undoBtn.addEventListener('click', () => {
+            roiManager.undoPoint();
+            updateButtonStates();
+            renderROIs();
+        });
+
+        finishBtn.addEventListener('click', () => {
+            const roi = roiManager.finishROI(currentFrame);
+            if (roi) {
+                updateROIList();
+                updateYAML();
+                statusBar.textContent = `Created ${roi.type}: ${roi.name}`;
+                statusBar.classList.remove('drawing');
+                drawBtn.classList.remove('active');
+            }
+            updateButtonStates();
+            renderROIs();
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (confirm('Clear all ROIs?')) {
+                roiManager.clearAll();
+                updateROIList();
+                updateYAML();
+                renderROIs();
+                statusBar.textContent = 'All ROIs cleared';
+            }
+        });
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(yamlOutput.value).then(() => {
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => copyBtn.textContent = originalText, 1500);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = yamlOutput.value;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            });
+        });
+
+        // Download YAML
+        const downloadBtn = document.getElementById('downloadBtn');
+        downloadBtn.addEventListener('click', () => {
+            const blob = new Blob([yamlOutput.value], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Generate filename from video filename
+            const videoName = document.getElementById('metricFile').textContent || 'annotations';
+            const baseName = videoName.replace(/\.[^/.]+$/, '');  // Remove extension
+            a.download = `${baseName}_rois.yaml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+
+        // Playback
+        playBtn.addEventListener('click', togglePlayback);
+
+        function togglePlayback() {
+            if (isPlaying) stopPlayback();
+            else startPlayback();
+        }
+
+        function startPlayback() {
+            if (!videoDecoder) return;
+            isPlaying = true;
+            playBtn.textContent = 'Pause';
+
+            const interval = 1000 / fps;
+            playInterval = setInterval(async () => {
+                await seekToFrame((currentFrame + 1) % totalFrames);
+            }, interval);
+        }
+
+        function stopPlayback() {
+            isPlaying = false;
+            playBtn.textContent = 'Play';
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+        }
+
+        // Seekbar interaction
+        let isScrubbing = false;
+
+        function handleSeekbarInteraction(e) {
+            const rect = seekbar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = x / rect.width;
+            const frame = Math.floor(percent * totalFrames);
+            seekToFrame(frame);
+        }
+
+        seekbar.addEventListener('mousedown', (e) => {
+            isScrubbing = true;
+            handleSeekbarInteraction(e);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isScrubbing) handleSeekbarInteraction(e);
+        });
+
+        document.addEventListener('mouseup', () => {
+            isScrubbing = false;
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (!videoDecoder) return;
+
+            // Don't handle if typing in input
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            switch (e.key) {
+                case ' ':
+                    e.preventDefault();
+                    togglePlayback();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    seekToFrame(currentFrame - 1);
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    seekToFrame(currentFrame + 1);
+                    break;
+                case 'ArrowUp':
+                    e.preventDefault();
+                    seekToFrame(currentFrame + 10);
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    seekToFrame(currentFrame - 10);
+                    break;
+                case 'd':
+                case 'D':
+                    drawBtn.click();
+                    break;
+                case 'Enter':
+                    if (roiManager.isDrawing) finishBtn.click();
+                    break;
+                case 'Escape':
+                    if (roiManager.isDrawing) {
+                        roiManager.cancelDrawing();
+                        statusBar.textContent = 'Drawing cancelled';
+                        statusBar.classList.remove('drawing');
+                        drawBtn.classList.remove('active');
+                        updateButtonStates();
+                        renderROIs();
+                    }
+                    break;
+                case 'z':
+                case 'Z':
+                    if (roiManager.isDrawing) {
+                        roiManager.undoPoint();
+                        updateButtonStates();
+                        renderROIs();
+                    }
+                    break;
+                case '+':
+                case '=':
+                    e.preventDefault();
+                    zoom = Math.min(10, zoom * 1.25);
+                    updateZoomDisplay();
+                    renderFrame();
+                    break;
+                case '-':
+                case '_':
+                    e.preventDefault();
+                    zoom = Math.max(0.25, zoom / 1.25);
+                    updateZoomDisplay();
+                    renderFrame();
+                    break;
+                case '0':
+                    e.preventDefault();
+                    zoom = 1;
+                    panX = 0;
+                    panY = 0;
+                    updateZoomDisplay();
+                    renderFrame();
+                    break;
+            }
+        });
+
+        // Handle window resize to keep ROI annotations aligned
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            // Debounce resize events
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                if (!videoDecoder || !videoInfo) return;
+
+                // Recalculate display size based on new container width
+                const containerWidth = canvasContainer.parentElement.clientWidth - 40;
+                const aspectRatio = videoInfo.height / videoInfo.width;
+                const displayWidth = Math.min(containerWidth, videoInfo.width);
+                const displayHeight = displayWidth * aspectRatio;
+
+                // Update video canvas size
+                setupCanvas(videoCanvas, displayWidth, displayHeight);
+                videoCanvas.logicalWidth = displayWidth;
+                videoCanvas.logicalHeight = displayHeight;
+
+                // Update container height
+                canvasContainer.style.height = displayHeight + 'px';
+
+                // Update ROI canvas to match new container size
+                setupROICanvas();
+
+                // Update transform and re-render
+                updateCanvasTransform();
+                renderFrame();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
