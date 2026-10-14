@@ -13,6 +13,7 @@ Self-contained HTML tools and applets for the web.
 - [Webcam Heart Rate](webcam-heart-rate/) - Real-time heart rate from your face via rPPG (vitallens.js), with pulse waveform and HR trend
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
 - [Pose Subspace Trip](pose-subspace-trip/) - Drive trippy 3D visualizations (pose constellation or ray-marched fractal) with your body via a pose-driven PCA subspace
+- [Hand Dissection Lab](hand-dissection-lab/) - Run MediaPipe's hand landmark network standalone in TensorFlow.js: explore its 45 internal layers, read live speed/angle features off the hand, and compare a hand-crafted pose subspace against the network's learned 768-d embedding
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
 - [h5ls](h5ls/) - HDF5/SLP file explorer using h5wasm with streaming support
 - [Label ROI](labelroi/) - Video ROI annotation tool with zoom/pan, hover highlighting, and YAML export
@@ -31,7 +32,7 @@ Self-contained HTML tools and applets for the web.
 - [SLEAP-NN Metrics](sleap-nn-metrics/) - Visualize and compare SLEAP-NN evaluation metrics with interactive charts
 - [SAM3 Segmenter](sam3-segmenter/) - Interactive video segmentation using SAM3 with click prompting, tracking, and SLP export
 - [GPU Dashboard](gpu-dashboard/) - Monitor GPUs across multiple workstations with real-time stats and inference progress tracking
-- [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard
+- [Lab Camera Planner](lab-camera-planner/) - Plan lab camera setups with FOV calculator, specs comparison, and recommendation wizard, from rodent arenas to human-scale rooms (including a 3D multi-camera planner for Room 445)
 - [Salk Email Signature](salk-signature/) - Build a branded Salk email signature from reorderable, typed lines with live preview and one-click rich-HTML copy for Outlook, Apple Mail, and Gmail
 - [Encoding Helper](encoding-helper/) - Didactic in-browser video encoding lab: MP4 atom map, GOP/keyframe analysis, seeking tests, and H.264 re-encoding with a live ffmpeg CLI command builder
 - [Clip Extractor](clip-extractor/) - Load a video (URL or local) ± a SLEAP .slp, select an in/out range, extract it as an MP4 clip (ffmpeg.wasm) or frame images with SLP-free annotation JSON, and package it for a backend POST
