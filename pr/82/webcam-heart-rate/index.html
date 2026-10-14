@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam Heart Rate</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>❤️</text></svg>">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+            background: #1a1a2e;
+            color: #eee;
+        }
+        h1 { margin-bottom: 0.5rem; color: #fff; }
+        .description { color: #aaa; margin-top: 0; }
+        .description a, .note a { color: #ff6b9d; }
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 20px auto;
+            background: #0f0f23;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        video { display: none; }
+        canvas { display: block; width: 100%; height: auto; border-radius: 12px; }
+        .status { text-align: center; padding: 20px; color: #888; font-size: 14px; }
+        .status.error, .error-line { color: #ff6b6b; }
+        .error-line { text-align: center; font-size: 14px; margin: 0 0 10px; min-height: 1em; }
+        .stats {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px 30px;
+            margin: 15px 0;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .stat-value { color: #ff6b9d; font-weight: bold; }
+        .trend { max-width: 640px; margin: 0 auto; }
+        .trend canvas { height: 110px; background: #0f0f23; }
+        .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 20px 0; }
+        button {
+            background: linear-gradient(135deg, #ff6b9d 0%, #c9184a 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(255, 107, 157, 0.4); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        button.recording { background: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%); }
+        .recording-indicator { display: none; align-items: center; justify-content: center; gap: 8px; color: #ff6b6b; font-size: 14px; margin: 10px 0; }
+        .recording-indicator.active { display: flex; }
+        .recording-dot { width: 10px; height: 10px; border-radius: 50%; background: #ff6b6b; animation: pulse 1.2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .options { display: flex; gap: 16px; justify-content: center; align-items: center; flex-wrap: wrap; margin: 15px 0; }
+        label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
+        input[type="checkbox"] { width: 18px; height: 18px; accent-color: #ff6b9d; }
+        select, input[type="password"] {
+            background: #2a2a3e;
+            color: #eee;
+            border: 1px solid #444;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        select:hover, input[type="password"]:focus { border-color: #ff6b9d; outline: none; }
+        #keyRow[hidden] { display: none; }
+        .note { max-width: 640px; margin: 10px auto; font-size: 13px; color: #888; text-align: center; }
+        footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #333; text-align: center; font-size: 14px; color: #666; }
+        footer a { color: #ff6b9d; text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        @media (max-width: 600px) {
+            body { padding: 15px; }
+            .controls { flex-direction: column; }
+            button { width: 100%; }
+            #apiKey { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Webcam Heart Rate</h1>
+    <p class="description">Real-time heart rate from the subtle color changes in your face (remote photoplethysmography), using <a href="https://docs.rouast.com/js/">vitallens.js</a>.</p>
+
+    <div class="video-container">
+        <video id="video" playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div id="status" class="status">Loading vitallens.js…</div>
+    </div>
+    <p class="error-line" id="errorLine"></p>
+
+    <div class="stats" id="stats" style="display: none;">
+        <span>Heart rate: <span class="stat-value" id="hr">--</span></span>
+        <span>Confidence: <span class="stat-value" id="conf">--</span></span>
+        <span id="extras" style="display: contents;"></span>
+        <span>FPS: <span class="stat-value" id="fps">0</span></span>
+    </div>
+    <div class="trend" id="trendWrap" style="display: none;"><canvas id="trend"></canvas></div>
+
+    <div class="controls">
+        <button id="startBtn" disabled>Start Camera</button>
+        <button id="stopBtn" disabled>Stop Camera</button>
+        <button id="recordBtn" disabled>Start Recording</button>
+    </div>
+
+    <div class="recording-indicator" id="recordingIndicator">
+        <span class="recording-dot"></span> Recording <span id="recordingTime">0:00</span>
+    </div>
+
+    <div class="options">
+        <label for="methodSelect">Method:</label>
+        <select id="methodSelect">
+            <option value="pos">POS (local)</option>
+            <option value="chrom">CHROM (local)</option>
+            <option value="g">G (local)</option>
+            <option value="vitallens">VitalLens API (key)</option>
+        </select>
+        <span id="keyRow" hidden>
+            <input type="password" id="apiKey" placeholder="VitalLens API key" autocomplete="off" spellcheck="false">
+        </span>
+        <label><input type="checkbox" id="showFace" checked> Face Box</label>
+        <label><input type="checkbox" id="showWave" checked> Pulse Waveform</label>
+        <label><input type="checkbox" id="mirrorVideo" checked> Mirror Video</label>
+    </div>
+
+    <p class="note" id="methodNote"></p>
+    <p class="note">Hold still, face the camera, and use even lighting. The first estimate appears after ~5 s. For fun and wellness only, not a medical device.</p>
+
+    <footer>
+        <a href="/">Home</a> &middot;
+        <a href="https://github.com/talmolab/vibes">Source</a>
+    </footer>
+
+    <script type="module">
+        const LIB_URL = 'https://cdn.jsdelivr.net/npm/vitallens@0.4.5/dist/vitallens.browser.js';
+        const METHOD_NOTES = {
+            local: 'Local methods run entirely in your browser: no video leaves your device. They estimate heart rate only.',
+            vitallens: 'VitalLens API mode sends cropped, downscaled face frames to api.rouast.com and adds respiratory rate and HRV. Get a free key at rouast.com/api.',
+        };
+        const EXTRA_LABELS = { respiratory_rate: 'Resp. rate', hrv_sdnn: 'HRV SDNN', hrv_rmssd: 'HRV RMSSD', hrv_lfhf: 'HRV LF/HF' };
+        const WAVE_SECONDS = 6;
+        const TREND_SECONDS = 120;
+
+        const $ = (id) => document.getElementById(id);
+        const video = $('video'), canvas = $('canvas'), ctx = canvas.getContext('2d');
+        const trend = $('trend'), tctx = trend.getContext('2d');
+        const status = $('status'), errorLine = $('errorLine'), stats = $('stats');
+        const startBtn = $('startBtn'), stopBtn = $('stopBtn'), recordBtn = $('recordBtn');
+        const methodSelect = $('methodSelect'), apiKey = $('apiKey');
+
+        let VitalLens = null, vl = null, stream = null, animationId = null;
+        let lastTime = 0, frameCount = 0, lastFrame = 0;
+        let faceTarget = null, faceBox = null;      // [x0, y0, x1, y1] in video pixels
+        let hr = null, hrConf = 0, beatPhase = 0;
+        let wave = [], waveAnchor = null;            // [{v, at}] scheduled for display
+        let hrHistory = [], sessionStart = 0;         // [{t, v, c}]
+        let mediaRecorder = null, recordedChunks = [], recordingStartTime = 0;
+        const recordingSupported = !!(canvas.captureStream && window.MediaRecorder);
+
+        function setStatus(text, isError = false) {
+            status.textContent = text;
+            status.classList.toggle('error', isError);
+            status.style.display = 'block';
+        }
+
+        // vitallens only console.error()s failures inside its prediction loop (e.g. a bad API key), so surface them.
+        const origError = console.error.bind(console);
+        console.error = (...args) => {
+            origError(...args);
+            const err = args.find((a) => a instanceof Error);
+            if (stream && err) errorLine.textContent = err.message;
+        };
+
+        const libReady = import(LIB_URL).then((m) => {
+            VitalLens = m.VitalLens;
+            setStatus('Click "Start Camera" to begin');
+            startBtn.disabled = false;
+        }).catch((err) => setStatus('Failed to load vitallens.js: ' + err.message, true));
+
+        function updateMethodUI() {
+            const isApi = methodSelect.value === 'vitallens';
+            $('keyRow').hidden = !isApi;
+            $('methodNote').textContent = METHOD_NOTES[isApi ? 'vitallens' : 'local'];
+        }
+
+        function resetEstimates() {
+            faceTarget = faceBox = null;
+            hr = null; hrConf = 0;
+            wave = []; waveAnchor = null;
+            hrHistory = []; sessionStart = performance.now() / 1000;
+            $('hr').textContent = '--'; $('conf').textContent = '--';
+            $('extras').replaceChildren();
+            errorLine.textContent = '';
+        }
+
+        function onVitals(result) {
+            // Incremental waveform chunks arrive in bursts; schedule each sample at its video timestamp for smooth scrolling.
+            const ppg = result.waveforms?.ppg_waveform?.data || [];
+            const times = result.time || [];
+            if (times.length && !waveAnchor) waveAnchor = { video: times[0], real: performance.now() / 1000 + 0.15 };
+            for (let i = 0; i < Math.min(ppg.length, times.length); i++) {
+                wave.push({ v: ppg[i], at: waveAnchor.real + times[i] - waveAnchor.video });
+            }
+
+            const h = result.vitals?.heart_rate;
+            hr = h && Number.isFinite(h.value) ? h.value : null;
+            hrConf = h ? h.confidence : 0;
+            $('hr').textContent = hr === null ? '--' : `${Math.round(hr)} bpm`;
+            $('conf').textContent = hr === null ? '--' : `${Math.round(hrConf * 100)}%`;
+            if (hr !== null) {
+                const t = performance.now() / 1000 - sessionStart;
+                if (!hrHistory.length || t - hrHistory[hrHistory.length - 1].t > 0.25) hrHistory.push({ t, v: hr, c: hrConf });
+                while (hrHistory.length && hrHistory[0].t < t - TREND_SECONDS) hrHistory.shift();
+            }
+
+            const extras = Object.entries(result.vitals || {}).filter(([k, v]) => k !== 'heart_rate' && Number.isFinite(v?.value));
+            $('extras').replaceChildren(...extras.map(([k, v]) => {
+                const span = document.createElement('span');
+                const val = document.createElement('span');
+                val.className = 'stat-value';
+                val.textContent = `${v.value.toFixed(k === 'hrv_lfhf' ? 2 : 0)}${v.unit && v.unit !== 'unitless' ? ' ' + v.unit : ''}`;
+                span.append(`${EXTRA_LABELS[k] || k}: `, val);
+                return span;
+            }));
+        }
+
+        async function startCamera() {
+            const method = methodSelect.value;
+            if (method === 'vitallens' && !apiKey.value.trim()) {
+                setStatus('Enter a VitalLens API key, or pick a local method.', true);
+                return;
+            }
+            startBtn.disabled = true;
+            try {
+                await libReady;
+                if (!VitalLens) throw new Error('vitallens.js failed to load');
+                setStatus('Requesting camera access...');
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: false,
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                video.srcObject = stream;
+                await video.play();
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+
+                setStatus('Starting estimator...');
+                resetEstimates();
+                const inst = vl = new VitalLens({ method, apiKey: apiKey.value.trim() || undefined, waveformMode: 'incremental', fDetFs: 2 });
+                // Ignore late events from an instance that has since been stopped (e.g. after a method switch).
+                inst.addEventListener('vitals', (r) => inst === vl && onVitals(r));
+                inst.addEventListener('faceDetected', (face) => { if (inst === vl) faceTarget = face ? face.coordinates : null; });
+                inst.addEventListener('streamReset', (e) => { if (inst === vl) errorLine.textContent = e.message; });
+                await inst.setVideoStream(stream, video);
+                inst.startVideoStream();
+
+                status.style.display = 'none';
+                stats.style.display = 'flex';
+                $('trendWrap').style.display = 'block';
+                stopBtn.disabled = false;
+                recordBtn.disabled = !recordingSupported;
+                lastFrame = performance.now();
+                draw();
+            } catch (err) {
+                stopCamera();
+                setStatus('Error: ' + err.message, true);
+            }
+        }
+
+        function stopCamera() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRecording();
+            if (animationId) cancelAnimationFrame(animationId);
+            animationId = null;
+            if (vl) {
+                const old = vl;
+                vl = null;
+                try { old.stopVideoStream(); } catch (e) { origError(e); }
+                old.close().catch(origError);
+            }
+            if (stream) stream.getTracks().forEach((t) => t.stop());
+            stream = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            setStatus('Camera stopped. Click "Start Camera" to restart.');
+            stats.style.display = 'none';
+            $('trendWrap').style.display = 'none';
+            startBtn.disabled = !VitalLens;
+            stopBtn.disabled = true;
+            recordBtn.disabled = true;
+        }
+
+        function getSupportedMimeType() {
+            const types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+            return types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+        }
+
+        function startRecording() {
+            const mimeType = getSupportedMimeType();
+            recordedChunks = [];
+            mediaRecorder = new MediaRecorder(canvas.captureStream(30), mimeType ? { mimeType } : undefined);
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `heart-rate-${Date.now()}.${mimeType.startsWith('video/mp4') ? 'mp4' : 'webm'}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(a.href);
+            };
+            mediaRecorder.start();
+            recordingStartTime = performance.now();
+            recordBtn.textContent = 'Stop Recording';
+            recordBtn.classList.add('recording');
+            $('recordingIndicator').classList.add('active');
+            $('recordingTime').textContent = '0:00';
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+            recordBtn.textContent = 'Start Recording';
+            recordBtn.classList.remove('recording');
+            $('recordingIndicator').classList.remove('active');
+        }
+
+        const qualityColor = () => hr === null ? '#888' : hrConf >= 0.8 ? '#4ade80' : hrConf >= 0.5 ? '#fbbf24' : '#ff6b6b';
+
+        function drawFaceBox(W) {
+            if (!faceTarget) { faceBox = null; return; }
+            faceBox = faceBox ? faceBox.map((v, i) => v + (faceTarget[i] - v) * 0.25) : [...faceTarget];
+            let [x0, y0, x1, y1] = faceBox;
+            if ($('mirrorVideo').checked) [x0, x1] = [W - x1, W - x0];
+            ctx.strokeStyle = qualityColor();
+            ctx.lineWidth = 3;
+            ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+        }
+
+        function drawWaveform(W, H, now) {
+            while (wave.length && wave[0].at < now - WAVE_SECONDS) wave.shift();
+            const pts = wave.filter((p) => p.at <= now);
+            if (pts.length < 2) return;
+            const top = H * 0.78, h = H * 0.2;
+            let lo = Infinity, hi = -Infinity;
+            for (const p of pts) { lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); }
+            const range = hi - lo || 1;
+            ctx.fillStyle = 'rgba(15, 15, 35, 0.55)';
+            ctx.fillRect(0, top - 6, W, h + 12);
+            ctx.strokeStyle = '#ff6b9d';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            pts.forEach((p, i) => {
+                const x = W - ((now - p.at) / WAVE_SECONDS) * W;
+                const y = top + h - ((p.v - lo) / range) * h;
+                i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        function drawBadge(dt) {
+            if (hr !== null) beatPhase = (beatPhase + dt * hr / 60) % 1;
+            const pulse = hr === null ? 1 : 1 + 0.3 * Math.max(0, 1 - beatPhase * 5);
+            ctx.fillStyle = 'rgba(15, 15, 35, 0.7)';
+            ctx.beginPath();
+            ctx.roundRect(12, 12, 200, 76, 12);
+            ctx.fill();
+            ctx.save();
+            ctx.translate(46, 50);
+            ctx.scale(pulse, pulse);
+            ctx.fillStyle = hr === null ? '#666' : '#ff4d6d';
+            ctx.font = '34px system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('♥', 0, 2);
+            ctx.restore();
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 36px system-ui, sans-serif';
+            const label = hr === null ? '--' : String(Math.round(hr));
+            ctx.fillText(label, 76, 58);
+            const labelWidth = ctx.measureText(label).width;
+            ctx.fillStyle = '#aaa';
+            ctx.font = '14px system-ui, sans-serif';
+            ctx.fillText('bpm', 82 + labelWidth, 58);
+            ctx.fillStyle = qualityColor();
+            ctx.font = '13px system-ui, sans-serif';
+            const msg = !faceTarget ? 'No face detected' : hr === null ? 'Calibrating, hold still…' : `${Math.round(hrConf * 100)}% confidence`;
+            ctx.fillText(msg, 76, 78);
+        }
+
+        function drawTrend() {
+            const dpr = window.devicePixelRatio || 1;
+            const w = trend.clientWidth, h = trend.clientHeight;
+            if (trend.width !== Math.round(w * dpr)) { trend.width = Math.round(w * dpr); trend.height = Math.round(h * dpr); }
+            tctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            tctx.clearRect(0, 0, w, h);
+            tctx.fillStyle = '#888';
+            tctx.font = '12px system-ui, sans-serif';
+            tctx.fillText(`Heart rate, last ${TREND_SECONDS / 60} min`, 10, 16);
+            if (hrHistory.length < 2) return;
+            const tNow = performance.now() / 1000 - sessionStart;
+            let lo = Math.min(...hrHistory.map((p) => p.v)) - 5, hi = Math.max(...hrHistory.map((p) => p.v)) + 5;
+            const pad = 24, y = (v) => h - 8 - ((v - lo) / (hi - lo)) * (h - pad - 8);
+            tctx.fillText(`${Math.round(hi)}`, w - 30, y(hi) + 10);
+            tctx.fillText(`${Math.round(lo)}`, w - 30, y(lo) - 2);
+            tctx.strokeStyle = '#ff6b9d';
+            tctx.lineWidth = 2;
+            tctx.beginPath();
+            hrHistory.forEach((p, i) => {
+                const x = (w - 36) * (1 - (tNow - p.t) / TREND_SECONDS);
+                i ? tctx.lineTo(x, y(p.v)) : tctx.moveTo(x, y(p.v));
+            });
+            tctx.stroke();
+        }
+
+        function draw() {
+            if (!stream) return;
+            const now = performance.now();
+            const dt = (now - lastFrame) / 1000;
+            lastFrame = now;
+            frameCount++;
+            if (now - lastTime >= 1000) {
+                $('fps').textContent = frameCount;
+                frameCount = 0;
+                lastTime = now;
+                drawTrend();
+            }
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                const s = Math.floor((now - recordingStartTime) / 1000);
+                $('recordingTime').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+            }
+
+            const W = canvas.width, H = canvas.height;
+            ctx.save();
+            if ($('mirrorVideo').checked) {
+                ctx.scale(-1, 1);
+                ctx.translate(-W, 0);
+            }
+            ctx.drawImage(video, 0, 0, W, H);
+            ctx.restore();
+            if ($('showFace').checked) drawFaceBox(W);
+            if ($('showWave').checked) drawWaveform(W, H, now / 1000);
+            drawBadge(dt);
+
+            animationId = requestAnimationFrame(draw);
+        }
+
+        startBtn.addEventListener('click', startCamera);
+        stopBtn.addEventListener('click', stopCamera);
+        recordBtn.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+            else startRecording();
+        });
+
+        methodSelect.addEventListener('change', async () => {
+            updateMethodUI();
+            history.replaceState(null, '', '#' + encodeURIComponent(methodSelect.value));
+            if (stream) {
+                stopCamera();
+                await startCamera();
+            }
+        });
+
+        // URL state: #pos, #chrom, #g, or #vitallens preselects the method (the API key is never put in the URL)
+        const hashMethod = decodeURIComponent(location.hash.slice(1));
+        if ([...methodSelect.options].some((o) => o.value === hashMethod)) methodSelect.value = hashMethod;
+        updateMethodUI();
+    </script>
+</body>
+</html>

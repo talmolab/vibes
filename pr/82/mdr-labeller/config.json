@@ -1,0 +1,33 @@
+{
+  "source": "approach",
+  "file_code": "COLD HARBOR",
+  "file_sub": "aggression corpus · pooled cohorts",
+  "refiner": "I. TANG · grade F-27",
+
+  "labels": [
+    "fight", "chase", "mount", "tail_bite", "aggressive_anogenital_sniff",
+    "investigate_sniff", "follow", "none_passing", "unclear"
+  ],
+  "label_display": {
+    "tail_bite": "tail-bite",
+    "aggressive_anogenital_sniff": "anogenital",
+    "investigate_sniff": "sniff",
+    "none_passing": "passing"
+  },
+
+  "clip": { "pad_before": 50, "window": 150, "cell": 260, "fps": 50 },
+  "grid": { "tile_px": 132, "zoom": 2.7 },
+  "cache_dir": "./cache",
+
+  "approach": {
+    "manifest": "aggression_corpus",
+    "corpus_dir": null,
+    "manifest_csv": null,
+    "features_npz": null,
+    "scaffold_npy": null,
+    "labels_csv": null,
+    "only_aggression_candidates": false
+  },
+
+  "demo": { "n_events": 48 }
+}
