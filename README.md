@@ -10,6 +10,7 @@ Self-contained HTML tools and applets for the web.
 - [Idle Quest](idle-quest/) - An idle RPG with combat, upgrades, zones, and prestige
 - [GitHub Discussion to Markdown](github-discussion-markdown/) - Convert GitHub discussions to structured markdown
 - [Webcam Pose Tracking](webcam-pose-tracking/) - Real-time body pose estimation using MediaPipe
+- [Webcam Heart Rate](webcam-heart-rate/) - Real-time heart rate from your face via rPPG (vitallens.js), with pulse waveform and HR trend
 - [Pose Subspace Analysis](pose-subspace-analysis/) - Interactive keypoint subspace construction using PCA
 - [Pose Subspace Trip](pose-subspace-trip/) - Drive trippy 3D visualizations (pose constellation or ray-marched fractal) with your body via a pose-driven PCA subspace
 - [Frame-Accurate Video Player](video-player/) - Local video player with frame-accurate seeking, zoom/pan, and playback controls
